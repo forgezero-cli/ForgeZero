@@ -1,11 +1,6 @@
-// SuperAsm - A unique NodeJS assembler builder with automatic linking
-// This script provides a powerful and flexible way to build assembly language projects using NASM or GAS assemblers.
-// It supports automatic detection of source files, platform-specific linking, and various customization options through command-line arguments.
-// Author: Wienton Weslov - software engineer and assembly language enthusiast
-// License: MIT
-// Usage: node builder.js [options] [input.file]
-// For detailed usage instructions, run: node builder.js --help
-// TODO:(You could add more features like support for other assemblers, more platforms, or advanced optimization flags in the future)
+//  Copyright (C) 2026  Alex Voste
+//  All rights reserved. Unauthorized access is a violation of protocol.
+
 
 const fs = require('fs');
 const path = require('path');
