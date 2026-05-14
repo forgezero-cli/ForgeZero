@@ -1,4 +1,3 @@
-![B-Asm Background](assets/back.jpg)
 
 # B-Asm
 
