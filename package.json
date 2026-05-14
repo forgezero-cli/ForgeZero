@@ -1,17 +1,12 @@
 {
-  "name": "nasm-builder",
-  "version": "1.0.0",
-  "description": "A unique NodeJS assembler builder with automatic linking",
-  "main": "builder.js",
+  "name": "asm-builder",
+  "version": "2.0.0",
+  "description": "Modular ASM builder for NASM and GAS",
+  "main": "index.js",
   "scripts": {
-    "build": "node builder.js"
+    "start": "node index.js"
   },
-  "devDependencies": {},
-  "engines": {
-    "node": ">=14.0.0"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "keywords": ["assembler", "nasm", "gas", "builder"],
+  "author": "Alex Voste",
+  "license": "MIT"
 }
