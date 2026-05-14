@@ -18,8 +18,8 @@ This builder automatically detects .asm files, making it very convenient to comp
 - Verbose mode
 
 ## Example usage 
+<img src="pictures/example.jpg" alt="Example using" width="600"/>
 
-[!Example Picture](pictures/example.jpg)
 
 ## Usage
 
