@@ -20,37 +20,60 @@ This builder automatically detects .asm files, making it very convenient to comp
 ## Example usage 
 <img src="pictures/example.jpg" alt="Example using" width="600"/>
 
+## 🧠 Using the builder
 
-## Usage
+Basic project build
 
-### Basic build
-node builder.js [input.asm]
+```bash
 
-### With options
-node builder.js [options] [input.file]
+node index.js [input.asm]
 
-### Examples
+```
 
-# Build specific NASM file (output: hello)
-node builder.js hello.asm
 
-# Build all .asm files in directory
-node builder.js
+With your options
 
-# Build with GAS assembler
-node builder.js --assembler gas hello.s
+```bash
 
-# Build with custom format and output
-node builder.js hello.asm --format elf32 --output myprogram
+node index.js [options][input.file]
 
-# Build with libraries
-node builder.js main.asm --link-libs m,c
+```
 
-# Build with include directories
-node builder.js main.asm --include ./inc --include ./lib
 
-# Build with cleanup and verbose output
-node builder.js --verbose --clean
+## 📂 Usage example 
 
-# Show help
-node builder.js -h
+
+Compiling a NASM file (output: hello)
+
+```bash
+
+node index.js hello.asm
+
+```
+
+
+Compiling all .asm files in the current directory
+
+```bash
+
+node index.js
+
+```
+
+
+Compile with the GAS assembler 
+
+```bash
+
+node index.js --assembler gas hello.s
+
+```
+
+
+Please see the help for more details
+
+
+MIT License 
+
+
+Author AlexVoste
