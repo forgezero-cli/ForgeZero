@@ -17,6 +17,10 @@ This builder automatically detects .asm files, making it very convenient to comp
 - Clean build option
 - Verbose mode
 
+## Example usage 
+
+[!Example Picture](pictures/B-ASM)
+
 ## Usage
 
 ### Basic build
