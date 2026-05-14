@@ -19,7 +19,7 @@ This builder automatically detects .asm files, making it very convenient to comp
 
 ## Example usage 
 
-[!Example Picture](pictures/B-ASM)
+[!Example Picture](pictures/example.jpg)
 
 ## Usage
 
