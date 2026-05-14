@@ -1,0 +1,11 @@
+# Binary files (Output)
+hello
+*.o
+*.out
+*.bin
+
+node_modules/
+package-lock.json
+
+# OS stuff
+.DS_Store
