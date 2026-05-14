@@ -1,0 +1,17 @@
+{
+  "name": "nasm-builder",
+  "version": "1.0.0",
+  "description": "A unique NodeJS assembler builder with automatic linking",
+  "main": "builder.js",
+  "scripts": {
+    "build": "node builder.js"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
