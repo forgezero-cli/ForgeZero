@@ -1,4 +1,4 @@
-# TODO LIST B-ASM
+# TODO LIST ForgeZero
 
 - [10% - for fasm] Add Debugger :)
 - [n] - add support GDB
