@@ -2,7 +2,7 @@
 
 - [10% - for fasm] Add Debugger :)
 - [n] - add support GDB
-- [1/3 - fasm] Add supports different assembly
+- [40%- fasm] Add supports different assembly
 
 ## Documentation for TODO.md.
 
