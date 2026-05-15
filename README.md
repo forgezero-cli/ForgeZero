@@ -9,8 +9,9 @@ This builder automatically detects .asm files, making it very convenient to comp
 ## Features
 
 - Automatic detection of .asm or .s files based on assembler
-- Support for NASM and GAS assemblers
+- Support for NASM and GAS assemblers also FASM 
 - Automatic output naming from input file
+- Debug for FASM files, option --debug 
 - Cross-platform linking (Linux, Windows, macOS)
 - Library linking with -l flags
 - Include directories support
