@@ -4,6 +4,8 @@
 A unique builder for your ASM projects, built using Node.js technology.
 This builder automatically detects .asm files, making it very convenient to compile your project.
 
+# NO DEPENDENCY / NO PROBLEMS
+
 > Supports NASM and GNU Assemblers!
 
 ## Features
