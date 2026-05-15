@@ -19,6 +19,8 @@ This builder automatically detects .asm files, making it very convenient to comp
 - Include directories support
 - Clean build option
 - Verbose mode
+- Support for the Go language. Some modules have already been successfully rewritten in this language!
+- GDB support (coming soon)
 
 ## Example usage 
 <img src="pictures/example.jpg" alt="Example using" width="600"/>
