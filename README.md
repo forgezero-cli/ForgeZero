@@ -1,5 +1,5 @@
 
-# B-Asm
+# 🌱 B-Asm
 
 A unique builder for your ASM projects, built using Node.js technology.
 This builder automatically detects .asm files, making it very convenient to compile your project.
@@ -70,10 +70,14 @@ node index.js --assembler gas hello.s
 ```
 
 
-Please see the help for more details
+For complete information, use the -h flag to display the help. 
+
 
 
 MIT License 
 
+> If you like this project, please consider giving it a star in the repository as a token of your appreciation =) I’d be happy to keep working on it, and feel free to point out any issues in the repository comments (issues)! I’d also love to see your code contributions. 
+
+I hope your assembly language program will run faster. 
 
 Author AlexVoste
