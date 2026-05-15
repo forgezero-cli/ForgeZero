@@ -20,6 +20,10 @@ This builder automatically detects .asm files, making it very convenient to comp
 ## Example usage 
 <img src="pictures/example.jpg" alt="Example using" width="600"/>
 
+## Example auto usage lol 
+
+<img src="pictures/example2.jpg" alt="Example 2 using" width="600"/>
+
 ## 🧠 Using the builder
 
 Basic project build
