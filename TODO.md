@@ -1,0 +1,2 @@
+- [10% - for fasm] Add Debugger :)
+- [1/3 - fasm] Add supports different assembly
