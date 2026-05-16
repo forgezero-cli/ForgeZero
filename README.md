@@ -1,6 +1,8 @@
 
 # 🌱 ForgeZero (fz) ForgeZero (nodesjs -> fz (go))
 
+> This is the Go rewrite branch. For Node.js version see master.
+
 A unique builder for your ASM projects, built using Node.js technology.
 This builder automatically detects .asm files, making it very convenient to compile your project.
 
