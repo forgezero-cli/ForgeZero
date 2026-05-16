@@ -1,5 +1,4 @@
-# 🌱 ForgeZero (fz)
-
+# 🌱 ForgeZero (fz) v1.0-release
 *ForgeZero* is a high-performance assembler builder now fully powered by *Go*. 
 It’s designed to be a "Swiss Army knife" for assembly developers, providing a seamless experience for compiling and linking without the headache of complex Makefiles.
 
