@@ -8,14 +8,18 @@ import (
 	"fz/internal/utils"
 )
 
-func Link(ctx context.Context, obj, bin string, verbose bool, mode string) error {
+func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSymbolCheck bool) error {
 	if err := utils.CheckFileExists(obj); err != nil {
 		return err
 	}
 	if err := utils.EnsureDir(bin); err != nil {
 		return err
 	}
-
+	if !noSymbolCheck {
+		if err := CheckDuplicateSymbols([]string{obj}, verbose); err != nil {
+			return err
+		}
+	}
 	switch mode {
 	case "raw":
 		if err := utils.CheckTool("ld"); err != nil {
@@ -61,7 +65,6 @@ func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieF
 		}
 		return fmt.Errorf("gcc failed: %w\n%s", err, output)
 	}
-
 	if verbose {
 		fmt.Printf("gcc failed, retrying with -no-pie\n")
 		fmt.Printf("Running: gcc %s -o %s -no-pie\n", obj, bin)
@@ -90,12 +93,17 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool) error {
 	return nil
 }
 
-func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, mode string) error {
+func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, mode string, noSymbolCheck bool) error {
 	if len(objFiles) == 0 {
 		return fmt.Errorf("no object files to link")
 	}
 	if err := utils.EnsureDir(bin); err != nil {
 		return err
+	}
+	if !noSymbolCheck {
+		if err := CheckDuplicateSymbols(objFiles, verbose); err != nil {
+			return err
+		}
 	}
 	switch mode {
 	case "raw":
