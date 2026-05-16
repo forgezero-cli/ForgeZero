@@ -2,7 +2,10 @@ package builder
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,9 +19,10 @@ type BuildResult struct {
 	ObjectFiles []string
 	Binary      string
 	ObjDir      string
+	CacheDir    string
 }
 
-func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode string, keepObj bool) (*BuildResult, error) {
+func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode string, keepObj bool, noCache bool) (*BuildResult, error) {
 	if outBin == "" {
 		base := filepath.Base(dir)
 		if utils.IsWindows() {
@@ -56,8 +60,14 @@ func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode
 	}
 
 	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
+	cacheDir := filepath.Join(filepath.Dir(outBin), ".fz_cache")
 	if err := os.MkdirAll(objDir, 0755); err != nil {
 		return nil, fmt.Errorf("cannot create object temp dir: %w", err)
+	}
+	if !noCache {
+		if err := os.MkdirAll(cacheDir, 0755); err != nil {
+			return nil, fmt.Errorf("cannot create cache dir: %w", err)
+		}
 	}
 	if !keepObj {
 		defer func() {
@@ -95,11 +105,30 @@ func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode
 	}
 
 	for _, p := range pairs {
-		if verbose {
-			fmt.Printf("Assembling %s -> %s\n", p.src, p.obj)
+		needAssemble := true
+		if !noCache {
+			cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
+			if err == nil && cachedObj != "" {
+				if verbose {
+					fmt.Printf("Cache hit for %s\n", p.src)
+				}
+				if err := copyFile(cachedObj, p.obj); err == nil {
+					needAssemble = false
+				}
+			}
 		}
-		if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
-			return nil, fmt.Errorf("assemble %s: %w", p.src, err)
+		if needAssemble {
+			if verbose {
+				fmt.Printf("Assembling %s -> %s\n", p.src, p.obj)
+			}
+			if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
+				return nil, fmt.Errorf("assemble %s: %w", p.src, err)
+			}
+			if !noCache {
+				if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil && verbose {
+					fmt.Printf("Warning: cache store failed: %v\n", err)
+				}
+			}
 		}
 	}
 
@@ -114,21 +143,74 @@ func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode
 		ObjectFiles: objFiles,
 		Binary:      outBin,
 		ObjDir:      objDir,
+		CacheDir:    cacheDir,
 	}, nil
 }
 
+func checkCache(src, cacheDir string, debug, verbose bool, mode string) (string, error) {
+	h, err := hashFile(src)
+	if err != nil {
+		return "", err
+	}
+	key := fmt.Sprintf("%s_%v_%s", h, debug, mode)
+	cacheObj := filepath.Join(cacheDir, key+".o")
+	if _, err := os.Stat(cacheObj); err == nil {
+		return cacheObj, nil
+	}
+	return "", os.ErrNotExist
+}
+
+func storeCache(src, obj, cacheDir string, debug, verbose bool, mode string) error {
+	h, err := hashFile(src)
+	if err != nil {
+		return err
+	}
+	key := fmt.Sprintf("%s_%v_%s", h, debug, mode)
+	cacheObj := filepath.Join(cacheDir, key+".o")
+	return copyFile(obj, cacheObj)
+}
+
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
+}
 
 func CleanDir(dir string, verbose bool) error {
 	objDir := filepath.Join(dir, ".fz_objs")
-	if _, err := os.Stat(objDir); err == nil {
-		if verbose {
-			fmt.Printf("Removing %s\n", objDir)
-		}
-		if err := os.RemoveAll(objDir); err != nil {
-			return fmt.Errorf("failed to remove %s: %w", objDir, err)
+	cacheDir := filepath.Join(dir, ".fz_cache")
+	for _, d := range []string{objDir, cacheDir} {
+		if _, err := os.Stat(d); err == nil {
+			if verbose {
+				fmt.Printf("Removing %s\n", d)
+			}
+			if err := os.RemoveAll(d); err != nil {
+				return fmt.Errorf("failed to remove %s: %w", d, err)
+			}
 		}
 	}
-
 	base := filepath.Base(dir)
 	patterns := []string{base + ".out", base + ".exe"}
 	for _, p := range patterns {
@@ -142,19 +224,16 @@ func CleanDir(dir string, verbose bool) error {
 			}
 		}
 	}
-
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("cannot read directory %s: %w", dir, err)
 	}
-
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
 		name := entry.Name()
 		path := filepath.Join(dir, name)
-
 		if strings.HasSuffix(name, ".o") {
 			if verbose {
 				fmt.Printf("Removing object file %s\n", path)
@@ -164,7 +243,6 @@ func CleanDir(dir string, verbose bool) error {
 			}
 			continue
 		}
-
 		info, err := entry.Info()
 		if err != nil {
 			continue
