@@ -3,8 +3,6 @@ package assembler
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -49,10 +47,14 @@ func assembleNASM(ctx context.Context, src, obj string, debug, verbose bool) err
 	if verbose {
 		fmt.Println("Running: nasm", strings.Join(args, " "))
 	}
-	cmd := exec.CommandContext(ctx, "nasm", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	output, err := utils.RunCommandSilent(ctx, verbose, "nasm", args...)
+	if err != nil {
+		if !verbose {
+			return fmt.Errorf("nasm failed (use -verbose for details)")
+		}
+		return fmt.Errorf("nasm failed: %w\n%s", err, output)
+	}
+	return nil
 }
 
 func assembleGAS(ctx context.Context, src, obj string, debug, verbose bool) error {
@@ -63,10 +65,14 @@ func assembleGAS(ctx context.Context, src, obj string, debug, verbose bool) erro
 	if verbose {
 		fmt.Println("Running: gcc", strings.Join(args, " "))
 	}
-	cmd := exec.CommandContext(ctx, "gcc", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	output, err := utils.RunCommandSilent(ctx, verbose, "gcc", args...)
+	if err != nil {
+		if !verbose {
+			return fmt.Errorf("gcc assembly failed (use -verbose for details)")
+		}
+		return fmt.Errorf("gcc failed: %w\n%s", err, output)
+	}
+	return nil
 }
 
 func assembleFASM(ctx context.Context, src, obj string, verbose bool) error {
@@ -74,8 +80,12 @@ func assembleFASM(ctx context.Context, src, obj string, verbose bool) error {
 	if verbose {
 		fmt.Println("Running: fasm", strings.Join(args, " "))
 	}
-	cmd := exec.CommandContext(ctx, "fasm", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	output, err := utils.RunCommandSilent(ctx, verbose, "fasm", args...)
+	if err != nil {
+		if !verbose {
+			return fmt.Errorf("fasm failed (use -verbose for details)")
+		}
+		return fmt.Errorf("fasm failed: %w\n%s", err, output)
+	}
+	return nil
 }
