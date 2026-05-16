@@ -3,7 +3,7 @@ msg: .ascii "Hello from GAS!\n"
 len = . - msg
 
 .section .text
-.global _start
+.global _start 
 
 _start:
     mov $1, %rax
