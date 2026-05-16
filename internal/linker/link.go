@@ -8,7 +8,7 @@ import (
 	"fz/internal/utils"
 )
 
-func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSymbolCheck bool) error {
+func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool) error {
 	if err := utils.CheckFileExists(obj); err != nil {
 		return err
 	}
@@ -30,17 +30,17 @@ func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSym
 		if err := utils.CheckTool("gcc"); err != nil {
 			return err
 		}
-		return linkWithGcc(ctx, obj, bin, verbose, false)
+		return linkWithGcc(ctx, obj, bin, verbose, false, sanitize)
 	case "auto":
-		return tryAutoLink(ctx, obj, bin, verbose)
+		return tryAutoLink(ctx, obj, bin, verbose, sanitize)
 	default:
 		return fmt.Errorf("unsupported mode: %s (valid: auto, c, raw)", mode)
 	}
 }
 
-func tryAutoLink(ctx context.Context, obj, bin string, verbose bool) error {
+func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bool) error {
 	if err := utils.CheckTool("gcc"); err == nil {
-		err = linkWithGcc(ctx, obj, bin, verbose, true)
+		err = linkWithGcc(ctx, obj, bin, verbose, true, sanitize)
 		if err == nil {
 			return nil
 		}
@@ -51,11 +51,15 @@ func tryAutoLink(ctx context.Context, obj, bin string, verbose bool) error {
 	return fmt.Errorf("auto linking failed: neither gcc nor ld available or all attempts failed")
 }
 
-func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieFallback bool) error {
-	if verbose {
-		fmt.Printf("Running: gcc %s -o %s\n", obj, bin)
+func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieFallback bool, sanitize bool) error {
+	args := []string{obj, "-o", bin}
+	if sanitize {
+		args = append([]string{"-fsanitize=address", "-fsanitize=undefined"}, args...)
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, "gcc", obj, "-o", bin)
+	if verbose {
+		fmt.Printf("Running: gcc %s\n", strings.Join(args, " "))
+	}
+	output, err := utils.RunCommandSilent(ctx, verbose, "gcc", args...)
 	if err == nil {
 		return nil
 	}
@@ -67,9 +71,12 @@ func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieF
 	}
 	if verbose {
 		fmt.Printf("gcc failed, retrying with -no-pie\n")
-		fmt.Printf("Running: gcc %s -o %s -no-pie\n", obj, bin)
 	}
-	output2, err2 := utils.RunCommandSilent(ctx, verbose, "gcc", obj, "-o", bin, "-no-pie")
+	argsWithNoPie := append([]string{"-no-pie"}, args...)
+	if verbose {
+		fmt.Printf("Running: gcc %s\n", strings.Join(argsWithNoPie, " "))
+	}
+	output2, err2 := utils.RunCommandSilent(ctx, verbose, "gcc", argsWithNoPie...)
 	if err2 == nil {
 		return nil
 	}
@@ -93,7 +100,7 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool) error {
 	return nil
 }
 
-func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, mode string, noSymbolCheck bool) error {
+func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool) error {
 	if len(objFiles) == 0 {
 		return fmt.Errorf("no object files to link")
 	}
@@ -115,17 +122,17 @@ func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bo
 		if err := utils.CheckTool("gcc"); err != nil {
 			return err
 		}
-		return linkMultipleWithGcc(ctx, objFiles, bin, verbose, false)
+		return linkMultipleWithGcc(ctx, objFiles, bin, verbose, false, sanitize)
 	case "auto":
-		return tryAutoLinkMultiple(ctx, objFiles, bin, verbose)
+		return tryAutoLinkMultiple(ctx, objFiles, bin, verbose, sanitize)
 	default:
 		return fmt.Errorf("unsupported mode: %s (valid: auto, c, raw)", mode)
 	}
 }
 
-func tryAutoLinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool) error {
+func tryAutoLinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, sanitize bool) error {
 	if err := utils.CheckTool("gcc"); err == nil {
-		err = linkMultipleWithGcc(ctx, objFiles, bin, verbose, true)
+		err = linkMultipleWithGcc(ctx, objFiles, bin, verbose, true, sanitize)
 		if err == nil {
 			return nil
 		}
@@ -136,8 +143,11 @@ func tryAutoLinkMultiple(ctx context.Context, objFiles []string, bin string, ver
 	return fmt.Errorf("auto linking failed: neither gcc nor ld available or all attempts failed")
 }
 
-func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, verbose bool, allowNoPieFallback bool) error {
+func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, verbose bool, allowNoPieFallback bool, sanitize bool) error {
 	args := append(objFiles, "-o", bin)
+	if sanitize {
+		args = append([]string{"-fsanitize=address", "-fsanitize=undefined"}, args...)
+	}
 	if verbose {
 		fmt.Printf("Running: gcc %s\n", strings.Join(args, " "))
 	}
@@ -153,9 +163,11 @@ func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, ver
 	}
 	if verbose {
 		fmt.Printf("gcc failed, retrying with -no-pie\n")
-		fmt.Printf("Running: gcc -no-pie %s\n", strings.Join(args, " "))
 	}
 	argsWithNoPie := append([]string{"-no-pie"}, args...)
+	if verbose {
+		fmt.Printf("Running: gcc %s\n", strings.Join(argsWithNoPie, " "))
+	}
 	output2, err2 := utils.RunCommandSilent(ctx, verbose, "gcc", argsWithNoPie...)
 	if err2 == nil {
 		return nil
