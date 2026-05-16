@@ -65,7 +65,7 @@ func main() {
 	}
 
 	if *showVersion {
-		fmt.Println("fz version 1.3")
+		fmt.Println("fz version 1.1.0")
 		os.Exit(0)
 	}
 
