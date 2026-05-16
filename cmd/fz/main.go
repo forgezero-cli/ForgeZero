@@ -26,6 +26,7 @@ func main() {
 		mode       string
 		keepObj    bool
 		clean      bool
+		noCache    bool
 	)
 
 	flag.StringVar(&srcPath, "asm", "", "assembler source file (required if -dir not set)")
@@ -38,7 +39,8 @@ func main() {
 	flag.IntVar(&timeoutSec, "timeout", 60, "timeout in seconds for external commands")
 	flag.StringVar(&mode, "mode", "auto", "linking mode: auto, c, raw")
 	flag.BoolVar(&keepObj, "keep-obj", false, "keep temporary object files when using -dir")
-	flag.BoolVar(&clean, "clean", false, "remove all build artifacts (.fz_objs and default binaries) from the directory")
+	flag.BoolVar(&clean, "clean", false, "remove all build artifacts (.fz_objs, .fz_cache and binaries) from the directory")
+	flag.BoolVar(&noCache, "no-cache", false, "disable incremental cache rebuild")
 	showVersion := flag.Bool("version", false, "show version and exit")
 
 	flag.Usage = func() {
@@ -51,7 +53,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println("fz version 1.0")
+		fmt.Println("fz version 1.1")
 		os.Exit(0)
 	}
 
@@ -130,7 +132,7 @@ func main() {
 				os.Exit(2)
 			}
 		}
-		res, err := builder.BuildDir(ctx, dirPath, outBin, debug, verbose, mode, keepObj)
+		res, err := builder.BuildDir(ctx, dirPath, outBin, debug, verbose, mode, keepObj, noCache)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "build failed: %v\n", err)
 			os.Exit(1)
