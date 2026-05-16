@@ -91,7 +91,7 @@ _start:
 
 func TestAssembleUnsupported(t *testing.T) {
 	dir := t.TempDir()
-	src := writeTempFile(t, dir, "test.c", "int main(){}")
+	src := writeTempFile(t, dir, "test.cpp", "int main(){}")
 	obj := filepath.Join(dir, "test.o")
 	err := Assemble(context.Background(), src, obj, false, false, "auto")
 	if err == nil {
