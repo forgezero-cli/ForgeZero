@@ -1,0 +1,173 @@
+package linker
+
+import (
+	"bufio"
+	"fmt"
+	"os/exec"
+	"strings"
+
+	"fz/internal/utils"
+)
+
+type SymbolInfo struct {
+	File  string
+	Name  string
+	Type  string
+	Size  int
+	Bound string
+}
+
+func CheckDuplicateSymbols(objFiles []string, verbose bool) error {
+	if len(objFiles) <= 1 {
+		return nil
+	}
+	symbolMap := make(map[string][]SymbolInfo)
+	for _, obj := range objFiles {
+		if err := utils.CheckFileExists(obj); err != nil {
+			return err
+		}
+		syms, err := readSymbols(obj, verbose)
+		if err != nil {
+			if verbose {
+				fmt.Printf("Warning: cannot read symbols from %s: %v\n", obj, err)
+			}
+			continue
+		}
+		for _, sym := range syms {
+			symbolMap[sym.Name] = append(symbolMap[sym.Name], sym)
+		}
+	}
+	duplicates := []string{}
+	for name, syms := range symbolMap {
+		if len(syms) > 1 && shouldCheckDuplicate(name) {
+			dup := fmt.Sprintf("symbol '%s' defined in:", name)
+			for _, s := range syms {
+				dup += fmt.Sprintf(" %s", s.File)
+			}
+			duplicates = append(duplicates, dup)
+		}
+	}
+	if len(duplicates) > 0 {
+		return fmt.Errorf("duplicate global symbols found:\n%s\nUse -no-symbol-check to skip this check", strings.Join(duplicates, "\n"))
+	}
+	return nil
+}
+
+func shouldCheckDuplicate(name string) bool {
+	if name == "" || name == "_end" || name == "_edata" || name == "__bss_start" {
+		return false
+	}
+	if strings.HasPrefix(name, ".L") || strings.HasPrefix(name, "debug_") {
+		return false
+	}
+	return true
+}
+
+func readSymbols(objPath string, verbose bool) ([]SymbolInfo, error) {
+	if _, err := exec.LookPath("nm"); err == nil {
+		return readSymbolsWithNm(objPath, verbose)
+	}
+	if _, err := exec.LookPath("objdump"); err == nil {
+		return readSymbolsWithObjdump(objPath, verbose)
+	}
+	return readSymbolsWithReadelf(objPath, verbose)
+}
+
+func readSymbolsWithNm(objPath string, verbose bool) ([]SymbolInfo, error) {
+	cmd := exec.Command("nm", "-g", objPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var syms []SymbolInfo
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		typ := fields[1]
+		if typ != "T" && typ != "D" && typ != "B" {
+			continue
+		}
+		name := fields[2]
+		if name == "" || name == "_start" || strings.HasPrefix(name, ".") {
+			continue
+		}
+		syms = append(syms, SymbolInfo{
+			File: objPath,
+			Name: name,
+			Type: "global",
+		})
+	}
+	return syms, nil
+}
+
+func readSymbolsWithObjdump(objPath string, verbose bool) ([]SymbolInfo, error) {
+	cmd := exec.Command("objdump", "-t", objPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var syms []SymbolInfo
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.Contains(line, "g") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 6 {
+			continue
+		}
+		section := fields[2]
+		if section == "UND" || section == "*ABS*" {
+			continue
+		}
+		name := fields[len(fields)-1]
+		if name == "" || name == "_start" || strings.HasPrefix(name, ".") {
+			continue
+		}
+		syms = append(syms, SymbolInfo{
+			File: objPath,
+			Name: name,
+			Type: "global",
+		})
+	}
+	return syms, nil
+}
+
+func readSymbolsWithReadelf(objPath string, verbose bool) ([]SymbolInfo, error) {
+	cmd := exec.Command("readelf", "-s", objPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var syms []SymbolInfo
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.Contains(line, "GLOBAL") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 8 {
+			continue
+		}
+		sectionIdx := 6
+		if sectionIdx < len(fields) && fields[sectionIdx] == "UND" {
+			continue
+		}
+		name := fields[len(fields)-1]
+		if name == "" || name == "_start" || strings.HasPrefix(name, ".") {
+			continue
+		}
+		syms = append(syms, SymbolInfo{
+			File: objPath,
+			Name: name,
+			Type: "global",
+		})
+	}
+	return syms, nil
+}
