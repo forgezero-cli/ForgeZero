@@ -13,6 +13,7 @@ import (
 	"fz/internal/config"
 	"fz/internal/linker"
 	"fz/internal/utils"
+	"fz/internal/watcher"
 )
 
 func main() {
@@ -30,6 +31,7 @@ func main() {
 		noCache       bool
 		configPath    string
 		noSymbolCheck bool
+		watch         bool
 	)
 
 	flag.StringVar(&srcPath, "asm", "", "assembler source file")
@@ -46,6 +48,7 @@ func main() {
 	flag.BoolVar(&noCache, "no-cache", false, "disable incremental cache rebuild")
 	flag.BoolVar(&noSymbolCheck, "no-symbol-check", false, "disable duplicate symbol pre-check")
 	flag.StringVar(&configPath, "config", "", "config file path (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)")
+	flag.BoolVar(&watch, "watch", false, "watch source files and automatically rebuild")
 	showVersion := flag.Bool("version", false, "show version and exit")
 
 	flag.Usage = func() {
@@ -62,7 +65,7 @@ func main() {
 	}
 
 	if *showVersion {
-		fmt.Println("fz version 1.2")
+		fmt.Println("fz version 1.3")
 		os.Exit(0)
 	}
 
@@ -132,59 +135,103 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
-	if srcPath != "" {
-		if err := utils.CheckFileExists(srcPath); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(2)
+	build := func() error {
+		if srcPath != "" {
+			if err := utils.CheckFileExists(srcPath); err != nil {
+				return err
+			}
+			ext := filepath.Ext(srcPath)
+			if !utils.SupportedExtension(ext) {
+				return fmt.Errorf("unsupported file extension %s", ext)
+			}
+			binName, objName := utils.DeriveNames(srcPath, outBin, outObj)
+			if verbose {
+				fmt.Printf("Assembling %s -> %s\n", srcPath, objName)
+			}
+			if err := assembler.Assemble(ctx, srcPath, objName, debug, verbose, mode); err != nil {
+				return err
+			}
+			if verbose {
+				fmt.Printf("Linking %s -> %s (mode: %s)\n", objName, binName, mode)
+			}
+			if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck); err != nil {
+				return err
+			}
+			fmt.Printf("Built: %s\n", binName)
+			return nil
 		}
-		ext := filepath.Ext(srcPath)
-		if !utils.SupportedExtension(ext) {
-			fmt.Fprintf(os.Stderr, "error: unsupported file extension %s\n", ext)
-			os.Exit(2)
+
+		if dirPath != "" {
+			info, err := os.Stat(dirPath)
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() {
+				return fmt.Errorf("-dir argument must be a directory, got: %s", dirPath)
+			}
+			if outBin != "" {
+				if st, err := os.Stat(outBin); err == nil && st.IsDir() {
+					return fmt.Errorf("output path %s is a directory, cannot write binary", outBin)
+				}
+			}
+			res, err := builder.BuildDir(ctx, dirPath, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck)
+			if err != nil {
+				return err
+			}
+			if !keepObj && verbose {
+				fmt.Printf("Removed temporary object directory: %s\n", res.ObjDir)
+			}
+			fmt.Printf("Built: %s\n", res.Binary)
+			return nil
 		}
-		binName, objName := utils.DeriveNames(srcPath, outBin, outObj)
-		if verbose {
-			fmt.Printf("Assembling %s -> %s\n", srcPath, objName)
-		}
-		if err := assembler.Assemble(ctx, srcPath, objName, debug, verbose, mode); err != nil {
-			fmt.Fprintf(os.Stderr, "assemble error: %v\n", err)
-			os.Exit(1)
-		}
-		if verbose {
-			fmt.Printf("Linking %s -> %s (mode: %s)\n", objName, binName, mode)
-		}
-		if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck); err != nil {
-			fmt.Fprintf(os.Stderr, "link error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Built: %s\n", binName)
-		return
+		return fmt.Errorf("no source to build")
 	}
 
-	if dirPath != "" {
-		info, err := os.Stat(dirPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: cannot access directory: %v\n", err)
-			os.Exit(2)
-		}
-		if !info.IsDir() {
-			fmt.Fprintf(os.Stderr, "error: -dir argument must be a directory, got: %s\n", dirPath)
-			os.Exit(2)
-		}
-		if outBin != "" {
-			if st, err := os.Stat(outBin); err == nil && st.IsDir() {
-				fmt.Fprintf(os.Stderr, "error: output path %s is a directory, cannot write binary\n", outBin)
-				os.Exit(2)
-			}
-		}
-		res, err := builder.BuildDir(ctx, dirPath, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "build failed: %v\n", err)
+	if err := build(); err != nil {
+		fmt.Fprintf(os.Stderr, "build failed: %v\n", err)
+		if !watch {
 			os.Exit(1)
 		}
-		if !keepObj && verbose {
-			fmt.Printf("Removed temporary object directory: %s\n", res.ObjDir)
+	}
+
+	if watch {
+		w, err := watcher.New()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "watcher error: %v\n", err)
+			os.Exit(1)
 		}
-		fmt.Printf("Built: %s\n", res.Binary)
+		defer w.Close()
+
+		watchTarget := dirPath
+		if srcPath != "" {
+			watchTarget = filepath.Dir(srcPath)
+		}
+		if watchTarget == "" {
+			watchTarget = "."
+		}
+		if err := w.AddRecursive(watchTarget); err != nil {
+			fmt.Fprintf(os.Stderr, "cannot watch directory: %v\n", err)
+			os.Exit(1)
+		}
+		if cfgFile != "" {
+			if err := w.Add(cfgFile); err != nil {
+				fmt.Fprintf(os.Stderr, "cannot watch config: %v\n", err)
+			}
+		}
+		fmt.Printf("Watching %s for changes...\n", watchTarget)
+		w.Watch(500*time.Millisecond, func(string) error {
+			fmt.Println("\nChange detected, rebuilding...")
+			ctx2, cancel2 := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+			defer cancel2()
+			origCtx := ctx
+			ctx = ctx2
+			err := build()
+			ctx = origCtx
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "rebuild failed: %v\n", err)
+			}
+			return nil
+		})
+		select {}
 	}
 }
