@@ -50,13 +50,13 @@ func EnsureDir(path string) error {
 	if dir == "" || dir == "." {
 		return nil
 	}
-	return os.MkdirAll(dir, 0755)
+	return os.MkdirAll(dir, 0o755)
 }
 
 func SupportedExtension(ext string) bool {
 	ext = strings.ToLower(ext)
 	switch ext {
-	case ".asm", ".s", ".S", ".fasm":
+	case ".asm", ".s", ".S", ".fasm", ".c":
 		return true
 	}
 	return false
