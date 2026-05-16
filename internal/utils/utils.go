@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -70,4 +72,19 @@ func CheckTool(name string) error {
 
 func IsWindows() bool {
 	return runtime.GOOS == "windows"
+}
+
+func RunCommandSilent(ctx context.Context, verbose bool, name string, args ...string) (output string, err error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	if verbose {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err = cmd.Run()
+		return "", err
+	}
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	err = cmd.Run()
+	return buf.String(), err
 }
