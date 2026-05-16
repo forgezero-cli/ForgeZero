@@ -1,49 +1,56 @@
-
 # 🌱 ForgeZero (fz)
 
-A unique builder for your ASM projects, built using Node.js technology.
-This builder automatically detects .asm files, making it very convenient to compile your project.
+*ForgeZero* is a high-performance assembler builder now fully powered by *Go*. 
+It’s designed to be a "Swiss Army knife" for assembly developers, providing a seamless experience for compiling and linking without the headache of complex Makefiles.
 
-fz is a command-line tool that assembles and links assembly source files using standard system tools (NASM, FASM, GCC, LD).  
-It supports three syntaxes: **NASM** (`.asm`), **GAS** (`.s`/`.S`), and **FASM** (`.fasm`).
+fz is a command-line tool that assembles and links assembly source files using standard system tools (*NASM*, *FASM*, *GCC*, *LD*). It supports three syntaxes: *NASM* (.asm), *GAS* (.s/.S), and *FASM* (.fasm).
 
 # NO DEPENDENCY / NO PROBLEMS
+> Lightweight, fast, and written in Go. No more Node.js overhead!
 
-> Supports NASM and GNU Assemblers!
+## ✨ Features
 
-## Features
+- *Smart Detection:* Automatically identifies `.asm`, `.s`, or `.fasm` files.
+- *NASM, GAS & FASM Support:* Works with the most popular assemblers out of the box.
+- *Smart Naming:* Automatic output binary naming based on the source file.
+- *Debug Ready:* Dedicated `--debug` flag (passes `-g` to the assembler).
+- *Cross-Platform Linking:* Optimized for Linux, and ready for Windows/macOS.
+- *Flexible Linking:* Support for `-l` flags and include directories.
+- *Clean & Verbose:* Clean build options and verbose mode for debugging your build process.
+- *Linking Modes:* Choose between `auto`, `raw` (ld), or `c` (gcc) linking.
+- *GDB Support:* (Coming soon).
 
-- Automatic detection of .asm or .s files based on assembler
-- Support for NASM and GAS assemblers also FASM 
-- Automatic output naming from input file
-- Debug for FASM files, option --debug 
-- Cross-platform linking (Linux, Windows, macOS)
-- Library linking with -l flags
-- Include directories support
-- Clean build option
-- Verbose mode
-- Support for the Go language. Some modules have already been successfully rewritten in this language!
-- GDB support (coming soon)
+## 🛠 Requirements
 
-## Requirements
+Make sure the required tools are installed and available in your PATH:
 
-Make sure the required tools are installed and available in your `PATH`:
+| Source type | Required tool | Installation example (Ubuntu/Debian) |
+|-------------|---------------|--------------------------------------|
+| .asm        | nasm          | `sudo apt install nasm`              |
+| .s / .S     | gcc (as)      | `sudo apt install gcc`               |
+| .fasm       | fasm          | Download from [flatassembler.net](https://flatassembler.net) |
 
-| Source type | Required tool | Installation example (Ubuntu)     |
-|-------------|---------------|------------------------------------|
-| `.asm`      | `nasm`        | `sudo apt install nasm`            |
-| `.s` / `.S` | `gcc`         | `sudo apt install gcc`             |
-| `.fasm`     | `fasm`        | download from https://flatassembler.net |
+*For linking, `gcc` or `ld` is required. `gcc` is recommended for C runtime integration.*
 
-For linking, `gcc` or `ld` is required. `gcc` is recommended for C runtime integration.
+## 🚀 Installation
 
-## Installation 
 Clone the repository and build:
-
 ```bash
 git clone https://github.com/alexvoste/ForgeZero.git
-cd go/
-go build -o fz ./cmd/fz 
+cd ForgeZero
+go build -o fz ./cmd/fz/main.go
+```
+
+MOVE IT TO YOUR PATH
+
+```bash
+sudo mv fz /usr/local/bin/
+```
+
+
+### Via Go Install (The Easy Way)
+```bash
+go install github.com/alexvoste/ForgeZero/cmd/fz@latest
 ```
 
 ## Usage 
@@ -58,6 +65,7 @@ fz[options] -asm <source-file>
 ./fz -asm program.asm 
 ```
 
+
 ## Common options
 ```
 Option              |       Description
@@ -70,6 +78,8 @@ Option              |       Description
 -timeout <sec>	    | Timeout in seconds for each command (default 60)
 -version	          | Show version and exit
 ```
+
+
 
 ## Examples
 
@@ -112,10 +122,11 @@ Exit codes
 For complete information, use the -h flag to display the help. 
 
 
-## MIT License 
+## 📝 MIT License 
 
-> If you like this project, please consider giving it a star in the repository as a token of your appreciation =) I’d be happy to keep working on it, and feel free to point out any issues in the repository comments (issues)! I’d also love to see your code contributions. 
+> If you like this project, please consider giving it a *star* ⭐️ in the repository! I'm actively working on it, so feel free to open *Issues* or submit *Pull Requests*.
 
-I hope your assembly language program will run faster. 
+I hope your assembly language programs run faster than ever.
 
-**Author:** AlexVoste
+*Author:* [AlexVoste](https://github.com/alexvoste)
+
