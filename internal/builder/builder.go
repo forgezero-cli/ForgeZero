@@ -22,7 +22,7 @@ type BuildResult struct {
 	CacheDir    string
 }
 
-func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode string, keepObj bool, noCache bool) (*BuildResult, error) {
+func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode string, keepObj bool, noCache bool, noSymbolCheck bool) (*BuildResult, error) {
 	if outBin == "" {
 		base := filepath.Base(dir)
 		if utils.IsWindows() {
@@ -61,11 +61,11 @@ func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode
 
 	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
 	cacheDir := filepath.Join(filepath.Dir(outBin), ".fz_cache")
-	if err := os.MkdirAll(objDir, 0755); err != nil {
+	if err := os.MkdirAll(objDir, 0o755); err != nil {
 		return nil, fmt.Errorf("cannot create object temp dir: %w", err)
 	}
 	if !noCache {
-		if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 			return nil, fmt.Errorf("cannot create cache dir: %w", err)
 		}
 	}
@@ -87,12 +87,12 @@ func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode
 		if err != nil {
 			rel = filepath.Base(src)
 		}
-		ext := filepath.Ext(rel)
-		baseNoExt := strings.TrimSuffix(rel, ext)
-		uniqueName := strings.ReplaceAll(baseNoExt, string(filepath.Separator), "_")
-		objName := uniqueName + ".o"
+		baseName := strings.TrimSuffix(rel, filepath.Ext(rel))
+		uniqueName := strings.ReplaceAll(baseName, string(filepath.Separator), "_")
+		ext := strings.TrimPrefix(filepath.Ext(rel), ".")
+		objName := uniqueName + "_" + ext + ".o"
 		objPath := filepath.Join(objDir, objName)
-		if err := os.MkdirAll(filepath.Dir(objPath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(objPath), 0o755); err != nil {
 			return nil, fmt.Errorf("cannot create subdir for object: %w", err)
 		}
 		pairs[i] = pair{src: src, obj: objPath}
@@ -135,7 +135,7 @@ func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode
 	if verbose {
 		fmt.Printf("Linking %d object files -> %s (mode: %s)\n", len(objFiles), outBin, mode)
 	}
-	if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode); err != nil {
+	if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck); err != nil {
 		return nil, fmt.Errorf("link failed: %w", err)
 	}
 
@@ -247,7 +247,7 @@ func CleanDir(dir string, verbose bool) error {
 		if err != nil {
 			continue
 		}
-		if info.Mode()&0111 != 0 {
+		if info.Mode()&0o111 != 0 {
 			ext := strings.ToLower(filepath.Ext(name))
 			if !utils.SupportedExtension(ext) && ext != "" {
 				if verbose {
