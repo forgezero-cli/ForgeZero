@@ -1,12 +1,10 @@
 
-# 🌱 ForgeZero (fz) ForgeZero (nodesjs -> fz (go))
-
-> This is the Go rewrite branch. For Node.js version see master.
+# 🌱 ForgeZero (fz)
 
 A unique builder for your ASM projects, built using Node.js technology.
 This builder automatically detects .asm files, making it very convenient to compile your project.
 
-fz` is a command-line tool that assembles and links assembly source files using standard system tools (NASM, FASM, GCC, LD).  
+fz is a command-line tool that assembles and links assembly source files using standard system tools (NASM, FASM, GCC, LD).  
 It supports three syntaxes: **NASM** (`.asm`), **GAS** (`.s`/`.S`), and **FASM** (`.fasm`).
 
 # NO DEPENDENCY / NO PROBLEMS
