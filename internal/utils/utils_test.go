@@ -16,8 +16,9 @@ func TestSupportedExtension(t *testing.T) {
 		{".s", true},
 		{".S", true},
 		{".fasm", true},
-		{".c", false},
+		{".c", true},
 		{".go", false},
+		{".txt", false},
 	}
 	for _, tt := range tests {
 		if got := SupportedExtension(tt.ext); got != tt.want {
