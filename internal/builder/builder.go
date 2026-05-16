@@ -22,7 +22,7 @@ type BuildResult struct {
 	CacheDir    string
 }
 
-func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode string, keepObj bool, noCache bool, noSymbolCheck bool) (*BuildResult, error) {
+func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode string, keepObj bool, noCache bool, noSymbolCheck bool, sanitize bool) (*BuildResult, error) {
 	if outBin == "" {
 		base := filepath.Base(dir)
 		if utils.IsWindows() {
@@ -87,10 +87,11 @@ func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode
 		if err != nil {
 			rel = filepath.Base(src)
 		}
-		baseName := strings.TrimSuffix(rel, filepath.Ext(rel))
-		uniqueName := strings.ReplaceAll(baseName, string(filepath.Separator), "_")
-		ext := strings.TrimPrefix(filepath.Ext(rel), ".")
-		objName := uniqueName + "_" + ext + ".o"
+		ext := filepath.Ext(rel)
+		baseNoExt := strings.TrimSuffix(rel, ext)
+		uniqueName := strings.ReplaceAll(baseNoExt, string(filepath.Separator), "_")
+		srcExt := strings.TrimPrefix(ext, ".")
+		objName := uniqueName + "_" + srcExt + ".o"
 		objPath := filepath.Join(objDir, objName)
 		if err := os.MkdirAll(filepath.Dir(objPath), 0o755); err != nil {
 			return nil, fmt.Errorf("cannot create subdir for object: %w", err)
@@ -135,7 +136,7 @@ func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode
 	if verbose {
 		fmt.Printf("Linking %d object files -> %s (mode: %s)\n", len(objFiles), outBin, mode)
 	}
-	if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck); err != nil {
+	if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck, sanitize); err != nil {
 		return nil, fmt.Errorf("link failed: %w", err)
 	}
 
