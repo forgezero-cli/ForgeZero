@@ -1,5 +1,5 @@
 .section .data
-msg: .ascii "Hello from GAS!\n"
+msg: .ascii "Hello from GAS, man!\n"
 len = . - msg
 
 .section .text
