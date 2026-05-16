@@ -41,7 +41,7 @@ For linking, `gcc` or `ld` is required. `gcc` is recommended for C runtime integ
 Clone the repository and build:
 
 ```bash
-git clone https://alexvoste/ForgeZero.git
+git clone https://github.com/alexvoste/ForgeZero.git
 cd go/
 go build -o fz ./cmd/fz 
 ```
