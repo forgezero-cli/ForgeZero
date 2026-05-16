@@ -34,8 +34,13 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 			return err
 		}
 		return assembleFASM(ctx, src, obj, verbose)
+	case ".c":
+		if err := utils.CheckTool("gcc"); err != nil {
+			return err
+		}
+		return assembleC(ctx, src, obj, debug, verbose)
 	default:
-		return fmt.Errorf("unsupported source extension: %s (supported: .asm, .s, .S, .fasm)", ext)
+		return fmt.Errorf("unsupported source extension: %s (supported: .asm, .s, .S, .fasm, .c)", ext)
 	}
 }
 
@@ -86,6 +91,26 @@ func assembleFASM(ctx context.Context, src, obj string, verbose bool) error {
 			return fmt.Errorf("fasm failed (use -verbose for details)")
 		}
 		return fmt.Errorf("fasm failed: %w\n%s", err, output)
+	}
+	return nil
+}
+
+func assembleC(ctx context.Context, src, obj string, debug, verbose bool) error {
+	args := []string{"-c", src, "-o", obj}
+	strictFlags := []string{"-Wall", "-Wextra", "-Werror", "-Wpedantic", "-Wshadow", "-Wconversion"}
+	args = append(args, strictFlags...)
+	if debug {
+		args = append(args, "-g")
+	}
+	if verbose {
+		fmt.Println("Running: gcc", strings.Join(args, " "))
+	}
+	output, err := utils.RunCommandSilent(ctx, verbose, "gcc", args...)
+	if err != nil {
+		if !verbose {
+			return fmt.Errorf("gcc compilation failed (use -verbose for details)")
+		}
+		return fmt.Errorf("gcc failed: %w\n%s", err, output)
 	}
 	return nil
 }
