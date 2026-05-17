@@ -10,7 +10,11 @@ import (
 	"fz/internal/utils"
 )
 
-var runner CmdRunner = &RealCmdRunner{}
+var (
+	runner   CmdRunner = &RealCmdRunner{}
+	LdScript string
+	TextAddr string
+)
 
 func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool, libs []string) error {
 	if err := utils.CheckFileExists(obj); err != nil {
@@ -85,6 +89,7 @@ func linkWithClang(ctx context.Context, obj, bin string, verbose bool, allowNoPi
 	for _, lib := range libs {
 		args = append(args, "-l"+lib)
 	}
+	args = ApplyGccLdFlags(args, LdScript, TextAddr)
 	if verbose {
 		fmt.Printf("Running: clang %s\n", strings.Join(args, " "))
 	}
@@ -123,6 +128,7 @@ func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieF
 	for _, lib := range libs {
 		args = append(args, "-l"+lib)
 	}
+	args = ApplyGccLdFlags(args, LdScript, TextAddr)
 	if verbose {
 		fmt.Printf("Running: gcc %s\n", strings.Join(args, " "))
 	}
@@ -158,6 +164,7 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool, libs []strin
 	for _, lib := range libs {
 		args = append(args, "-l"+lib)
 	}
+	args = ApplyLdFlags(args, LdScript, TextAddr)
 	if verbose {
 		fmt.Printf("Running: ld %s\n", strings.Join(args, " "))
 	}
@@ -246,6 +253,7 @@ func linkMultipleWithClang(ctx context.Context, objFiles []string, bin string, v
 	for _, lib := range libs {
 		args = append(args, "-l"+lib)
 	}
+	args = ApplyGccLdFlags(args, LdScript, TextAddr)
 	if verbose {
 		fmt.Printf("Running: clang %s\n", strings.Join(args, " "))
 	}
@@ -284,6 +292,7 @@ func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, ver
 	for _, lib := range libs {
 		args = append(args, "-l"+lib)
 	}
+	args = ApplyGccLdFlags(args, LdScript, TextAddr)
 	if verbose {
 		fmt.Printf("Running: gcc %s\n", strings.Join(args, " "))
 	}
@@ -319,6 +328,7 @@ func linkMultipleWithLd(ctx context.Context, objFiles []string, bin string, verb
 	for _, lib := range libs {
 		args = append(args, "-l"+lib)
 	}
+	args = ApplyLdFlags(args, LdScript, TextAddr)
 	if verbose {
 		fmt.Printf("Running: ld %s\n", strings.Join(args, " "))
 	}
