@@ -31,64 +31,44 @@ type BuildReport struct {
 var version = "1.4.0"
 
 func printHelp() {
-	cyan := "\033[36m"
-	green := "\033[32m"
-	blue := "\033[34m"
-	bold := "\033[1m"
-	reset := "\033[0m"
+	fmt.Fprintf(os.Stderr, `
+fz - assembly swiss army knife
 
-	fmt.Fprintln(os.Stderr, "\n"+cyan+bold+"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"+reset)
-	fmt.Fprintln(os.Stderr, cyan+bold+"  fz - assembly swiss army knife "+reset)
-	fmt.Fprintln(os.Stderr, cyan+bold+"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"+reset+"\n")
+Usage:
+  fz [options] (-asm <file> | -cc <file> | -dir <dir> | (no args with config))
 
-	fmt.Fprintln(os.Stderr, bold+"Usage:"+reset)
-	fmt.Fprintln(os.Stderr, "  "+green+"fz [options] (-asm <file> | -cc <file> | -dir <dir>)"+reset+"\n")
+Options:
+  -asm <file>            Assembler source (.asm, .s, .S, .fasm)
+  -cc <file>             C source (compiled with -Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion)
+  -dir <dir>             Build all supported files in directory (recursive)
+  -out <name>            Output binary name
+  -out-obj <name>        Object file name (single file only)
+  -mode <auto|c|raw>     Linking mode (default: auto)
+  -debug                 Emit debug information (-g)
+  -verbose               Print executed commands
+  -keep-obj              Keep temporary object files when using -dir
+  -no-cache              Disable incremental cache
+  -no-symbol-check       Skip duplicate symbol pre‑check
+  -sanitize              Enable sanitizers for C (default: true)
+  -no-sanitize           Disable sanitizers
+  -strict                Enable aggressive sanitizers (use-after-return, use-after-scope) – prefers clang
+  -clean                 Remove all build artifacts (.fz_objs, .fz_cache, binaries)
+  -watch                 Watch source files and rebuild automatically
+  -json                  Output build report in JSON format (CI/CD)
+  -config <file>         Config file path (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)
+  -man                   Generate roff man page and exit
+  -h, --help             Show this help
+  -v, --version          Show version
 
-	fmt.Fprintln(os.Stderr, blue+bold+"Build Source:"+reset)
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-asm, --assembler <file>     "+reset+"Assembler source (.asm, .s, .S, .fasm)")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-cc <file>                   "+reset+"C source (strict warnings enabled)")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-dir <directory>             "+reset+"Build all supported files recursively\n")
+Examples:
+  fz -asm boot.asm
+  fz -cc main.c -strict -verbose
+  fz -dir ./src -out myapp -watch
+  fz -json -cc test.c
+  fz -dir . -clean
 
-	fmt.Fprintln(os.Stderr, blue+bold+"Output Control:"+reset)
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-out <name>                  "+reset+"Output binary name")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-out-obj <name>              "+reset+"Object file name (single file only)")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-keep-obj                    "+reset+"Keep temporary object files (when using -dir)\n")
-
-	fmt.Fprintln(os.Stderr, blue+bold+"Linking Mode:"+reset)
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-mode <auto|c|raw>           "+reset+"Linking mode (default: auto)\n")
-
-	fmt.Fprintln(os.Stderr, blue+bold+"C‑specific & Sanitizers:"+reset)
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-sanitize                    "+reset+"Enable ASan + UBSan (default: on)")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-no-sanitize                 "+reset+"Disable sanitizers")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-strict                      "+reset+"Use clang + advanced sanitizers (use-after-return, etc.)\n")
-
-	fmt.Fprintln(os.Stderr, blue+bold+"Debugging & Verbosity:"+reset)
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-debug                       "+reset+"Emit debug symbols (-g)")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-verbose                     "+reset+"Print every command executed\n")
-
-	fmt.Fprintln(os.Stderr, blue+bold+"Performance / Cache:"+reset)
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-no-cache                    "+reset+"Disable incremental cache")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-no-symbol-check             "+reset+"Skip duplicate symbol pre‑check\n")
-
-	fmt.Fprintln(os.Stderr, blue+bold+"Other:"+reset)
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-clean                       "+reset+"Remove all build artifacts (.fz_objs, .fz_cache, binaries)")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-watch                       "+reset+"Watch files and auto‑rebuild")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-json                        "+reset+"Output build report in JSON (for CI/CD)")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-config <file>               "+reset+"Config file (default: .fz.yaml, fz.yaml, ...)")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-man                         "+reset+"Generate roff man page and exit\n")
-
-	fmt.Fprintln(os.Stderr, blue+bold+"Info:"+reset)
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-h, --help                   "+reset+"Show this help")
-	fmt.Fprintln(os.Stderr, "  "+cyan+"-v, --version                "+reset+"Show version\n")
-
-	fmt.Fprintln(os.Stderr, blue+bold+"Examples:"+reset)
-	fmt.Fprintln(os.Stderr, "  "+green+"  fz -asm boot.asm"+reset)
-	fmt.Fprintln(os.Stderr, "  "+green+"  fz -cc main.c -strict -verbose"+reset)
-	fmt.Fprintln(os.Stderr, "  "+green+"  fz -dir ./src -out myapp -watch"+reset)
-	fmt.Fprintln(os.Stderr, "  "+green+"  fz -json -cc test.c"+reset)
-	fmt.Fprintln(os.Stderr, "  "+green+"  fz -dir . -clean"+reset+"\n")
-
-	fmt.Fprintln(os.Stderr, blue+bold+"Supported extensions:"+reset+" "+cyan+".asm, .s, .S, .fasm, .c"+reset+"\n")
+Supported extensions: .asm, .s, .S, .fasm, .c
+`)
 }
 
 func main() {
@@ -200,39 +180,25 @@ func main() {
 		srcPath = ccPath
 	}
 
-	cfgFile := configPath
-	if cfgFile == "" {
-		cfgFile = config.DefaultConfigPath()
-	}
 	var cfg *config.Config
+	var err error
 	if configPath != "" {
-		var err error
 		cfg, err = config.Load(configPath)
-		if err != nil {
-			if jsonOutput {
-				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: err.Error()}
-				json.NewEncoder(os.Stdout).Encode(report)
-			} else {
-				fmt.Fprintf(os.Stderr, "config error: %v\n", err)
-			}
-			os.Exit(2)
-		}
 	} else {
-		var err error
 		cfg, err = config.LoadMerged("")
-		if err != nil {
-			if jsonOutput {
-				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: err.Error()}
-				json.NewEncoder(os.Stdout).Encode(report)
-			} else {
-				fmt.Fprintf(os.Stderr, "config error: %v\n", err)
-			}
-			os.Exit(2)
+	}
+	if err != nil {
+		if jsonOutput {
+			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: err.Error()}
+			json.NewEncoder(os.Stdout).Encode(report)
+		} else {
+			fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		}
+		os.Exit(2)
 	}
 	if cfg != nil {
 		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode)
-		if verbose && !jsonOutput && (configPath != "" || cfgFile != "") {
+		if verbose && !jsonOutput {
 			fmt.Printf("Loaded config from %s\n", func() string {
 				if configPath != "" {
 					return configPath
@@ -247,8 +213,11 @@ func main() {
 		if targetDir == "" && cfg != nil && cfg.SourceDir != "" {
 			targetDir = cfg.SourceDir
 		}
+		if targetDir == "" && cfg != nil && len(cfg.SourceDirs) > 0 {
+			targetDir = cfg.SourceDirs[0]
+		}
 		if targetDir == "" {
-			errMsg := "-clean requires -dir or source_dir in config"
+			errMsg := "-clean requires -dir or source_dir/source_dirs in config"
 			if jsonOutput {
 				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
 				json.NewEncoder(os.Stdout).Encode(report)
@@ -276,17 +245,34 @@ func main() {
 	}
 
 	if cfg != nil {
-		srcPath = cfg.SourceFile
-		dirPath = cfg.SourceDir
+		if srcPath == "" && dirPath == "" {
+			if cfg.SourceFile != "" {
+				srcPath = cfg.SourceFile
+			}
+			if cfg.SourceDir != "" {
+				dirPath = cfg.SourceDir
+			}
+			if len(cfg.SourceDirs) > 0 {
+				dirPath = "dummy"
+			}
+		}
 		debug = cfg.Debug
 		verbose = cfg.Verbose
-		outBin = cfg.Output
-		outObj = cfg.OutObj
+		if cfg.Output != "" {
+			outBin = cfg.Output
+		}
+		if cfg.OutObj != "" {
+			outObj = cfg.OutObj
+		}
 		if cfg.Mode != "" {
 			mode = cfg.Mode
 		}
-		keepObj = cfg.KeepObj
-		noCache = cfg.NoCache
+		if cfg.KeepObj {
+			keepObj = true
+		}
+		if cfg.NoCache {
+			noCache = true
+		}
 	}
 
 	if srcPath == "" && dirPath == "" {
@@ -353,20 +339,35 @@ func main() {
 			}
 			return nil
 		}
-		if dirPath != "" {
-			info, err := os.Stat(dirPath)
-			if err != nil {
-				return err
+		if dirPath != "" || (cfg != nil && len(cfg.SourceDirs) > 0) {
+			var dirs []string
+			if cfg != nil && len(cfg.SourceDirs) > 0 {
+				dirs = cfg.SourceDirs
+			} else {
+				if dirPath == "" {
+					dirPath = "."
+				}
+				dirs = []string{dirPath}
 			}
-			if !info.IsDir() {
-				return fmt.Errorf("%s is not a directory", dirPath)
+			for _, d := range dirs {
+				info, err := os.Stat(d)
+				if err != nil {
+					return err
+				}
+				if !info.IsDir() {
+					return fmt.Errorf("%s is not a directory", d)
+				}
 			}
 			if outBin != "" {
 				if st, err := os.Stat(outBin); err == nil && st.IsDir() {
 					return fmt.Errorf("output path %s is a directory", outBin)
 				}
 			}
-			res, err := builder.BuildDir(ctx, dirPath, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict)
+			var exclude []string
+			if cfg != nil {
+				exclude = cfg.Exclude
+			}
+			res, err := builder.BuildDir(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude)
 			if err != nil {
 				return err
 			}
@@ -433,7 +434,11 @@ func main() {
 			watchTarget = filepath.Dir(srcPath)
 		}
 		if watchTarget == "" {
-			watchTarget = "."
+			if cfg != nil && len(cfg.SourceDirs) > 0 {
+				watchTarget = cfg.SourceDirs[0]
+			} else {
+				watchTarget = "."
+			}
 		}
 		if err := w.AddRecursive(watchTarget); err != nil {
 			if jsonOutput {
@@ -444,7 +449,9 @@ func main() {
 			}
 			os.Exit(1)
 		}
-		if cfgFile != "" {
+		if configPath != "" {
+			w.Add(configPath)
+		} else if cfgFile := config.DefaultConfigPath(); cfgFile != "" {
 			w.Add(cfgFile)
 		}
 		if !jsonOutput {
