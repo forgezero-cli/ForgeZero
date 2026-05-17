@@ -14,7 +14,7 @@ func TestLoadIgnoreFile(t *testing.T) {
 *.o
 temp/
 `
-	err := os.WriteFile(ignorePath, []byte(content), 0644)
+	err := os.WriteFile(ignorePath, []byte(content), 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
