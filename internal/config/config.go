@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -44,7 +45,7 @@ func Load(path string) (*Config, error) {
 
 func (c *Config) Validate() error {
 	if c.SourceDir == "" && c.SourceFile == "" {
-		return fmt.Errorf("either source_dir or source_file must be set")
+		return nil
 	}
 	if c.SourceDir != "" && c.SourceFile != "" {
 		return fmt.Errorf("cannot set both source_dir and source_file")
@@ -90,12 +91,119 @@ func (c *Config) MergeFromFlags(srcPath, dirPath, outBin, outObj string, debug, 
 	}
 }
 
-func DefaultConfigPath() string {
-	paths := []string{".fz.yaml", "fz.yaml", ".fz.yml", "fz.yml"}
-	for _, p := range paths {
+func (c *Config) Merge(other *Config) {
+	if other == nil {
+		return
+	}
+	if other.Name != "" {
+		c.Name = other.Name
+	}
+	if other.SourceDir != "" {
+		c.SourceDir = other.SourceDir
+	}
+	if other.SourceFile != "" {
+		c.SourceFile = other.SourceFile
+	}
+	if other.Output != "" {
+		c.Output = other.Output
+	}
+	if other.OutObj != "" {
+		c.OutObj = other.OutObj
+	}
+	if other.Mode != "" {
+		c.Mode = other.Mode
+	}
+	if other.Debug {
+		c.Debug = other.Debug
+	}
+	if other.Verbose {
+		c.Verbose = other.Verbose
+	}
+	if other.KeepObj {
+		c.KeepObj = other.KeepObj
+	}
+	if other.NoCache {
+		c.NoCache = other.NoCache
+	}
+	if len(other.Exclude) > 0 {
+		c.Exclude = other.Exclude
+	}
+	if len(other.Flags.Asm) > 0 {
+		c.Flags.Asm = other.Flags.Asm
+	}
+	if len(other.Flags.Ld) > 0 {
+		c.Flags.Ld = other.Flags.Ld
+	}
+}
+
+func FindConfigs() (system, user, local string) {
+	systemPaths := []string{"/etc/fz/config.yaml", "/etc/fz.yaml"}
+	for _, p := range systemPaths {
 		if _, err := os.Stat(p); err == nil {
-			return p
+			system = p
+			break
 		}
 	}
-	return ""
+
+	home, err := os.UserHomeDir()
+	if err == nil {
+		userPaths := []string{
+			filepath.Join(home, ".config", "fz", "config.yaml"),
+			filepath.Join(home, ".fz.yaml"),
+		}
+		for _, p := range userPaths {
+			if _, err := os.Stat(p); err == nil {
+				user = p
+				break
+			}
+		}
+	}
+
+	localPaths := []string{".fz.yaml", "fz.yaml", ".fz.yml", "fz.yml"}
+	for _, p := range localPaths {
+		if _, err := os.Stat(p); err == nil {
+			local = p
+			break
+		}
+	}
+	return
+}
+
+func LoadMerged(explicitPath string) (*Config, error) {
+	var cfg Config
+
+	if explicitPath != "" {
+		explicitCfg, err := Load(explicitPath)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Merge(explicitCfg)
+		return &cfg, nil
+	}
+
+	systemPath, userPath, localPath := FindConfigs()
+	if systemPath != "" {
+		sysCfg, err := Load(systemPath)
+		if err == nil {
+			cfg.Merge(sysCfg)
+		}
+	}
+	if userPath != "" {
+		userCfg, err := Load(userPath)
+		if err == nil {
+			cfg.Merge(userCfg)
+		}
+	}
+	if localPath != "" {
+		localCfg, err := Load(localPath)
+		if err == nil {
+			cfg.Merge(localCfg)
+		}
+	}
+	return &cfg, nil
+}
+
+func DefaultConfigPath() string {
+	_, _, local := FindConfigs()
+	return local
 }
