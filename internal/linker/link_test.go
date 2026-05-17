@@ -30,14 +30,14 @@ _start:
 		t.Skipf("gcc -c failed: %v\n%s", err, out)
 	}
 	bin := filepath.Join(dir, "test")
-	err = Link(context.Background(), obj, bin, false, "raw", false, true)
+	err = Link(context.Background(), obj, bin, false, "raw", false, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(bin); err != nil {
 		t.Error("binary not created")
 	}
-	err = Link(context.Background(), obj, filepath.Join(dir, "test2"), false, "raw", true, true)
+	err = Link(context.Background(), obj, filepath.Join(dir, "test2"), false, "raw", true, true, false)
 	if err != nil {
 		t.Error(err)
 	}
