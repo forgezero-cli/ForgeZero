@@ -22,7 +22,7 @@ type BuildResult struct {
 	CacheDir    string
 }
 
-func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode string, keepObj bool, noCache bool, noSymbolCheck bool, sanitize bool) (*BuildResult, error) {
+func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode string, keepObj bool, noCache bool, noSymbolCheck bool, sanitize bool, strict bool) (*BuildResult, error) {
 	if outBin == "" {
 		base := filepath.Base(dir)
 		if utils.IsWindows() {
@@ -136,7 +136,7 @@ func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode
 	if verbose {
 		fmt.Printf("Linking %d object files -> %s (mode: %s)\n", len(objFiles), outBin, mode)
 	}
-	if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck, sanitize); err != nil {
+	if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck, sanitize, strict); err != nil {
 		return nil, fmt.Errorf("link failed: %w", err)
 	}
 
