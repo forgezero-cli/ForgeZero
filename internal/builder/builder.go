@@ -155,10 +155,14 @@ func checkCache(src, cacheDir string, debug, verbose bool, mode string) (string,
 	}
 	key := fmt.Sprintf("%s_%v_%s", h, debug, mode)
 	cacheObj := filepath.Join(cacheDir, key+".o")
-	if _, err := os.Stat(cacheObj); err == nil {
-		return cacheObj, nil
+	info, err := os.Stat(cacheObj)
+	if err != nil {
+		return "", err
 	}
-	return "", os.ErrNotExist
+	if info.Size() == 0 {
+		return "", fmt.Errorf("cached file is empty")
+	}
+	return cacheObj, nil
 }
 
 func storeCache(src, obj, cacheDir string, debug, verbose bool, mode string) error {
