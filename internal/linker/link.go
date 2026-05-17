@@ -10,6 +10,8 @@ import (
 	"fz/internal/utils"
 )
 
+var runner CmdRunner = &RealCmdRunner{}
+
 func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool) error {
 	if err := utils.CheckFileExists(obj); err != nil {
 		return err
@@ -83,7 +85,7 @@ func linkWithClang(ctx context.Context, obj, bin string, verbose bool, allowNoPi
 	if verbose {
 		fmt.Printf("Running: clang %s\n", strings.Join(args, " "))
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, "clang", args...)
+	output, err := runner.Run(ctx, verbose, "clang", args...)
 	if err == nil {
 		return nil
 	}
@@ -97,7 +99,7 @@ func linkWithClang(ctx context.Context, obj, bin string, verbose bool, allowNoPi
 	if verbose {
 		fmt.Printf("clang failed, retrying with -no-pie\n")
 	}
-	output2, err2 := utils.RunCommandSilent(ctx, verbose, "clang", argsWithNoPie...)
+	output2, err2 := runner.Run(ctx, verbose, "clang", argsWithNoPie...)
 	if err2 == nil {
 		return nil
 	}
@@ -118,7 +120,7 @@ func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieF
 	if verbose {
 		fmt.Printf("Running: gcc %s\n", strings.Join(args, " "))
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, "gcc", args...)
+	output, err := runner.Run(ctx, verbose, "gcc", args...)
 	if err == nil {
 		return nil
 	}
@@ -135,7 +137,7 @@ func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieF
 	if verbose {
 		fmt.Printf("Running: gcc %s\n", strings.Join(argsWithNoPie, " "))
 	}
-	output2, err2 := utils.RunCommandSilent(ctx, verbose, "gcc", argsWithNoPie...)
+	output2, err2 := runner.Run(ctx, verbose, "gcc", argsWithNoPie...)
 	if err2 == nil {
 		return nil
 	}
@@ -149,7 +151,7 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool) error {
 	if verbose {
 		fmt.Printf("Running: ld %s -o %s\n", obj, bin)
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, "ld", obj, "-o", bin)
+	output, err := runner.Run(ctx, verbose, "ld", obj, "-o", bin)
 	if err != nil {
 		if !verbose {
 			return fmt.Errorf("ld link failed (use -verbose for details)")
@@ -234,7 +236,7 @@ func linkMultipleWithClang(ctx context.Context, objFiles []string, bin string, v
 	if verbose {
 		fmt.Printf("Running: clang %s\n", strings.Join(args, " "))
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, "clang", args...)
+	output, err := runner.Run(ctx, verbose, "clang", args...)
 	if err == nil {
 		return nil
 	}
@@ -248,7 +250,7 @@ func linkMultipleWithClang(ctx context.Context, objFiles []string, bin string, v
 	if verbose {
 		fmt.Printf("clang failed, retrying with -no-pie\n")
 	}
-	output2, err2 := utils.RunCommandSilent(ctx, verbose, "clang", argsWithNoPie...)
+	output2, err2 := runner.Run(ctx, verbose, "clang", argsWithNoPie...)
 	if err2 == nil {
 		return nil
 	}
@@ -269,7 +271,7 @@ func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, ver
 	if verbose {
 		fmt.Printf("Running: gcc %s\n", strings.Join(args, " "))
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, "gcc", args...)
+	output, err := runner.Run(ctx, verbose, "gcc", args...)
 	if err == nil {
 		return nil
 	}
@@ -286,7 +288,7 @@ func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, ver
 	if verbose {
 		fmt.Printf("Running: gcc %s\n", strings.Join(argsWithNoPie, " "))
 	}
-	output2, err2 := utils.RunCommandSilent(ctx, verbose, "gcc", argsWithNoPie...)
+	output2, err2 := runner.Run(ctx, verbose, "gcc", argsWithNoPie...)
 	if err2 == nil {
 		return nil
 	}
@@ -301,7 +303,7 @@ func linkMultipleWithLd(ctx context.Context, objFiles []string, bin string, verb
 	if verbose {
 		fmt.Printf("Running: ld %s\n", strings.Join(args, " "))
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, "ld", args...)
+	output, err := runner.Run(ctx, verbose, "ld", args...)
 	if err != nil {
 		if !verbose {
 			return fmt.Errorf("ld link failed (use -verbose for details)")
