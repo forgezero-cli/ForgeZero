@@ -23,7 +23,7 @@ flags:
   asm: ["-felf64"]
   ld: ["-T", "linker.ld"]
 `
-	err := os.WriteFile(cfgPath, []byte(content), 0o644)
+	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,13 +46,8 @@ flags:
 }
 
 func TestValidate(t *testing.T) {
-	cfg := &Config{}
+	cfg := &Config{SourceDir: "src", Mode: "auto"}
 	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error: no source_dir or source_file")
-	}
-	cfg.SourceDir = "src"
-	err = cfg.Validate()
 	if err != nil {
 		t.Error(err)
 	}
@@ -60,6 +55,12 @@ func TestValidate(t *testing.T) {
 	err = cfg.Validate()
 	if err == nil {
 		t.Error("expected invalid mode error")
+	}
+	cfg.SourceDir = ""
+	cfg.SourceFile = ""
+	err = cfg.Validate()
+	if err != nil {
+		t.Error("empty config should be valid (partial)")
 	}
 }
 
@@ -83,6 +84,59 @@ func TestMergeFromFlags(t *testing.T) {
 	}
 }
 
+func TestMerge(t *testing.T) {
+	base := &Config{SourceDir: "base", Mode: "auto"}
+	other := &Config{SourceDir: "other", Output: "out", Debug: true}
+	base.Merge(other)
+	if base.SourceDir != "other" {
+		t.Error("SourceDir not overwritten")
+	}
+	if base.Output != "out" {
+		t.Error("Output not merged")
+	}
+	if !base.Debug {
+		t.Error("Debug not merged")
+	}
+}
+
+func TestFindConfigs(t *testing.T) {
+	dir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	defer os.Chdir(oldWd)
+	os.Chdir(dir)
+	system, user, local := FindConfigs()
+	if system != "" || user != "" || local != "" {
+		t.Errorf("found unexpected configs: system=%s user=%s local=%s", system, user, local)
+	}
+	os.WriteFile(".fz.yaml", []byte{}, 0644)
+	_, _, local = FindConfigs()
+	if local != ".fz.yaml" {
+		t.Errorf("expected .fz.yaml, got %s", local)
+	}
+}
+
+func TestLoadMerged(t *testing.T) {
+	dir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	defer os.Chdir(oldWd)
+	os.Chdir(dir)
+	cfg, err := LoadMerged("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SourceDir != "" {
+		t.Error("expected empty config")
+	}
+	os.WriteFile(".fz.yaml", []byte("source_dir: ./src"), 0644)
+	cfg, err = LoadMerged("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SourceDir != "./src" {
+		t.Errorf("expected source_dir ./src, got %s", cfg.SourceDir)
+	}
+}
+
 func TestDefaultConfigPath(t *testing.T) {
 	dir := t.TempDir()
 	oldWd, _ := os.Getwd()
@@ -91,7 +145,7 @@ func TestDefaultConfigPath(t *testing.T) {
 	if path := DefaultConfigPath(); path != "" {
 		t.Errorf("expected empty, got %s", path)
 	}
-	os.WriteFile(".fz.yaml", []byte{}, 0o644)
+	os.WriteFile(".fz.yaml", []byte{}, 0644)
 	if path := DefaultConfigPath(); path != ".fz.yaml" {
 		t.Errorf("expected .fz.yaml, got %s", path)
 	}
