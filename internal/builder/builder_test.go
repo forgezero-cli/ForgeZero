@@ -35,14 +35,14 @@ _start:
 `)
 	outBin := filepath.Join(t.TempDir(), "myapp")
 	ctx := context.Background()
-	res, err := BuildDir(ctx, dir, outBin, false, false, "raw", false, false, false, true, false)
+	res, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, false, false, true, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(res.Binary); err != nil {
 		t.Error("binary not created")
 	}
-	res2, err := BuildDir(ctx, dir, outBin, false, false, "raw", false, false, false, true, false)
+	res2, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, false, false, true, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ _start:
 `)
 	outBin := filepath.Join(t.TempDir(), "myapp")
 	ctx := context.Background()
-	res, err := BuildDir(ctx, dir, outBin, false, false, "raw", false, true, false, true, false)
+	res, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, true, false, true, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,8 +84,9 @@ func TestUniqueObjectNames(t *testing.T) {
 	writeASM(t, dir, "hello.s", "")
 	writeASM(t, dir, "sub/hello.asm", "")
 	outBin := filepath.Join(t.TempDir(), "app")
-	_, err := BuildDir(context.Background(), dir, outBin, false, true, "auto", true, false, true, true, false)
+	_, err := BuildDir(context.Background(), []string{dir}, outBin, false, true, "auto", true, false, true, true, false, nil)
 	if err == nil {
+		// link error expected because empty files have no _start/main
 	}
 	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
 	entries, _ := os.ReadDir(objDir)
@@ -93,14 +94,17 @@ func TestUniqueObjectNames(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	expected := map[string]bool{
-		"hello_asm.o":     true,
-		"hello_s.o":       true,
-		"sub_hello_asm.o": true,
-	}
-	for _, n := range names {
-		if !expected[n] && strings.HasSuffix(n, ".o") {
-			t.Errorf("unexpected object name: %s", n)
+	expected := []string{"hello_asm.o", "hello_s.o", "sub_hello_asm.o"}
+	for _, exp := range expected {
+		found := false
+		for _, n := range names {
+			if strings.Contains(n, exp) && strings.HasSuffix(n, ".o") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("missing object name containing %q", exp)
 		}
 	}
 }
