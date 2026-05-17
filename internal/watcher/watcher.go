@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -35,6 +36,13 @@ func (w *Watcher) Add(path string) error {
 }
 
 func (w *Watcher) AddRecursive(root string) error {
+	info, err := os.Stat(root)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", root)
+	}
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
