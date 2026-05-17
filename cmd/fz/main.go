@@ -28,7 +28,7 @@ type BuildReport struct {
 	Error       string   `json:"error,omitempty"`
 }
 
-var version = "1.4.0"
+var version = "1.5.0"
 
 func printHelp() {
 	fmt.Fprintf(os.Stderr, `
@@ -331,7 +331,7 @@ func main() {
 			if verbose && !jsonOutput {
 				fmt.Printf("Linking %s -> %s (mode: %s)\n", objName, binName, mode)
 			}
-			if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck, sanitize, strict); err != nil {
+			if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck, sanitize, strict, nil); err != nil {
 				return err
 			}
 			if !jsonOutput {
@@ -367,7 +367,7 @@ func main() {
 			if cfg != nil {
 				exclude = cfg.Exclude
 			}
-			res, err := builder.BuildDir(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude)
+			res, err := builder.BuildDir(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude, nil, nil, nil)
 			if err != nil {
 				return err
 			}
