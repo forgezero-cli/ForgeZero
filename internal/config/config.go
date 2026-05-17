@@ -16,6 +16,7 @@ type Flags struct {
 type Config struct {
 	Name       string   `yaml:"name"`
 	SourceDir  string   `yaml:"source_dir"`
+	SourceDirs []string `yaml:"source_dirs"`
 	SourceFile string   `yaml:"source_file"`
 	Output     string   `yaml:"output"`
 	OutObj     string   `yaml:"out_obj"`
@@ -44,11 +45,11 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
-	if c.SourceDir == "" && c.SourceFile == "" {
+	if c.SourceDir == "" && len(c.SourceDirs) == 0 && c.SourceFile == "" {
 		return nil
 	}
-	if c.SourceDir != "" && c.SourceFile != "" {
-		return fmt.Errorf("cannot set both source_dir and source_file")
+	if c.SourceDir != "" && len(c.SourceDirs) > 0 {
+		return fmt.Errorf("cannot set both source_dir and source_dirs")
 	}
 	if c.Mode == "" {
 		c.Mode = "auto"
@@ -63,9 +64,11 @@ func (c *Config) MergeFromFlags(srcPath, dirPath, outBin, outObj string, debug, 
 	if srcPath != "" {
 		c.SourceFile = srcPath
 		c.SourceDir = ""
+		c.SourceDirs = nil
 	}
 	if dirPath != "" {
 		c.SourceDir = dirPath
+		c.SourceDirs = nil
 		c.SourceFile = ""
 	}
 	if outBin != "" {
@@ -100,9 +103,16 @@ func (c *Config) Merge(other *Config) {
 	}
 	if other.SourceDir != "" {
 		c.SourceDir = other.SourceDir
+		c.SourceDirs = nil
+	}
+	if len(other.SourceDirs) > 0 {
+		c.SourceDirs = other.SourceDirs
+		c.SourceDir = ""
 	}
 	if other.SourceFile != "" {
 		c.SourceFile = other.SourceFile
+		c.SourceDir = ""
+		c.SourceDirs = nil
 	}
 	if other.Output != "" {
 		c.Output = other.Output
@@ -144,7 +154,6 @@ func FindConfigs() (system, user, local string) {
 			break
 		}
 	}
-
 	home, err := os.UserHomeDir()
 	if err == nil {
 		userPaths := []string{
@@ -158,7 +167,6 @@ func FindConfigs() (system, user, local string) {
 			}
 		}
 	}
-
 	localPaths := []string{".fz.yaml", "fz.yaml", ".fz.yml", "fz.yml"}
 	for _, p := range localPaths {
 		if _, err := os.Stat(p); err == nil {
@@ -171,7 +179,6 @@ func FindConfigs() (system, user, local string) {
 
 func LoadMerged(explicitPath string) (*Config, error) {
 	var cfg Config
-
 	if explicitPath != "" {
 		explicitCfg, err := Load(explicitPath)
 		if err != nil {
@@ -180,23 +187,19 @@ func LoadMerged(explicitPath string) (*Config, error) {
 		cfg.Merge(explicitCfg)
 		return &cfg, nil
 	}
-
 	systemPath, userPath, localPath := FindConfigs()
 	if systemPath != "" {
-		sysCfg, err := Load(systemPath)
-		if err == nil {
+		if sysCfg, err := Load(systemPath); err == nil {
 			cfg.Merge(sysCfg)
 		}
 	}
 	if userPath != "" {
-		userCfg, err := Load(userPath)
-		if err == nil {
+		if userCfg, err := Load(userPath); err == nil {
 			cfg.Merge(userCfg)
 		}
 	}
 	if localPath != "" {
-		localCfg, err := Load(localPath)
-		if err == nil {
+		if localCfg, err := Load(localPath); err == nil {
 			cfg.Merge(localCfg)
 		}
 	}
