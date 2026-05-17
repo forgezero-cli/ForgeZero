@@ -205,9 +205,9 @@ func main() {
 		cfgFile = config.DefaultConfigPath()
 	}
 	var cfg *config.Config
-	if cfgFile != "" {
+	if configPath != "" {
 		var err error
-		cfg, err = config.Load(cfgFile)
+		cfg, err = config.Load(configPath)
 		if err != nil {
 			if jsonOutput {
 				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: err.Error()}
@@ -217,20 +217,29 @@ func main() {
 			}
 			os.Exit(2)
 		}
+	} else {
+		var err error
+		cfg, err = config.LoadMerged("")
+		if err != nil {
+			if jsonOutput {
+				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: err.Error()}
+				json.NewEncoder(os.Stdout).Encode(report)
+			} else {
+				fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+			}
+			os.Exit(2)
+		}
+	}
+	if cfg != nil {
 		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode)
-		if verbose && !jsonOutput {
-			fmt.Printf("Loaded config from %s\n", cfgFile)
+		if verbose && !jsonOutput && (configPath != "" || cfgFile != "") {
+			fmt.Printf("Loaded config from %s\n", func() string {
+				if configPath != "" {
+					return configPath
+				}
+				return config.DefaultConfigPath()
+			}())
 		}
-	} else if srcPath == "" && dirPath == "" && !clean {
-		errMsg := "no config file and none of -asm, -cc, -dir given"
-		if jsonOutput {
-			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
-			json.NewEncoder(os.Stdout).Encode(report)
-		} else {
-			fmt.Fprintln(os.Stderr, errMsg)
-			printHelp()
-		}
-		os.Exit(2)
 	}
 
 	if clean {
