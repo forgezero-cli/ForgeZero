@@ -51,6 +51,30 @@ _start:
 	}
 }
 
+func TestBuildDirNoCache(t *testing.T) {
+	if _, err := exec.LookPath("nasm"); err != nil {
+		t.Skip("nasm not installed")
+	}
+	dir := t.TempDir()
+	writeASM(t, dir, "main.asm", `
+section .text
+global _start
+_start:
+	mov eax, 60
+	xor edi, edi
+	syscall
+`)
+	outBin := filepath.Join(t.TempDir(), "myapp")
+	ctx := context.Background()
+	res, err := BuildDir(ctx, dir, outBin, false, false, "raw", false, true, false, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(res.Binary); err != nil {
+		t.Error("binary not created")
+	}
+}
+
 func TestUniqueObjectNames(t *testing.T) {
 	if _, err := exec.LookPath("nasm"); err != nil {
 		t.Skip("nasm not installed")
