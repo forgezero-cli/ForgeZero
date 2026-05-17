@@ -12,7 +12,7 @@ import (
 
 var runner CmdRunner = &RealCmdRunner{}
 
-func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool) error {
+func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool, libs []string) error {
 	if err := utils.CheckFileExists(obj); err != nil {
 		return err
 	}
@@ -36,26 +36,26 @@ func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSym
 		if err := utils.CheckTool("ld"); err != nil {
 			return err
 		}
-		return linkWithLd(ctx, obj, bin, verbose)
+		return linkWithLd(ctx, obj, bin, verbose, libs)
 	case "c":
 		if err := utils.CheckTool("gcc"); err != nil {
 			return err
 		}
-		return linkWithGcc(ctx, obj, bin, verbose, false, sanitize, strict)
+		return linkWithGcc(ctx, obj, bin, verbose, false, sanitize, strict, libs)
 	case "auto":
-		return tryAutoLink(ctx, obj, bin, verbose, sanitize, strict)
+		return tryAutoLink(ctx, obj, bin, verbose, sanitize, strict, libs)
 	default:
 		return fmt.Errorf("unsupported mode: %s (valid: auto, c, raw)", mode)
 	}
 }
 
-func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bool, strict bool) error {
+func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bool, strict bool, libs []string) error {
 	if strict {
 		if _, err := exec.LookPath("clang"); err == nil {
 			if verbose {
 				fmt.Println("Strict mode: using clang for better sanitizers")
 			}
-			err = linkWithClang(ctx, obj, bin, verbose, true, sanitize)
+			err = linkWithClang(ctx, obj, bin, verbose, true, sanitize, libs)
 			if err == nil {
 				return nil
 			}
@@ -64,23 +64,26 @@ func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bo
 		}
 	}
 	if err := utils.CheckTool("gcc"); err == nil {
-		err = linkWithGcc(ctx, obj, bin, verbose, true, sanitize, strict)
+		err = linkWithGcc(ctx, obj, bin, verbose, true, sanitize, strict, libs)
 		if err == nil {
 			return nil
 		}
 	}
 	if err := utils.CheckTool("ld"); err == nil {
-		return linkWithLd(ctx, obj, bin, verbose)
+		return linkWithLd(ctx, obj, bin, verbose, libs)
 	}
 	return fmt.Errorf("auto linking failed: no suitable linker")
 }
 
-func linkWithClang(ctx context.Context, obj, bin string, verbose bool, allowNoPieFallback bool, sanitize bool) error {
+func linkWithClang(ctx context.Context, obj, bin string, verbose bool, allowNoPieFallback bool, sanitize bool, libs []string) error {
 	args := []string{obj, "-o", bin}
 	if sanitize {
 		args = append(args, "-fsanitize=address", "-fsanitize=undefined")
 		args = append(args, "-fsanitize-address-use-after-return=always")
 		args = append(args, "-fsanitize-address-use-after-scope")
+	}
+	for _, lib := range libs {
+		args = append(args, "-l"+lib)
 	}
 	if verbose {
 		fmt.Printf("Running: clang %s\n", strings.Join(args, " "))
@@ -109,13 +112,16 @@ func linkWithClang(ctx context.Context, obj, bin string, verbose bool, allowNoPi
 	return fmt.Errorf("clang -no-pie failed: %w\n%s", err2, output2)
 }
 
-func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieFallback bool, sanitize bool, strict bool) error {
+func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieFallback bool, sanitize bool, strict bool, libs []string) error {
 	args := []string{obj, "-o", bin}
 	if sanitize {
 		args = append(args, "-fsanitize=address", "-fsanitize=undefined")
 		if strict {
 			args = append(args, "-fsanitize-address-use-after-scope")
 		}
+	}
+	for _, lib := range libs {
+		args = append(args, "-l"+lib)
 	}
 	if verbose {
 		fmt.Printf("Running: gcc %s\n", strings.Join(args, " "))
@@ -147,11 +153,15 @@ func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieF
 	return fmt.Errorf("gcc -no-pie failed: %w\n%s", err2, output2)
 }
 
-func linkWithLd(ctx context.Context, obj, bin string, verbose bool) error {
-	if verbose {
-		fmt.Printf("Running: ld %s -o %s\n", obj, bin)
+func linkWithLd(ctx context.Context, obj, bin string, verbose bool, libs []string) error {
+	args := []string{obj, "-o", bin}
+	for _, lib := range libs {
+		args = append(args, "-l"+lib)
 	}
-	output, err := runner.Run(ctx, verbose, "ld", obj, "-o", bin)
+	if verbose {
+		fmt.Printf("Running: ld %s\n", strings.Join(args, " "))
+	}
+	output, err := runner.Run(ctx, verbose, "ld", args...)
 	if err != nil {
 		if !verbose {
 			return fmt.Errorf("ld link failed (use -verbose for details)")
@@ -161,7 +171,7 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool) error {
 	return nil
 }
 
-func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool) error {
+func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool, libs []string) error {
 	if len(objFiles) == 0 {
 		return fmt.Errorf("no object files to link")
 	}
@@ -187,26 +197,26 @@ func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bo
 		if err := utils.CheckTool("ld"); err != nil {
 			return err
 		}
-		return linkMultipleWithLd(ctx, objFiles, bin, verbose)
+		return linkMultipleWithLd(ctx, objFiles, bin, verbose, libs)
 	case "c":
 		if err := utils.CheckTool("gcc"); err != nil {
 			return err
 		}
-		return linkMultipleWithGcc(ctx, objFiles, bin, verbose, false, sanitize, strict)
+		return linkMultipleWithGcc(ctx, objFiles, bin, verbose, false, sanitize, strict, libs)
 	case "auto":
-		return tryAutoLinkMultiple(ctx, objFiles, bin, verbose, sanitize, strict)
+		return tryAutoLinkMultiple(ctx, objFiles, bin, verbose, sanitize, strict, libs)
 	default:
 		return fmt.Errorf("unsupported mode: %s (valid: auto, c, raw)", mode)
 	}
 }
 
-func tryAutoLinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, sanitize bool, strict bool) error {
+func tryAutoLinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, sanitize bool, strict bool, libs []string) error {
 	if strict {
 		if _, err := exec.LookPath("clang"); err == nil {
 			if verbose {
 				fmt.Println("Strict mode: using clang for better sanitizers")
 			}
-			err = linkMultipleWithClang(ctx, objFiles, bin, verbose, true, sanitize)
+			err = linkMultipleWithClang(ctx, objFiles, bin, verbose, true, sanitize, libs)
 			if err == nil {
 				return nil
 			}
@@ -215,23 +225,26 @@ func tryAutoLinkMultiple(ctx context.Context, objFiles []string, bin string, ver
 		}
 	}
 	if err := utils.CheckTool("gcc"); err == nil {
-		err = linkMultipleWithGcc(ctx, objFiles, bin, verbose, true, sanitize, strict)
+		err = linkMultipleWithGcc(ctx, objFiles, bin, verbose, true, sanitize, strict, libs)
 		if err == nil {
 			return nil
 		}
 	}
 	if err := utils.CheckTool("ld"); err == nil {
-		return linkMultipleWithLd(ctx, objFiles, bin, verbose)
+		return linkMultipleWithLd(ctx, objFiles, bin, verbose, libs)
 	}
 	return fmt.Errorf("auto linking failed: no suitable linker")
 }
 
-func linkMultipleWithClang(ctx context.Context, objFiles []string, bin string, verbose bool, allowNoPieFallback bool, sanitize bool) error {
+func linkMultipleWithClang(ctx context.Context, objFiles []string, bin string, verbose bool, allowNoPieFallback bool, sanitize bool, libs []string) error {
 	args := append(objFiles, "-o", bin)
 	if sanitize {
 		args = append(args, "-fsanitize=address", "-fsanitize=undefined")
 		args = append(args, "-fsanitize-address-use-after-return=always")
 		args = append(args, "-fsanitize-address-use-after-scope")
+	}
+	for _, lib := range libs {
+		args = append(args, "-l"+lib)
 	}
 	if verbose {
 		fmt.Printf("Running: clang %s\n", strings.Join(args, " "))
@@ -260,13 +273,16 @@ func linkMultipleWithClang(ctx context.Context, objFiles []string, bin string, v
 	return fmt.Errorf("clang -no-pie failed: %w\n%s", err2, output2)
 }
 
-func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, verbose bool, allowNoPieFallback bool, sanitize bool, strict bool) error {
+func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, verbose bool, allowNoPieFallback bool, sanitize bool, strict bool, libs []string) error {
 	args := append(objFiles, "-o", bin)
 	if sanitize {
 		args = append(args, "-fsanitize=address", "-fsanitize=undefined")
 		if strict {
 			args = append(args, "-fsanitize-address-use-after-scope")
 		}
+	}
+	for _, lib := range libs {
+		args = append(args, "-l"+lib)
 	}
 	if verbose {
 		fmt.Printf("Running: gcc %s\n", strings.Join(args, " "))
@@ -298,8 +314,11 @@ func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, ver
 	return fmt.Errorf("gcc -no-pie failed: %w\n%s", err2, output2)
 }
 
-func linkMultipleWithLd(ctx context.Context, objFiles []string, bin string, verbose bool) error {
+func linkMultipleWithLd(ctx context.Context, objFiles []string, bin string, verbose bool, libs []string) error {
 	args := append(objFiles, "-o", bin)
+	for _, lib := range libs {
+		args = append(args, "-l"+lib)
+	}
 	if verbose {
 		fmt.Printf("Running: ld %s\n", strings.Join(args, " "))
 	}
