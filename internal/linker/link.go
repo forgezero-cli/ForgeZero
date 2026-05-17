@@ -3,6 +3,7 @@ package linker
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -12,6 +13,13 @@ import (
 func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool) error {
 	if err := utils.CheckFileExists(obj); err != nil {
 		return err
+	}
+	info, err := os.Stat(obj)
+	if err != nil {
+		return err
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("object file %s is empty", obj)
 	}
 	if err := utils.EnsureDir(bin); err != nil {
 		return err
@@ -120,9 +128,12 @@ func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieF
 		}
 		return fmt.Errorf("gcc failed: %w\n%s", err, output)
 	}
-	argsWithNoPie := append([]string{"-no-pie"}, args...)
 	if verbose {
 		fmt.Printf("gcc failed, retrying with -no-pie\n")
+	}
+	argsWithNoPie := append([]string{"-no-pie"}, args...)
+	if verbose {
+		fmt.Printf("Running: gcc %s\n", strings.Join(argsWithNoPie, " "))
 	}
 	output2, err2 := utils.RunCommandSilent(ctx, verbose, "gcc", argsWithNoPie...)
 	if err2 == nil {
@@ -151,6 +162,15 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool) error {
 func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool) error {
 	if len(objFiles) == 0 {
 		return fmt.Errorf("no object files to link")
+	}
+	for _, obj := range objFiles {
+		info, err := os.Stat(obj)
+		if err != nil {
+			return err
+		}
+		if info.Size() == 0 {
+			return fmt.Errorf("object file %s is empty", obj)
+		}
 	}
 	if err := utils.EnsureDir(bin); err != nil {
 		return err
@@ -259,9 +279,12 @@ func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, ver
 		}
 		return fmt.Errorf("gcc failed: %w\n%s", err, output)
 	}
-	argsWithNoPie := append([]string{"-no-pie"}, args...)
 	if verbose {
 		fmt.Printf("gcc failed, retrying with -no-pie\n")
+	}
+	argsWithNoPie := append([]string{"-no-pie"}, args...)
+	if verbose {
+		fmt.Printf("Running: gcc %s\n", strings.Join(argsWithNoPie, " "))
 	}
 	output2, err2 := utils.RunCommandSilent(ctx, verbose, "gcc", argsWithNoPie...)
 	if err2 == nil {
