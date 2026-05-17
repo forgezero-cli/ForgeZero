@@ -12,6 +12,8 @@ import (
 	"fz/internal/assembler"
 	"fz/internal/builder"
 	"fz/internal/config"
+	"fz/internal/ignore"
+	initpkg "fz/internal/init"
 	"fz/internal/linker"
 	"fz/internal/man"
 	"fz/internal/utils"
@@ -32,7 +34,7 @@ var version = "1.5.0"
 
 func printHelp() {
 	fmt.Fprintf(os.Stderr, `
-fz - assembly swiss army knife
+fz – assembly & C build tool
 
 Usage:
   fz [options] (-asm <file> | -cc <file> | -dir <dir> | (no args with config))
@@ -57,6 +59,7 @@ Options:
   -json                  Output build report in JSON format (CI/CD)
   -config <file>         Config file path (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)
   -man                   Generate roff man page and exit
+  -format <elf|bin>      Output format: elf (default) or bin (flat binary, no linking)
   -h, --help             Show this help
   -v, --version          Show version
 
@@ -66,6 +69,7 @@ Examples:
   fz -dir ./src -out myapp -watch
   fz -json -cc test.c
   fz -dir . -clean
+  fz -asm boot.asm -format bin -out boot.bin
 
 Supported extensions: .asm, .s, .S, .fasm, .c
 `)
@@ -95,6 +99,8 @@ func main() {
 		showVersion   bool
 		showHelp      bool
 		showMan       bool
+		format        string
+		initMode      bool
 	)
 
 	flag.StringVar(&asmPath, "asm", "", "")
@@ -122,9 +128,19 @@ func main() {
 	flag.BoolVar(&showHelp, "h", false, "")
 	flag.BoolVar(&showHelp, "help", false, "")
 	flag.BoolVar(&showMan, "man", false, "")
+	flag.StringVar(&format, "format", "elf", "")
+	flag.BoolVar(&initMode, "init", false, "initialize project: create .fz.yaml and .fzignore")
 
 	flag.Usage = printHelp
 	flag.Parse()
+	if initMode {
+		if err := initpkg.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "init failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("project initialized. edit .fz.yaml to configure ur build.")
+		return
+	}
 
 	if showMan {
 		fmt.Print(man.GenerateManPage(version))
@@ -142,6 +158,11 @@ func main() {
 			fmt.Printf("fz version %s\n", version)
 		}
 		os.Exit(0)
+	}
+
+	if format != "elf" && format != "bin" {
+		fmt.Fprintln(os.Stderr, "error: -format must be elf or bin")
+		os.Exit(2)
 	}
 
 	if mode == "" {
@@ -296,6 +317,8 @@ func main() {
 		os.Exit(2)
 	}
 
+	assembler.OutputFormat = format
+
 	startTime := time.Now()
 	var sourceFiles []string
 	var objectFiles []string
@@ -328,6 +351,15 @@ func main() {
 			if err := assembler.Assemble(ctx, srcPath, objName, debug, verbose, mode); err != nil {
 				return err
 			}
+			if format == "bin" {
+				if err := utils.CopyFile(objName, binName); err != nil {
+					return err
+				}
+				if !jsonOutput {
+					fmt.Printf("Built: %s\n", binName)
+				}
+				return nil
+			}
 			if verbose && !jsonOutput {
 				fmt.Printf("Linking %s -> %s (mode: %s)\n", objName, binName, mode)
 			}
@@ -340,6 +372,9 @@ func main() {
 			return nil
 		}
 		if dirPath != "" || (cfg != nil && len(cfg.SourceDirs) > 0) {
+			if format == "bin" {
+				return fmt.Errorf("-format bin is not supported for directory builds")
+			}
 			var dirs []string
 			if cfg != nil && len(cfg.SourceDirs) > 0 {
 				dirs = cfg.SourceDirs
@@ -367,7 +402,25 @@ func main() {
 			if cfg != nil {
 				exclude = cfg.Exclude
 			}
-			res, err := builder.BuildDir(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude, nil, nil, nil)
+			var ignoreMatcher *ignore.IgnoreMatcher
+			if cfg != nil && cfg.IgnoreFile != "" {
+				if _, err := os.Stat(cfg.IgnoreFile); err == nil {
+					ignoreMatcher, _ = ignore.LoadIgnoreFile(cfg.IgnoreFile)
+				}
+			}
+			var includes []string
+			if cfg != nil {
+				includes = cfg.Include
+			}
+			var sourceFilesList []string
+			if cfg != nil {
+				sourceFilesList = cfg.SourceFiles
+			}
+			var libs []string
+			if cfg != nil {
+				libs = cfg.Libs
+			}
+			res, err := builder.BuildDir(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude, sourceFilesList, ignoreMatcher, includes, libs)
 			if err != nil {
 				return err
 			}
