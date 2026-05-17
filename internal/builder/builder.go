@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"fz/internal/assembler"
+	"fz/internal/ignore"
 	"fz/internal/linker"
 	"fz/internal/utils"
 )
@@ -34,7 +35,31 @@ func matchExclude(path string, excludes []string) bool {
 	return false
 }
 
-func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude []string) (*BuildResult, error) {
+func shouldIgnore(ignoreMatcher *ignore.IgnoreMatcher, path string, excludes []string, includes []string) bool {
+	if matchExclude(path, excludes) {
+		return true
+	}
+	if ignoreMatcher != nil && ignoreMatcher.Match(path) {
+		return true
+	}
+	if len(includes) > 0 {
+		inc := false
+		for _, pattern := range includes {
+			if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
+				inc = true
+				break
+			}
+			if matched, _ := filepath.Match(pattern, path); matched {
+				inc = true
+				break
+			}
+		}
+		return !inc
+	}
+	return false
+}
+
+func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude []string, sourceFiles []string, ignoreMatcher *ignore.IgnoreMatcher, includes []string) (*BuildResult, error) {
 	if outBin == "" {
 		if len(dirs) == 1 {
 			base := filepath.Base(dirs[0])
@@ -58,32 +83,36 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 	}
 
 	var srcFiles []string
-	for _, dir := range dirs {
-		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if info.IsDir() {
-				return nil
-			}
-			if matchExclude(path, exclude) {
-				if verbose {
-					fmt.Printf("Excluding %s\n", path)
+	if len(sourceFiles) > 0 {
+		srcFiles = sourceFiles
+	} else {
+		for _, dir := range dirs {
+			err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				if info.IsDir() {
+					return nil
+				}
+				if shouldIgnore(ignoreMatcher, path, exclude, includes) {
+					if verbose {
+						fmt.Printf("Ignoring %s\n", path)
+					}
+					return nil
+				}
+				ext := strings.ToLower(filepath.Ext(path))
+				if utils.SupportedExtension(ext) {
+					srcFiles = append(srcFiles, path)
 				}
 				return nil
+			})
+			if err != nil {
+				return nil, fmt.Errorf("walk error in %s: %w", dir, err)
 			}
-			ext := strings.ToLower(filepath.Ext(path))
-			if utils.SupportedExtension(ext) {
-				srcFiles = append(srcFiles, path)
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, fmt.Errorf("walk error in %s: %w", dir, err)
 		}
 	}
 	if len(srcFiles) == 0 {
-		return nil, fmt.Errorf("no supported assembly files found in %v", dirs)
+		return nil, fmt.Errorf("no supported assembly files found")
 	}
 
 	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
@@ -163,7 +192,7 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 	if verbose {
 		fmt.Printf("Linking %d object files -> %s (mode: %s)\n", len(objFiles), outBin, mode)
 	}
-	if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck, sanitize, strict); err != nil {
+	if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck, sanitize, strict, nil); err != nil {
 		return nil, fmt.Errorf("link failed: %w", err)
 	}
 
