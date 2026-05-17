@@ -8,8 +8,6 @@
   
 </div>
 
-
-
 ![Build Status](https://github.com/alexvoste/ForgeZero/actions/workflows/go.yml/badge.svg)
 ![Go Version](https://img.shields.io/github/go-mod/go-version/alexvoste/ForgeZero)
 ![License](https://img.shields.io/github/license/alexvoste/ForgeZero)
@@ -270,11 +268,11 @@ Windows support is in progress. The recommended approach is **WSL2** (Windows Su
 wsl --install
 ```
 
-2. Restart your machine. Open **Ubuntu** from the Start menu.
+1. Restart your machine. Open **Ubuntu** from the Start menu.
 
-3. Inside the WSL2 terminal, follow the [Debian/Ubuntu instructions](#31-linux--debian--ubuntu).
+2. Inside the WSL2 terminal, follow the [Debian/Ubuntu instructions](#31-linux--debian--ubuntu).
 
-4. Access your Windows files from WSL2 at `/mnt/c/Users/<YourName>/`.
+3. Access your Windows files from WSL2 at `/mnt/c/Users/<YourName>/`.
 
 #### Option B — Native Windows (Experimental)
 
@@ -1193,9 +1191,11 @@ Contributions are welcome: bug reports, feature requests, documentation improvem
 1. **Open an issue** before starting significant work to align on the approach.
 2. **Fork the repository** and create a descriptive feature branch (`feature/watch-debounce`, `fix/nasm-elf32`).
 3. **Write tests** for new behavior and ensure existing tests pass:
+
    ```bash
    go test ./...
    ```
+
 4. **Submit a Pull Request** with a clear description of the change and the problem it solves.
 
 Commit messages should be concise and use the imperative mood: *"Add JSON output mode"* not *"Added JSON output mode"*.
@@ -1211,7 +1211,7 @@ ForgeZero is released under the **MIT License**.
 ```
 MIT License
 
-Copyright (c) 2024 AlexVoste
+Copyright (c) 2026 AlexVoste
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
