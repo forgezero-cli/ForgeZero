@@ -7,50 +7,74 @@ import (
 	"testing"
 )
 
-func buildObjectWithAS(t *testing.T, dir, name, asmContent string) string {
-	src := filepath.Join(dir, name+".s")
+func buildObjectWithNASM(t *testing.T, dir, name, asmContent string) string {
+	src := filepath.Join(dir, name+".asm")
 	err := os.WriteFile(src, []byte(asmContent), 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
 	obj := filepath.Join(dir, name+".o")
-	cmd := exec.Command("as", src, "-o", obj)
+	cmd := exec.Command("nasm", "-felf64", src, "-o", obj)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Skipf("as failed: %v\n%s", err, out)
+		t.Skipf("nasm failed: %v\n%s", err, out)
 	}
 	return obj
 }
 
 func TestCheckDuplicateSymbols(t *testing.T) {
-	if _, err := exec.LookPath("as"); err != nil {
-		t.Skip("as not installed")
+	if _, err := exec.LookPath("nasm"); err != nil {
+		t.Skip("nasm not installed")
 	}
 	if _, err := exec.LookPath("objdump"); err != nil {
 		t.Skip("objdump not installed")
 	}
 	dir := t.TempDir()
-	obj1 := buildObjectWithAS(t, dir, "a", `
-.globl my_func
+	obj1 := buildObjectWithNASM(t, dir, "a", `
+section .text
+global my_func
 my_func:
-	mov $1, %eax
+	mov eax, 1
 	ret
 `)
-	obj2 := buildObjectWithAS(t, dir, "b", `
-.globl my_func
+	obj2 := buildObjectWithNASM(t, dir, "b", `
+section .text
+global my_func
 my_func:
-	mov $2, %eax
+	mov eax, 2
 	ret
 `)
-	err := CheckDuplicateSymbols([]string{obj1, obj2}, true) // verbose для диагностики
+	err := CheckDuplicateSymbols([]string{obj1, obj2}, false)
 	if err == nil {
 		t.Error("expected duplicate symbol error")
 	}
-	obj3 := buildObjectWithAS(t, dir, "c", `
-.globl other_func
+	obj3 := buildObjectWithNASM(t, dir, "c", `
+section .text
+global other_func
 other_func:
 	ret
 `)
 	err = CheckDuplicateSymbols([]string{obj1, obj3}, false)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestCheckDuplicateSymbolsNoDuplicates(t *testing.T) {
+	if _, err := exec.LookPath("nasm"); err != nil {
+		t.Skip("nasm not installed")
+	}
+	dir := t.TempDir()
+	obj1 := buildObjectWithNASM(t, dir, "a", `
+section .text
+global a
+a: ret
+`)
+	obj2 := buildObjectWithNASM(t, dir, "b", `
+section .text
+global b
+b: ret
+`)
+	err := CheckDuplicateSymbols([]string{obj1, obj2}, false)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
