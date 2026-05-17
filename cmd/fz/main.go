@@ -101,6 +101,8 @@ func main() {
 		showMan       bool
 		format        string
 		initMode      bool
+		ldScript      string
+		textAddr      string
 	)
 
 	flag.StringVar(&asmPath, "asm", "", "")
@@ -130,6 +132,8 @@ func main() {
 	flag.BoolVar(&showMan, "man", false, "")
 	flag.StringVar(&format, "format", "elf", "")
 	flag.BoolVar(&initMode, "init", false, "initialize project: create .fz.yaml and .fzignore")
+	flag.StringVar(&ldScript, "T", "", "linker script file (passed to ld via -T)")
+	flag.StringVar(&textAddr, "Ttext", "", "set text segment address (passed to ld)")
 
 	flag.Usage = printHelp
 	flag.Parse()
@@ -159,8 +163,15 @@ func main() {
 		}
 		os.Exit(0)
 	}
+	if err := linker.SetOutputFormat(format); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(2)
+	}
 
-	if format != "elf" && format != "bin" {
+	linker.LdScript = ldScript
+	linker.TextAddr = textAddr
+
+	if format != "elf32" && format != "elf64" && format != "bin" {
 		fmt.Fprintln(os.Stderr, "error: -format must be elf or bin")
 		os.Exit(2)
 	}
