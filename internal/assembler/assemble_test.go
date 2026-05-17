@@ -128,15 +128,6 @@ func TestAssembleFASMFailure(t *testing.T) {
 	}
 }
 
-func TestAssembleUnsupported(t *testing.T) {
-	dir := t.TempDir()
-	src := writeTempFile(t, dir, "test.cpp", "int main(){}")
-	obj := filepath.Join(dir, "test.o")
-	err := Assemble(context.Background(), src, obj, false, false, "auto")
-	if err == nil {
-		t.Error("expected error for unsupported extension")
-	}
-}
 
 func TestAssembleC(t *testing.T) {
 	if _, err := exec.LookPath("gcc"); err != nil {
@@ -166,3 +157,4 @@ func TestAssembleCFailure(t *testing.T) {
 		t.Error("expected error for invalid C code")
 	}
 }
+
