@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"fz/internal/assembler"
@@ -31,7 +32,7 @@ type BuildReport struct {
 	Error       string   `json:"error,omitempty"`
 }
 
-var version = "1.5.0"
+var version = "1.7.0"
 
 func printHelp() {
 	fmt.Fprintf(os.Stderr, `
@@ -63,6 +64,7 @@ Options:
   -format <elf|bin>      Output format: elf (default) or bin (flat binary, no linking)
   -h, --help             Show this help
   -v, --version          Show version
+-j <n>                 Number of parallel jobs (0 = auto = CPU cores)
 
 Examples:
   fz -asm boot.asm
@@ -105,6 +107,7 @@ func main() {
 		ldScript      string
 		textAddr      string
 		shellMode     bool
+		jobs          int
 	)
 
 	flag.StringVar(&asmPath, "asm", "", "")
@@ -132,11 +135,13 @@ func main() {
 	flag.BoolVar(&showHelp, "h", false, "")
 	flag.BoolVar(&showHelp, "help", false, "")
 	flag.BoolVar(&showMan, "man", false, "")
-	flag.StringVar(&format, "format", "elf", "")
+	flag.StringVar(&format, "format", "elf64", "")
 	flag.BoolVar(&initMode, "init", false, "initialize project: create .fz.yaml and .fzignore")
 	flag.StringVar(&ldScript, "T", "", "linker script file (passed to ld via -T)")
 	flag.StringVar(&textAddr, "Ttext", "", "set text segment address (passed to ld)")
 	flag.BoolVar(&shellMode, "shell", false, "run interactive shell")
+	flag.IntVar(&jobs, "j", 1, "number of parallel jobs (0 = auto = CPU cores)")
+
 	flag.Usage = printHelp
 	flag.Parse()
 	if initMode {
@@ -146,6 +151,10 @@ func main() {
 		}
 		fmt.Println("project initialized. edit .fz.yaml to configure ur build.")
 		return
+	}
+
+	if jobs <= 0 {
+		jobs = runtime.NumCPU()
 	}
 
 	if shellMode {
@@ -443,7 +452,7 @@ func main() {
 			if cfg != nil {
 				libs = cfg.Libs
 			}
-			res, err := builder.BuildDir(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude, sourceFilesList, ignoreMatcher, includes, libs)
+			res, err := builder.BuildDir(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude, sourceFilesList, ignoreMatcher, includes, libs, jobs)
 			if err != nil {
 				return err
 			}
