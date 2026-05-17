@@ -9,7 +9,20 @@ import (
 	"fz/internal/utils"
 )
 
-var OutputFormat = "elf"
+var OutputFormat = "elf64"
+
+func formatToNasmFlag(format string) string {
+	switch format {
+	case "elf32":
+		return "-felf32"
+	case "elf64":
+		return "-felf64"
+	case "bin":
+		return "-fbin"
+	default:
+		return "-felf64"
+	}
+}
 
 func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode string) error {
 	if err := utils.CheckFileExists(src); err != nil {
@@ -41,16 +54,18 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 			return err
 		}
 		return assembleC(ctx, src, obj, debug, verbose)
+	case ".cpp", ".cc", ".cxx", ".c++":
+		if err := utils.CheckTool("g++"); err != nil {
+			return err
+		}
+		return assembleCpp(ctx, src, obj, debug, verbose)
 	default:
-		return fmt.Errorf("unsupported source extension: %s (supported: .asm, .s, .S, .fasm, .c)", ext)
+		return fmt.Errorf("unsupported source extension: %s (supported: .asm, .s, .S, .fasm, .c, .cpp, .cc, .cxx)", ext)
 	}
 }
 
 func assembleNASM(ctx context.Context, src, obj string, debug, verbose bool) error {
-	formatFlag := "-felf64"
-	if OutputFormat == "bin" {
-		formatFlag = "-fbin"
-	}
+	formatFlag := formatToNasmFlag(OutputFormat)
 	args := []string{formatFlag, src, "-o", obj}
 	if debug {
 		args = append([]string{"-g"}, args...)
@@ -117,6 +132,26 @@ func assembleC(ctx context.Context, src, obj string, debug, verbose bool) error 
 			return fmt.Errorf("gcc compilation failed (use -verbose for details)")
 		}
 		return fmt.Errorf("gcc failed: %w\n%s", err, output)
+	}
+	return nil
+}
+
+func assembleCpp(ctx context.Context, src, obj string, debug, verbose bool) error {
+	args := []string{"-c", src, "-o", obj}
+	strictFlags := []string{"-Wall", "-Wextra", "-Werror", "-Wpedantic", "-Wshadow", "-Wconversion"}
+	args = append(args, strictFlags...)
+	if debug {
+		args = append(args, "-g")
+	}
+	if verbose {
+		fmt.Println("Running: g++", strings.Join(args, " "))
+	}
+	output, err := utils.RunCommandSilent(ctx, verbose, "g++", args...)
+	if err != nil {
+		if !verbose {
+			return fmt.Errorf("g++ compilation failed (use -verbose for details)")
+		}
+		return fmt.Errorf("g++ failed: %w\n%s", err, output)
 	}
 	return nil
 }
