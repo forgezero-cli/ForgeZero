@@ -126,3 +126,38 @@ func TestRunCommandSilentTimeout(t *testing.T) {
 		t.Error("expected timeout error")
 	}
 }
+
+func TestCopyFile(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "src.txt")
+	dst := filepath.Join(t.TempDir(), "dst.txt")
+	content := []byte("hello")
+	if err := os.WriteFile(src, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CopyFile(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != string(content) {
+		t.Error("content mismatch")
+	}
+	// Non-existent source
+	if err := CopyFile("nonexistent", dst); err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestEnsureDirErrors(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "file")
+	if err := os.WriteFile(file, []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := EnsureDir(filepath.Join(file, "sub", "file"))
+	if err == nil {
+		t.Error("expected error because parent is a file")
+	}
+}
