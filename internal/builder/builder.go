@@ -22,13 +22,32 @@ type BuildResult struct {
 	CacheDir    string
 }
 
-func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode string, keepObj bool, noCache bool, noSymbolCheck bool, sanitize bool, strict bool) (*BuildResult, error) {
+func matchExclude(path string, excludes []string) bool {
+	for _, pattern := range excludes {
+		if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
+			return true
+		}
+		if matched, _ := filepath.Match(pattern, path); matched {
+			return true
+		}
+	}
+	return false
+}
+
+func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude []string) (*BuildResult, error) {
 	if outBin == "" {
-		base := filepath.Base(dir)
-		if utils.IsWindows() {
-			outBin = base + ".exe"
+		if len(dirs) == 1 {
+			base := filepath.Base(dirs[0])
+			if utils.IsWindows() {
+				outBin = base + ".exe"
+			} else {
+				outBin = base + ".out"
+			}
 		} else {
-			outBin = base + ".out"
+			outBin = "fz_build"
+			if utils.IsWindows() {
+				outBin += ".exe"
+			}
 		}
 	}
 	if info, err := os.Stat(outBin); err == nil && info.IsDir() {
@@ -39,24 +58,32 @@ func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode
 	}
 
 	var srcFiles []string
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
+	for _, dir := range dirs {
+		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			if matchExclude(path, exclude) {
+				if verbose {
+					fmt.Printf("Excluding %s\n", path)
+				}
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(path))
+			if utils.SupportedExtension(ext) {
+				srcFiles = append(srcFiles, path)
+			}
 			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("walk error in %s: %w", dir, err)
 		}
-		ext := strings.ToLower(filepath.Ext(path))
-		if utils.SupportedExtension(ext) {
-			srcFiles = append(srcFiles, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("walk error: %w", err)
 	}
 	if len(srcFiles) == 0 {
-		return nil, fmt.Errorf("no supported assembly files found in %s", dir)
+		return nil, fmt.Errorf("no supported assembly files found in %v", dirs)
 	}
 
 	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
@@ -83,7 +110,7 @@ func BuildDir(ctx context.Context, dir, outBin string, debug, verbose bool, mode
 	objFilesSet := make(map[string]bool)
 
 	for i, src := range srcFiles {
-		rel, err := filepath.Rel(dir, src)
+		rel, err := filepath.Rel(filepath.Dir(outBin), src)
 		if err != nil {
 			rel = filepath.Base(src)
 		}
