@@ -1,15 +1,17 @@
-# ☘️TODO – fz (future)
+# 🧠 TODO – fz (next steps after v1.5.0)
 
-## Core
+## 🔜 Short term (v1.6.0 – v1.7.0)
 
-- [ ] **Exclude patterns**  
+### Core features
+
+- [x] **Exclude patterns**  
   - `exclude` field in `.fz.yaml`  
-  - `-exclude` CLI flag (repeatable)
+  - `-exclude` CLI flag (repeatable) – *CLI flag not yet, only config*
 
 - [ ] **C++ support**  
   - auto‑detect `.cpp`, `.cc`, `.cxx`  
-  - compile with `g++` (same strict warnings)  
-  - flag `-cpp <file>`
+  - compile with `g++` (same strict warnings: `-Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion`)  
+  - CLI flag `-cpp <file>`
 
 - [ ] **Custom user flags**  
   - `-asm-flag` (repeatable)  
@@ -17,69 +19,78 @@
   - `-ld-flag` (repeatable)
 
 - [ ] **Build time report**  
-  - `-time` flag → per‑file and total timings
+  - `-time` flag → per‑file and total timings (assembly/compilation + linking)
 
-## Diagnostics & user experience
+### Diagnostics & user experience
 
 - [ ] **Colored build output**  
   - success (green), error (red), warning (yellow), info (cyan)  
-  - respect `NO_COLOR`
+  - respect `NO_COLOR` environment variable
 
 - [ ] **Verbose per‑file progress**  
-  - `[1/5] assembling boot.asm` (even without `-verbose`)
+  - `[1/5] assembling boot.asm` even without `-verbose` (just a simple counter)
 
 - [ ] **Better error messages**  
   - suggest fixes: missing `#include`, undefined `main`/`_start`, missing `libc`
 
 - [ ] **Adjustable watch debounce**  
-  - `-watch-delay <ms>` (default 500)
+  - `-watch-delay <ms>` (default 500) – allow user to tune reaction time
 
-## CI / testing / packaging
+## ⚙️ CI / testing / packaging
 
 - [ ] **GitHub Actions CI**  
-  - test on Linux, macOS, Windows (cross‑compile)
+  - test on Linux (amd64, arm64), macOS, Windows (cross‑compile) for every push
 
-- [ ] **Code coverage**  
-  - >80% line coverage, integrated in CI
+- [ ] **Raise test coverage**  
+  - goal: >80% overall (currently ~70%, linker 40% needs mock improvements)
 
 - [ ] **Shell completions**  
-  - bash, zsh, fish
+  - generate and install for bash, zsh, fish
 
 - [ ] **Man page installation**  
-  - `make install-man`
+  - `make install-man` to copy `fz.1` into `/usr/share/man/man1/`
 
 - [ ] **Homebrew tap**  
-  - macOS formula
+  - macOS formula – `brew install forgezero-cli/fz/fz`
 
 - [ ] **AUR package**  
-  - `yay -S fz`
+  - Arch Linux – `yay -S fz`
 
-## Advanced / experimental
+## 🚀 Advanced / experimental
 
 - [ ] **Cross‑platform object formats**  
-  - `-target` flag → `elf64`, `macho64`, `win64`
+  - `-target` flag → `elf64` (default), `macho64` (macOS), `win64` (Windows)
 
 - [ ] **Linker script support**  
-  - `-script <file>` (pass `-T` to `ld`)
+  - `-script <file>` – passes `-T <file>` to `ld`
 
-- [ ] **LTO**  
-  - `-flto` flag
+- [ ] **LTO (Link Time Optimisation)**  
+  - `-flto` flag → enable link‑time optimisation for C/C++
 
 - [ ] **Incremental linking**  
-  - keep objects even when source list order changes
+  - keep object files even when source list order changes (smart caching)
 
 - [ ] **Remote cache**  
-  - store cache in S3 / GCS for CI sharing
+  - store cache in S3 / GCS for CI sharing (optional feature)
 
 - [ ] **Hot reload**  
-  - restart binary automatically after successful rebuild
+  - restart built binary automatically after successful rebuild (useful for servers)
 
-## Documentation & examples
+## 📚 Documentation & examples
 
-- [ ] **More example projects**  
-  - bare‑metal bootloader  
-  - mixed C + asm demo  
-  - static library
+- [ ] **Example projects**  
+  - bare‑metal bootloader (x86_64)  
+  - mixed C + asm demo (with `-cc` and `-asm`)  
+  - static library creation and linking
 
 - [ ] **Benchmark suite**  
-  - realistic projects to measure cache performance
+  - realistic large project to measure cache performance and build speed over time
+
+- [ ] **Official website**  
+  - minimal static page with quick start, config reference, and examples
+
+## 💡 Ideas for v2.0
+
+- [ ] **Plugin system** – custom assembler/compiler backends
+- [ ] **Language server** – LSP for assembly (syntax checking, navigation)
+- [ ] **Graphical dashboard** – TUI to monitor build progress and cache hits
