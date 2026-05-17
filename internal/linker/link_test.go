@@ -2,6 +2,7 @@ package linker
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -194,5 +195,515 @@ func TestLinkEmptyObject(t *testing.T) {
 	err = Link(context.Background(), emptyObj, bin, false, "raw", false, true, false)
 	if err == nil {
 		t.Error("expected error for empty object file")
+	}
+}
+
+// ----- Mock tests -----
+
+type MockRunner struct {
+	RunFunc func(ctx context.Context, verbose bool, name string, args ...string) (string, error)
+}
+
+func (m *MockRunner) Run(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+	if m.RunFunc != nil {
+		return m.RunFunc(ctx, verbose, name, args...)
+	}
+	return "", nil
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
+func TestLinkAutoFallbackGccToNoPie(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if name == "gcc" && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first gcc fails")
+			}
+			if name == "gcc" && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := Link(context.Background(), obj, bin, false, "auto", false, false, false)
+	if err != nil {
+		t.Fatalf("expected success after fallback, got %v", err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestLinkAutoFallbackGccToLd(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if name == "gcc" && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("gcc fails")
+			}
+			if name == "gcc" && contains(args, "-no-pie") {
+				return "", fmt.Errorf("gcc -no-pie fails")
+			}
+			if name == "ld" {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := Link(context.Background(), obj, bin, false, "auto", false, false, false)
+	if err != nil {
+		t.Fatalf("expected fallback to ld, got %v", err)
+	}
+	if callCount != 3 {
+		t.Errorf("expected 3 calls, got %d", callCount)
+	}
+}
+
+func TestLinkStrictModeWithClangMock(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	clangCalled := false
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			if name == "clang" {
+				clangCalled = true
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := Link(context.Background(), obj, bin, false, "auto", false, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !clangCalled {
+		t.Error("clang was not called in strict mode")
+	}
+}
+
+func TestLinkWithSanitizerFlags(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	var capturedArgs []string
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			capturedArgs = args
+			return "", nil
+		},
+	}
+	err := Link(context.Background(), obj, bin, false, "c", false, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(capturedArgs, "-fsanitize=address") {
+		t.Error("missing -fsanitize=address")
+	}
+	if !contains(capturedArgs, "-fsanitize=undefined") {
+		t.Error("missing -fsanitize=undefined")
+	}
+}
+
+func TestLinkWithStrictGccFlags(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	var capturedArgs []string
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			capturedArgs = args
+			return "", nil
+		},
+	}
+	err := Link(context.Background(), obj, bin, false, "c", false, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(capturedArgs, "-fsanitize-address-use-after-scope") {
+		t.Error("missing -fsanitize-address-use-after-scope in strict mode")
+	}
+}
+
+func TestLinkWithGccAllowNoPieFallbackSuccess(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && name == "gcc" && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first gcc fails")
+			}
+			if callCount == 2 && name == "gcc" && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := linkWithGcc(context.Background(), "obj", "bin", false, true, false, false)
+	if err != nil {
+		t.Fatalf("expected success after fallback, got %v", err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestLinkWithGccAllowNoPieFallbackFailure(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			return "", fmt.Errorf("always fails")
+		},
+	}
+	err := linkWithGcc(context.Background(), "obj", "bin", false, true, false, false)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestLinkWithClangAllowNoPieFallbackSuccess(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && name == "clang" && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first clang fails")
+			}
+			if callCount == 2 && name == "clang" && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := linkWithClang(context.Background(), "obj", "bin", false, true, false)
+	if err != nil {
+		t.Fatalf("expected success after fallback, got %v", err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+// Coverage for LinkMultiple and multiple object helpers
+
+func TestLinkMultipleRawMode(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj1 := filepath.Join(dir, "a.o")
+	obj2 := filepath.Join(dir, "b.o")
+	if err := os.WriteFile(obj1, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(obj2, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	called := false
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			if name == "ld" {
+				called = true
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := LinkMultiple(context.Background(), []string{obj1, obj2}, bin, false, "raw", false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Error("ld not called")
+	}
+}
+
+func TestLinkMultipleCMode(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj1 := filepath.Join(dir, "a.o")
+	if err := os.WriteFile(obj1, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	called := false
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			if name == "gcc" {
+				called = true
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := LinkMultiple(context.Background(), []string{obj1}, bin, false, "c", false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Error("gcc not called")
+	}
+}
+
+func TestLinkMultipleAutoModeGccSuccess(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			if name == "gcc" {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := LinkMultiple(context.Background(), []string{obj}, bin, false, "auto", false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLinkMultipleAutoModeGccFallbackToLd(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if name == "gcc" {
+				return "", fmt.Errorf("gcc fails")
+			}
+			if name == "ld" {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := LinkMultiple(context.Background(), []string{obj}, bin, false, "auto", false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 3 {
+		t.Errorf("expected 3 calls (gcc, gcc -no-pie, ld), got %d", callCount)
+	}
+}
+
+func TestLinkMultipleWithGccNoPieFallback(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && name == "gcc" && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first fail")
+			}
+			if callCount == 2 && name == "gcc" && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := linkMultipleWithGcc(context.Background(), []string{obj}, bin, false, true, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestLinkMultipleWithClangNoPieFallback(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && name == "clang" && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first fail")
+			}
+			if callCount == 2 && name == "clang" && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := linkMultipleWithClang(context.Background(), []string{obj}, bin, false, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestTryAutoLinkMultipleStrictClangSuccess(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	clangCalled := false
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			if name == "clang" {
+				clangCalled = true
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("clang not installed, cannot test clang path")
+	}
+	err := tryAutoLinkMultiple(context.Background(), []string{obj}, bin, false, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !clangCalled {
+		t.Error("clang not called in strict mode")
+	}
+}
+
+func TestTryAutoLinkMultipleStrictClangFallbackToGcc(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	gccCalled := false
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			if name == "clang" {
+				return "", fmt.Errorf("clang fails")
+			}
+			if name == "gcc" {
+				gccCalled = true
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("clang not installed, cannot test clang path")
+	}
+	err := tryAutoLinkMultiple(context.Background(), []string{obj}, bin, false, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gccCalled {
+		t.Error("gcc not called after clang failure")
 	}
 }
