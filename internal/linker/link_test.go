@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -705,5 +706,192 @@ func TestTryAutoLinkMultipleStrictClangFallbackToGcc(t *testing.T) {
 	}
 	if !gccCalled {
 		t.Error("gcc not called after clang failure")
+	}
+}
+
+// ----- Coverage for linkMultipleWithLd (raw mode) -----
+func TestLinkMultipleWithLd(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj1 := filepath.Join(dir, "a.o")
+	obj2 := filepath.Join(dir, "b.o")
+	if err := os.WriteFile(obj1, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(obj2, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	called := false
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			if name == "ld" {
+				called = true
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := linkMultipleWithLd(context.Background(), []string{obj1, obj2}, bin, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Error("ld not called")
+	}
+}
+
+// ----- Coverage for linkMultipleWithLd failure (verbose and non-verbose) -----
+func TestLinkMultipleWithLdFailureNonVerbose(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "a.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("ld error")
+		},
+	}
+	err := linkMultipleWithLd(context.Background(), []string{obj}, bin, false)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "use -verbose for details") {
+		t.Error("should hint -verbose")
+	}
+}
+
+func TestLinkMultipleWithLdFailureVerbose(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "a.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("ld error")
+		},
+	}
+	err := linkMultipleWithLd(context.Background(), []string{obj}, bin, true)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "ld failed") {
+		t.Error("should show error")
+	}
+}
+
+// ----- Coverage for linkMultipleWithClang without fallback -----
+func TestLinkMultipleWithClangNoFallback(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("clang error")
+		},
+	}
+	// allowNoPieFallback = false
+	err := linkMultipleWithClang(context.Background(), []string{obj}, bin, false, false, true)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "use -verbose for details") {
+		t.Error("should hint -verbose")
+	}
+}
+
+func TestLinkMultipleWithClangSuccess(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", nil
+		},
+	}
+	err := linkMultipleWithClang(context.Background(), []string{obj}, bin, false, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLinkUnsupportedMode(t *testing.T) {
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+	err := Link(context.Background(), obj, bin, false, "invalid", false, true, false)
+	if err == nil {
+		t.Error("expected error for unsupported mode")
+	}
+	if !strings.Contains(err.Error(), "unsupported mode") {
+		t.Errorf("wrong error: %v", err)
+	}
+}
+
+func TestLinkMultipleUnsupportedMode(t *testing.T) {
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+	err := LinkMultiple(context.Background(), []string{obj}, bin, false, "invalid", false, true, false)
+	if err == nil {
+		t.Error("expected error for unsupported mode")
+	}
+	if !strings.Contains(err.Error(), "unsupported mode") {
+		t.Errorf("wrong error: %v", err)
+	}
+}
+
+func TestTryAutoLinkMultipleNoLinker(t *testing.T) {
+	oldPath := os.Getenv("PATH")
+	os.Setenv("PATH", "")
+	defer os.Setenv("PATH", oldPath)
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+	err := tryAutoLinkMultiple(context.Background(), []string{obj}, bin, false, false, false)
+	if err == nil {
+		t.Error("expected error when no linker available")
+	}
+	if err.Error() != "auto linking failed: no suitable linker" {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
