@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -15,6 +16,57 @@ import (
 	"fz/internal/utils"
 	"fz/internal/watcher"
 )
+
+type BuildReport struct {
+	Status      string   `json:"status"`
+	ExitCode    int      `json:"exit_code"`
+	DurationMs  int64    `json:"duration_ms"`
+	Binary      string   `json:"binary,omitempty"`
+	SourceFiles []string `json:"source_files,omitempty"`
+	ObjectFiles []string `json:"object_files,omitempty"`
+	Error       string   `json:"error,omitempty"`
+}
+
+var version = "1.3.0"
+
+func printHelp() {
+	fmt.Fprintf(os.Stderr, `fz - assembly swiss army knife
+
+Usage:
+  fz [options] (-asm <file> | -cc <file> | -dir <dir> | (no args with config))
+
+Options:
+  -asm <file>            Assembler source (.asm, .s, .S, .fasm)
+  -cc <file>             C source (compiled with -Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion)
+  -dir <dir>             Build all supported files in directory (recursive)
+  -out <name>            Output binary name
+  -out-obj <name>        Object file name (single file only)
+  -mode <auto|c|raw>     Linking mode (default: auto)
+  -debug                 Emit debug information (-g)
+  -verbose               Print executed commands
+  -keep-obj              Keep temporary object files when using -dir
+  -no-cache              Disable incremental cache
+  -no-symbol-check       Skip duplicate symbol pre‑check
+  -sanitize              Enable sanitizers for C (default: true)
+  -no-sanitize           Disable sanitizers
+  -strict                Enable aggressive sanitizers (use-after-return, use-after-scope) – requires clang
+  -clean                 Remove all build artifacts (.fz_objs, .fz_cache, binaries)
+  -watch                 Watch source files and rebuild automatically
+  -json                  Output build report in JSON format (CI/CD)
+  -config <file>         Config file path (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)
+  -v, -version           Show version
+  -h, -help              Show this help
+
+Examples:
+  fz -asm boot.asm
+  fz -cc main.c -strict
+  fz -dir ./src -out myapp
+  fz -dir . -clean
+  fz -config build.yaml
+
+Supported extensions: .asm, .s, .S, .fasm, .c
+`)
+}
 
 func main() {
 	var (
@@ -35,36 +87,53 @@ func main() {
 		watch         bool
 		sanitize      bool
 		noSanitize    bool
+		strict        bool
+		jsonOutput    bool
+		showVersion   bool
+		showHelp      bool
 	)
 
-	flag.StringVar(&asmPath, "asm", "", "assembler source file (.asm, .s, .S, .fasm)")
-	flag.StringVar(&asmPath, "assembler", "", "alias for -asm")
-	flag.StringVar(&ccPath, "cc", "", "C source file (compiles with -Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion)")
-	flag.StringVar(&dirPath, "dir", "", "directory containing source files (recursive)")
-	flag.BoolVar(&debug, "debug", false, "emit debug information")
-	flag.BoolVar(&verbose, "verbose", false, "print executed commands")
-	flag.StringVar(&outBin, "out", "", "output binary name")
-	flag.StringVar(&outObj, "out-obj", "", "output object file name (only with single file)")
-	flag.IntVar(&timeoutSec, "timeout", 60, "timeout in seconds for external commands")
-	flag.StringVar(&mode, "mode", "", "linking mode: auto, c, raw")
-	flag.BoolVar(&keepObj, "keep-obj", false, "keep temporary object files when using -dir")
-	flag.BoolVar(&clean, "clean", false, "remove all build artifacts (.fz_objs, .fz_cache and binaries) from the directory")
-	flag.BoolVar(&noCache, "no-cache", false, "disable incremental cache rebuild")
-	flag.BoolVar(&noSymbolCheck, "no-symbol-check", false, "disable duplicate symbol pre-check")
-	flag.StringVar(&configPath, "config", "", "config file path (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)")
-	flag.BoolVar(&watch, "watch", false, "watch source files and automatically rebuild")
-	flag.BoolVar(&sanitize, "sanitize", true, "enable sanitizers (address, undefined) for C code")
-	flag.BoolVar(&noSanitize, "no-sanitize", false, "disable sanitizers")
-	showVersion := flag.Bool("version", false, "show version and exit")
+	flag.StringVar(&asmPath, "asm", "", "")
+	flag.StringVar(&asmPath, "assembler", "", "")
+	flag.StringVar(&ccPath, "cc", "", "")
+	flag.StringVar(&dirPath, "dir", "", "")
+	flag.BoolVar(&debug, "debug", false, "")
+	flag.BoolVar(&verbose, "verbose", false, "")
+	flag.StringVar(&outBin, "out", "", "")
+	flag.StringVar(&outObj, "out-obj", "", "")
+	flag.IntVar(&timeoutSec, "timeout", 60, "")
+	flag.StringVar(&mode, "mode", "", "")
+	flag.BoolVar(&keepObj, "keep-obj", false, "")
+	flag.BoolVar(&clean, "clean", false, "")
+	flag.BoolVar(&noCache, "no-cache", false, "")
+	flag.BoolVar(&noSymbolCheck, "no-symbol-check", false, "")
+	flag.StringVar(&configPath, "config", "", "")
+	flag.BoolVar(&watch, "watch", false, "")
+	flag.BoolVar(&sanitize, "sanitize", true, "")
+	flag.BoolVar(&noSanitize, "no-sanitize", false, "")
+	flag.BoolVar(&strict, "strict", false, "")
+	flag.BoolVar(&jsonOutput, "json", false, "")
+	flag.BoolVar(&showVersion, "v", false, "")
+	flag.BoolVar(&showVersion, "version", false, "")
+	flag.BoolVar(&showHelp, "h", false, "")
+	flag.BoolVar(&showHelp, "help", false, "")
 
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: fz [options] ( -asm <file> | -cc <file> | -dir <directory> | (no arguments with config file) )\n")
-		fmt.Fprintf(os.Stderr, "Options:\n")
-		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nSupported extensions: .asm/.s/.S/.fasm (assembler), .c (C with strict flags)\n")
-	}
-
+	flag.Usage = printHelp
 	flag.Parse()
+
+	if showHelp {
+		printHelp()
+		os.Exit(0)
+	}
+	if showVersion {
+		if jsonOutput {
+			report := BuildReport{Status: "info", ExitCode: 0, DurationMs: 0, Binary: version}
+			json.NewEncoder(os.Stdout).Encode(report)
+		} else {
+			fmt.Printf("fz version %s\n", version)
+		}
+		os.Exit(0)
+	}
 
 	if mode == "" {
 		mode = "auto"
@@ -72,10 +141,9 @@ func main() {
 	if noSanitize {
 		sanitize = false
 	}
-
-	if *showVersion {
-		fmt.Println("fz version 1.1.0")
-		os.Exit(0)
+	if watch && jsonOutput {
+		fmt.Fprintln(os.Stderr, "error: -watch and -json cannot be used together")
+		os.Exit(2)
 	}
 
 	srcProvided := 0
@@ -89,7 +157,13 @@ func main() {
 		srcProvided++
 	}
 	if srcProvided > 1 {
-		fmt.Fprintln(os.Stderr, "error: specify only one of -asm, -cc, or -dir")
+		errMsg := "specify only one of -asm, -cc, or -dir"
+		if jsonOutput {
+			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
+			json.NewEncoder(os.Stdout).Encode(report)
+		} else {
+			fmt.Fprintln(os.Stderr, errMsg)
+		}
 		os.Exit(2)
 	}
 	srcPath := asmPath
@@ -101,22 +175,32 @@ func main() {
 	if cfgFile == "" {
 		cfgFile = config.DefaultConfigPath()
 	}
-
 	var cfg *config.Config
 	if cfgFile != "" {
 		var err error
 		cfg, err = config.Load(cfgFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error loading config: %v\n", err)
+			if jsonOutput {
+				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: err.Error()}
+				json.NewEncoder(os.Stdout).Encode(report)
+			} else {
+				fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+			}
 			os.Exit(2)
 		}
 		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode)
-		if verbose {
+		if verbose && !jsonOutput {
 			fmt.Printf("Loaded config from %s\n", cfgFile)
 		}
 	} else if srcPath == "" && dirPath == "" && !clean {
-		fmt.Fprintln(os.Stderr, "error: no config file found and none of -asm, -cc, -dir specified")
-		flag.Usage()
+		errMsg := "no config file and none of -asm, -cc, -dir given"
+		if jsonOutput {
+			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
+			json.NewEncoder(os.Stdout).Encode(report)
+		} else {
+			fmt.Fprintln(os.Stderr, errMsg)
+			printHelp()
+		}
 		os.Exit(2)
 	}
 
@@ -126,14 +210,30 @@ func main() {
 			targetDir = cfg.SourceDir
 		}
 		if targetDir == "" {
-			fmt.Fprintln(os.Stderr, "error: -clean requires -dir <directory> or source_dir in config")
+			errMsg := "-clean requires -dir or source_dir in config"
+			if jsonOutput {
+				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
+				json.NewEncoder(os.Stdout).Encode(report)
+			} else {
+				fmt.Fprintln(os.Stderr, errMsg)
+			}
 			os.Exit(2)
 		}
 		if err := builder.CleanDir(targetDir, verbose); err != nil {
-			fmt.Fprintf(os.Stderr, "clean failed: %v\n", err)
+			if jsonOutput {
+				report := BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
+				json.NewEncoder(os.Stdout).Encode(report)
+			} else {
+				fmt.Fprintf(os.Stderr, "clean failed: %v\n", err)
+			}
 			os.Exit(1)
 		}
-		fmt.Printf("Cleaned %s\n", targetDir)
+		if jsonOutput {
+			report := BuildReport{Status: "success", ExitCode: 0, DurationMs: 0, Binary: "cleaned"}
+			json.NewEncoder(os.Stdout).Encode(report)
+		} else {
+			fmt.Printf("Cleaned %s\n", targetDir)
+		}
 		return
 	}
 
@@ -152,28 +252,49 @@ func main() {
 	}
 
 	if srcPath == "" && dirPath == "" {
-		fmt.Fprintln(os.Stderr, "error: either -asm, -cc, or -dir must be provided (or set in config)")
+		errMsg := "missing source: use -asm, -cc, -dir, or config"
+		if jsonOutput {
+			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
+			json.NewEncoder(os.Stdout).Encode(report)
+		} else {
+			fmt.Fprintln(os.Stderr, errMsg)
+		}
 		os.Exit(2)
 	}
 	if srcPath != "" && dirPath != "" {
-		fmt.Fprintln(os.Stderr, "error: cannot specify both a single file and -dir")
+		errMsg := "cannot specify both single file and -dir"
+		if jsonOutput {
+			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
+			json.NewEncoder(os.Stdout).Encode(report)
+		} else {
+			fmt.Fprintln(os.Stderr, errMsg)
+		}
 		os.Exit(2)
 	}
+
+	startTime := time.Now()
+	var sourceFiles []string
+	var objectFiles []string
+	var finalBinary string
+	var buildErr error
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
 	build := func() error {
 		if srcPath != "" {
+			sourceFiles = append(sourceFiles, srcPath)
 			if err := utils.CheckFileExists(srcPath); err != nil {
 				return err
 			}
 			ext := filepath.Ext(srcPath)
 			if !utils.SupportedExtension(ext) {
-				return fmt.Errorf("unsupported file extension %s", ext)
+				return fmt.Errorf("unsupported extension: %s", ext)
 			}
 			binName, objName := utils.DeriveNames(srcPath, outBin, outObj)
-			if verbose {
+			objectFiles = append(objectFiles, objName)
+			finalBinary = binName
+			if verbose && !jsonOutput {
 				if ext == ".c" {
 					fmt.Printf("Compiling %s -> %s\n", srcPath, objName)
 				} else {
@@ -183,13 +304,15 @@ func main() {
 			if err := assembler.Assemble(ctx, srcPath, objName, debug, verbose, mode); err != nil {
 				return err
 			}
-			if verbose {
+			if verbose && !jsonOutput {
 				fmt.Printf("Linking %s -> %s (mode: %s)\n", objName, binName, mode)
 			}
-			if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck, sanitize); err != nil {
+			if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck, sanitize, strict); err != nil {
 				return err
 			}
-			fmt.Printf("Built: %s\n", binName)
+			if !jsonOutput {
+				fmt.Printf("Built: %s\n", binName)
+			}
 			return nil
 		}
 		if dirPath != "" {
@@ -198,41 +321,75 @@ func main() {
 				return err
 			}
 			if !info.IsDir() {
-				return fmt.Errorf("-dir argument must be a directory, got: %s", dirPath)
+				return fmt.Errorf("%s is not a directory", dirPath)
 			}
 			if outBin != "" {
 				if st, err := os.Stat(outBin); err == nil && st.IsDir() {
-					return fmt.Errorf("output path %s is a directory, cannot write binary", outBin)
+					return fmt.Errorf("output path %s is a directory", outBin)
 				}
 			}
-			res, err := builder.BuildDir(ctx, dirPath, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize)
+			res, err := builder.BuildDir(ctx, dirPath, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict)
 			if err != nil {
 				return err
 			}
-			if !keepObj && verbose {
-				fmt.Printf("Removed temporary object directory: %s\n", res.ObjDir)
+			objectFiles = res.ObjectFiles
+			finalBinary = res.Binary
+			if !jsonOutput {
+				if !keepObj && verbose {
+					fmt.Printf("Removed object dir: %s\n", res.ObjDir)
+				}
+				fmt.Printf("Built: %s\n", res.Binary)
 			}
-			fmt.Printf("Built: %s\n", res.Binary)
 			return nil
 		}
 		return fmt.Errorf("no source to build")
 	}
 
-	if err := build(); err != nil {
-		fmt.Fprintf(os.Stderr, "build failed: %v\n", err)
+	buildErr = build()
+	durationMs := time.Since(startTime).Milliseconds()
+
+	if buildErr != nil {
+		if jsonOutput {
+			report := BuildReport{
+				Status:      "error",
+				ExitCode:    1,
+				DurationMs:  durationMs,
+				Binary:      finalBinary,
+				SourceFiles: sourceFiles,
+				ObjectFiles: objectFiles,
+				Error:       buildErr.Error(),
+			}
+			json.NewEncoder(os.Stdout).Encode(report)
+		} else {
+			fmt.Fprintf(os.Stderr, "build failed: %v\n", buildErr)
+		}
 		if !watch {
 			os.Exit(1)
 		}
+	} else if jsonOutput {
+		report := BuildReport{
+			Status:      "success",
+			ExitCode:    0,
+			DurationMs:  durationMs,
+			Binary:      finalBinary,
+			SourceFiles: sourceFiles,
+			ObjectFiles: objectFiles,
+		}
+		json.NewEncoder(os.Stdout).Encode(report)
 	}
 
 	if watch {
 		w, err := watcher.New()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "watcher error: %v\n", err)
+			if jsonOutput {
+				report := BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
+				json.NewEncoder(os.Stdout).Encode(report)
+			} else {
+				fmt.Fprintf(os.Stderr, "watcher error: %v\n", err)
+			}
 			os.Exit(1)
 		}
 		defer w.Close()
-
 		watchTarget := dirPath
 		if srcPath != "" {
 			watchTarget = filepath.Dir(srcPath)
@@ -241,17 +398,24 @@ func main() {
 			watchTarget = "."
 		}
 		if err := w.AddRecursive(watchTarget); err != nil {
-			fmt.Fprintf(os.Stderr, "cannot watch directory: %v\n", err)
+			if jsonOutput {
+				report := BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
+				json.NewEncoder(os.Stdout).Encode(report)
+			} else {
+				fmt.Fprintf(os.Stderr, "cannot watch: %v\n", err)
+			}
 			os.Exit(1)
 		}
 		if cfgFile != "" {
-			if err := w.Add(cfgFile); err != nil {
-				fmt.Fprintf(os.Stderr, "cannot watch config: %v\n", err)
-			}
+			w.Add(cfgFile)
 		}
-		fmt.Printf("Watching %s for changes...\n", watchTarget)
+		if !jsonOutput {
+			fmt.Printf("Watching %s for changes...\n", watchTarget)
+		}
 		w.Watch(500*time.Millisecond, func(string) error {
-			fmt.Println("\nChange detected, rebuilding...")
+			if !jsonOutput {
+				fmt.Println("\nChange detected, rebuilding...")
+			}
 			ctx2, cancel2 := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
 			defer cancel2()
 			origCtx := ctx
@@ -259,7 +423,11 @@ func main() {
 			err := build()
 			ctx = origCtx
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "rebuild failed: %v\n", err)
+				if !jsonOutput {
+					fmt.Fprintf(os.Stderr, "rebuild failed: %v\n", err)
+				}
+			} else if !jsonOutput {
+				fmt.Println("Rebuild successful.")
 			}
 			return nil
 		})
