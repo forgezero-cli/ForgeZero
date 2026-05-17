@@ -35,14 +35,14 @@ _start:
 `)
 	outBin := filepath.Join(t.TempDir(), "myapp")
 	ctx := context.Background()
-	res, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, false, false, true, false, nil)
+	res, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, false, false, true, false, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(res.Binary); err != nil {
 		t.Error("binary not created")
 	}
-	res2, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, false, false, true, false, nil)
+	res2, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, false, false, true, false, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ _start:
 `)
 	outBin := filepath.Join(t.TempDir(), "myapp")
 	ctx := context.Background()
-	res, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, true, false, true, false, nil)
+	res, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, true, false, true, false, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,9 +84,8 @@ func TestUniqueObjectNames(t *testing.T) {
 	writeASM(t, dir, "hello.s", "")
 	writeASM(t, dir, "sub/hello.asm", "")
 	outBin := filepath.Join(t.TempDir(), "app")
-	_, err := BuildDir(context.Background(), []string{dir}, outBin, false, true, "auto", true, false, true, true, false, nil)
+	_, err := BuildDir(context.Background(), []string{dir}, outBin, false, true, "auto", true, false, true, true, false, nil, nil, nil, nil)
 	if err == nil {
-		// link error expected because empty files have no _start/main
 	}
 	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
 	entries, _ := os.ReadDir(objDir)
