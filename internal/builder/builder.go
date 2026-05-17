@@ -59,7 +59,7 @@ func shouldIgnore(ignoreMatcher *ignore.IgnoreMatcher, path string, excludes []s
 	return false
 }
 
-func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude []string, sourceFiles []string, ignoreMatcher *ignore.IgnoreMatcher, includes []string) (*BuildResult, error) {
+func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher *ignore.IgnoreMatcher, includes []string, libs []string) (*BuildResult, error) {
 	if outBin == "" {
 		if len(dirs) == 1 {
 			base := filepath.Base(dirs[0])
@@ -192,7 +192,7 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 	if verbose {
 		fmt.Printf("Linking %d object files -> %s (mode: %s)\n", len(objFiles), outBin, mode)
 	}
-	if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck, sanitize, strict, nil); err != nil {
+	if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck, sanitize, strict, libs); err != nil {
 		return nil, fmt.Errorf("link failed: %w", err)
 	}
 
