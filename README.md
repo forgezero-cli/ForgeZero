@@ -1,4 +1,11 @@
 # 🌱 ForgeZero (fz) v1.3.0
+
+![Build Status](https://github.com/alexvoste/ForgeZero/actions/workflows/go.yml/badge.svg)
+![Go Version](https://img.shields.io/github/go-mod/go-version/alexvoste/ForgeZero)
+![License](https://img.shields.io/github/license/alexvoste/ForgeZero)
+![Commits](https://img.shields.io/github/commits-since/alexvoste/ForgeZero/v1.3.0)
+
+
 *ForgeZero* is a high-performance assembler builder now fully powered by *Go*. 
 It’s designed to be a "Swiss Army knife" for assembly developers, providing a seamless experience for compiling and linking without the headache of complex Makefiles.
 
