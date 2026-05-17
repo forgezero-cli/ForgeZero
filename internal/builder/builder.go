@@ -9,9 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"fz/internal/assembler"
-	"fz/internal/ignore"
 	"fz/internal/linker"
 	"fz/internal/utils"
 )
@@ -35,31 +35,7 @@ func matchExclude(path string, excludes []string) bool {
 	return false
 }
 
-func shouldIgnore(ignoreMatcher *ignore.IgnoreMatcher, path string, excludes []string, includes []string) bool {
-	if matchExclude(path, excludes) {
-		return true
-	}
-	if ignoreMatcher != nil && ignoreMatcher.Match(path) {
-		return true
-	}
-	if len(includes) > 0 {
-		inc := false
-		for _, pattern := range includes {
-			if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
-				inc = true
-				break
-			}
-			if matched, _ := filepath.Match(pattern, path); matched {
-				inc = true
-				break
-			}
-		}
-		return !inc
-	}
-	return false
-}
-
-func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher *ignore.IgnoreMatcher, includes []string, libs []string) (*BuildResult, error) {
+func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int) (*BuildResult, error) {
 	if outBin == "" {
 		if len(dirs) == 1 {
 			base := filepath.Base(dirs[0])
@@ -94,9 +70,9 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 				if info.IsDir() {
 					return nil
 				}
-				if shouldIgnore(ignoreMatcher, path, exclude, includes) {
+				if matchExclude(path, exclude) {
 					if verbose {
-						fmt.Printf("Ignoring %s\n", path)
+						fmt.Printf("Excluding %s\n", path)
 					}
 					return nil
 				}
@@ -112,7 +88,7 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 		}
 	}
 	if len(srcFiles) == 0 {
-		return nil, fmt.Errorf("no supported assembly files found")
+		return nil, fmt.Errorf("no supported files found")
 	}
 
 	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
@@ -161,32 +137,74 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 		objFiles = append(objFiles, obj)
 	}
 
-	for _, p := range pairs {
-		needAssemble := true
-		if !noCache {
-			cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
-			if err == nil && cachedObj != "" {
-				if verbose {
-					fmt.Printf("Cache hit for %s\n", p.src)
-				}
-				if err := copyFile(cachedObj, p.obj); err == nil {
-					needAssemble = false
+	type job struct {
+		idx int
+		p   pair
+	}
+	var wg sync.WaitGroup
+	jobsChan := make(chan job, len(pairs))
+	var firstErr error
+	var errOnce sync.Once
+	stopChan := make(chan struct{})
+
+	for w := 0; w < jobs; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case job, ok := <-jobsChan:
+					if !ok {
+						return
+					}
+					p := job.p
+					needAssemble := true
+					if !noCache {
+						cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
+						if err == nil && cachedObj != "" {
+							if verbose {
+								fmt.Printf("Cache hit for %s\n", p.src)
+							}
+							if err := copyFile(cachedObj, p.obj); err == nil {
+								needAssemble = false
+							}
+						}
+					}
+					if needAssemble {
+						if verbose {
+							fmt.Printf("Assembling %s -> %s\n", p.src, p.obj)
+						}
+						if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
+							errOnce.Do(func() {
+								firstErr = fmt.Errorf("assemble %s: %w", p.src, err)
+								close(stopChan)
+							})
+							return
+						}
+						if !noCache {
+							storeCache(p.src, p.obj, cacheDir, debug, verbose, mode)
+						}
+					}
+				case <-stopChan:
+					return
 				}
 			}
+		}()
+	}
+
+	for i, p := range pairs {
+		select {
+		case <-stopChan:
+			break
+		default:
+			jobsChan <- job{idx: i, p: p}
 		}
-		if needAssemble {
-			if verbose {
-				fmt.Printf("Assembling %s -> %s\n", p.src, p.obj)
-			}
-			if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
-				return nil, fmt.Errorf("assemble %s: %w", p.src, err)
-			}
-			if !noCache {
-				if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil && verbose {
-					fmt.Printf("Warning: cache store failed: %v\n", err)
-				}
-			}
-		}
+	}
+	close(jobsChan)
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
 	}
 
 	if verbose {
