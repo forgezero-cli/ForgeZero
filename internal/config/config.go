@@ -10,23 +10,28 @@ import (
 
 type Flags struct {
 	Asm []string `yaml:"asm"`
+	Cc  []string `yaml:"cc"`
 	Ld  []string `yaml:"ld"`
 }
 
 type Config struct {
-	Name       string   `yaml:"name"`
-	SourceDir  string   `yaml:"source_dir"`
-	SourceDirs []string `yaml:"source_dirs"`
-	SourceFile string   `yaml:"source_file"`
-	Output     string   `yaml:"output"`
-	OutObj     string   `yaml:"out_obj"`
-	Mode       string   `yaml:"mode"`
-	Debug      bool     `yaml:"debug"`
-	Verbose    bool     `yaml:"verbose"`
-	KeepObj    bool     `yaml:"keep_obj"`
-	NoCache    bool     `yaml:"no_cache"`
-	Exclude    []string `yaml:"exclude"`
-	Flags      Flags    `yaml:"flags"`
+	Name        string   `yaml:"name"`
+	SourceDir   string   `yaml:"source_dir"`
+	SourceDirs  []string `yaml:"source_dirs"`
+	SourceFiles []string `yaml:"source_files"`
+	SourceFile  string   `yaml:"source_file"`
+	Output      string   `yaml:"output"`
+	OutObj      string   `yaml:"out_obj"`
+	Mode        string   `yaml:"mode"`
+	Debug       bool     `yaml:"debug"`
+	Verbose     bool     `yaml:"verbose"`
+	KeepObj     bool     `yaml:"keep_obj"`
+	NoCache     bool     `yaml:"no_cache"`
+	Exclude     []string `yaml:"exclude"`
+	Include     []string `yaml:"include"`
+	Libs        []string `yaml:"libs"`
+	IgnoreFile  string   `yaml:"ignore_file"`
+	Flags       Flags    `yaml:"flags"`
 }
 
 func Load(path string) (*Config, error) {
@@ -45,17 +50,23 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
-	if c.SourceDir == "" && len(c.SourceDirs) == 0 && c.SourceFile == "" {
+	if c.SourceDir == "" && len(c.SourceDirs) == 0 && c.SourceFile == "" && len(c.SourceFiles) == 0 {
 		return nil
 	}
 	if c.SourceDir != "" && len(c.SourceDirs) > 0 {
 		return fmt.Errorf("cannot set both source_dir and source_dirs")
+	}
+	if c.SourceFile != "" && len(c.SourceFiles) > 0 {
+		return fmt.Errorf("cannot set both source_file and source_files")
 	}
 	if c.Mode == "" {
 		c.Mode = "auto"
 	}
 	if c.Mode != "auto" && c.Mode != "c" && c.Mode != "raw" {
 		return fmt.Errorf("invalid mode: %s", c.Mode)
+	}
+	if c.IgnoreFile == "" {
+		c.IgnoreFile = ".fzignore"
 	}
 	return nil
 }
@@ -65,10 +76,12 @@ func (c *Config) MergeFromFlags(srcPath, dirPath, outBin, outObj string, debug, 
 		c.SourceFile = srcPath
 		c.SourceDir = ""
 		c.SourceDirs = nil
+		c.SourceFiles = nil
 	}
 	if dirPath != "" {
 		c.SourceDir = dirPath
 		c.SourceDirs = nil
+		c.SourceFiles = nil
 		c.SourceFile = ""
 	}
 	if outBin != "" {
@@ -104,15 +117,21 @@ func (c *Config) Merge(other *Config) {
 	if other.SourceDir != "" {
 		c.SourceDir = other.SourceDir
 		c.SourceDirs = nil
+		c.SourceFiles = nil
 	}
 	if len(other.SourceDirs) > 0 {
 		c.SourceDirs = other.SourceDirs
 		c.SourceDir = ""
 	}
+	if len(other.SourceFiles) > 0 {
+		c.SourceFiles = other.SourceFiles
+		c.SourceFile = ""
+	}
 	if other.SourceFile != "" {
 		c.SourceFile = other.SourceFile
 		c.SourceDir = ""
 		c.SourceDirs = nil
+		c.SourceFiles = nil
 	}
 	if other.Output != "" {
 		c.Output = other.Output
@@ -138,8 +157,20 @@ func (c *Config) Merge(other *Config) {
 	if len(other.Exclude) > 0 {
 		c.Exclude = other.Exclude
 	}
+	if len(other.Include) > 0 {
+		c.Include = other.Include
+	}
+	if len(other.Libs) > 0 {
+		c.Libs = other.Libs
+	}
+	if other.IgnoreFile != "" {
+		c.IgnoreFile = other.IgnoreFile
+	}
 	if len(other.Flags.Asm) > 0 {
 		c.Flags.Asm = other.Flags.Asm
+	}
+	if len(other.Flags.Cc) > 0 {
+		c.Flags.Cc = other.Flags.Cc
 	}
 	if len(other.Flags.Ld) > 0 {
 		c.Flags.Ld = other.Flags.Ld
