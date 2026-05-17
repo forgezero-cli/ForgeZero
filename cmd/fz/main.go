@@ -16,6 +16,7 @@ import (
 	initpkg "fz/internal/init"
 	"fz/internal/linker"
 	"fz/internal/man"
+	"fz/internal/shell"
 	"fz/internal/utils"
 	"fz/internal/watcher"
 )
@@ -103,6 +104,7 @@ func main() {
 		initMode      bool
 		ldScript      string
 		textAddr      string
+		shellMode     bool
 	)
 
 	flag.StringVar(&asmPath, "asm", "", "")
@@ -134,7 +136,7 @@ func main() {
 	flag.BoolVar(&initMode, "init", false, "initialize project: create .fz.yaml and .fzignore")
 	flag.StringVar(&ldScript, "T", "", "linker script file (passed to ld via -T)")
 	flag.StringVar(&textAddr, "Ttext", "", "set text segment address (passed to ld)")
-
+	flag.BoolVar(&shellMode, "shell", false, "run interactive shell")
 	flag.Usage = printHelp
 	flag.Parse()
 	if initMode {
@@ -143,6 +145,11 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println("project initialized. edit .fz.yaml to configure ur build.")
+		return
+	}
+
+	if shellMode {
+		shell.Run()
 		return
 	}
 
