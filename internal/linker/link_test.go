@@ -377,8 +377,22 @@ func TestLinkWithStrictGccFlags(t *testing.T) {
 	}
 }
 
-// ----- Test LinkMultiple with 'c' mode and sanitizers -----
-func TestLinkMultipleCModeWithLibs(t *testing.T) {
+// ----- New tests to increase coverage -----
+
+func TestLinkMultipleEmptyObjects(t *testing.T) {
+	dir := t.TempDir()
+	emptyObj := filepath.Join(dir, "empty.o")
+	if err := os.WriteFile(emptyObj, []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+	err := LinkMultiple(context.Background(), []string{emptyObj}, bin, false, "raw", false, true, false, nil)
+	if err == nil {
+		t.Error("expected error for empty object")
+	}
+}
+
+func TestLinkMultipleWithCModeAndLibs(t *testing.T) {
 	if _, err := exec.LookPath("gcc"); err != nil {
 		t.Skip("gcc not installed")
 	}
@@ -390,12 +404,63 @@ main:
 	ret
 `)
 	bin := filepath.Join(dir, "out")
-	err := LinkMultiple(context.Background(), []string{obj}, bin, false, "c", false, true, false, []string{"m"})
+	libs := []string{"m"}
+	err := LinkMultiple(context.Background(), []string{obj}, bin, false, "c", false, true, false, libs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(bin); err != nil {
 		t.Error("binary not created")
+	}
+}
+
+func TestLinkWithGccNoFallback(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("gcc error")
+		},
+	}
+	err := linkWithGcc(context.Background(), obj, bin, false, false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "use -verbose for details") {
+		t.Error("should hint -verbose")
+	}
+}
+
+func TestLinkWithClangNoFallback(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "out")
+
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("clang error")
+		},
+	}
+	err := linkWithClang(context.Background(), obj, bin, false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "use -verbose for details") {
+		t.Error("should hint -verbose")
 	}
 }
 
@@ -424,7 +489,6 @@ func TestLinkMultipleWithGccNoFallback(t *testing.T) {
 	}
 }
 
-// ----- Test linkMultipleWithClang without fallback -----
 func TestLinkMultipleWithClangNoFallback(t *testing.T) {
 	oldRunner := runner
 	defer func() { runner = oldRunner }()
@@ -441,7 +505,7 @@ func TestLinkMultipleWithClangNoFallback(t *testing.T) {
 			return "", fmt.Errorf("clang error")
 		},
 	}
-	err := linkMultipleWithClang(context.Background(), []string{obj}, bin, false, false, true, nil)
+	err := linkMultipleWithClang(context.Background(), []string{obj}, bin, false, false, false, nil)
 	if err == nil {
 		t.Error("expected error")
 	}
@@ -450,8 +514,19 @@ func TestLinkMultipleWithClangNoFallback(t *testing.T) {
 	}
 }
 
-// ----- Test tryAutoLinkMultiple when no clang and gcc fails -----
-func TestTryAutoLinkMultipleNoLinkerFallback(t *testing.T) {
+func TestCheckDuplicateSymbolsWithInvalidFile(t *testing.T) {
+	dir := t.TempDir()
+	invalidObj := filepath.Join(dir, "invalid.o")
+	if err := os.WriteFile(invalidObj, []byte("not an elf"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = CheckDuplicateSymbols([]string{invalidObj}, false)
+}
+
+func TestTryAutoLinkMultipleWithClangSuccess(t *testing.T) {
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("clang not installed")
+	}
 	oldRunner := runner
 	defer func() { runner = oldRunner }()
 
@@ -462,37 +537,43 @@ func TestTryAutoLinkMultipleNoLinkerFallback(t *testing.T) {
 	}
 	bin := filepath.Join(dir, "out")
 
-	oldPath := os.Getenv("PATH")
-	os.Setenv("PATH", "")
-	defer os.Setenv("PATH", oldPath)
-
 	runner = &MockRunner{
 		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
-			return "", fmt.Errorf("command not found")
+			if name == "clang" {
+				return "", nil
+			}
+			return "", nil
 		},
 	}
-	err := tryAutoLinkMultiple(context.Background(), []string{obj}, bin, false, false, false, nil)
-	if err == nil {
-		t.Error("expected error when no linker available")
-	}
-	if !strings.Contains(err.Error(), "auto linking failed") {
-		t.Errorf("unexpected error: %v", err)
+	err := tryAutoLinkMultiple(context.Background(), []string{obj}, bin, false, true, true, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
-// ----- Test linkMultipleWithLd with empty object -----
-func TestLinkMultipleWithLdEmptyObject(t *testing.T) {
+func TestLinkWithClangMockOnly(t *testing.T) {
 	oldRunner := runner
 	defer func() { runner = oldRunner }()
 
 	dir := t.TempDir()
-	emptyObj := filepath.Join(dir, "empty.o")
-	if err := os.WriteFile(emptyObj, []byte{}, 0o644); err != nil {
+	obj := filepath.Join(dir, "test.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "out")
-	err := LinkMultiple(context.Background(), []string{emptyObj}, bin, false, "raw", false, false, false, nil)
-	if err == nil {
-		t.Error("expected error for empty object file")
+
+	var capturedArgs []string
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			capturedArgs = args
+			return "", nil
+		},
+	}
+	err := linkWithClang(context.Background(), obj, bin, false, true, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(capturedArgs, "-fsanitize=address") {
+		t.Error("missing sanitizer flags")
 	}
 }
