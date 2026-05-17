@@ -28,7 +28,7 @@ type BuildReport struct {
 	Error       string   `json:"error,omitempty"`
 }
 
-var version = "1.3.0"
+var version = "1.4.0"
 
 func printHelp() {
 	cyan := "\033[36m"
