@@ -1,23 +1,19 @@
 # ☘️ ForgeZero (fz) — Complete Documentation
 
+<div align="center">
+  <img src="pictures/fz.jpg" alt="ForgeZero Logo" width="180" />
+  
+  <br />
+  <br />
+  
+/div>
+
+
+
 ![Build Status](https://github.com/alexvoste/ForgeZero/actions/workflows/go.yml/badge.svg)
 ![Go Version](https://img.shields.io/github/go-mod/go-version/alexvoste/ForgeZero)
 ![License](https://img.shields.io/github/license/alexvoste/ForgeZero)
 ![Commits](https://img.shields.io/github/commits-since/alexvoste/ForgeZero/v1.3.0)
-
-
-<div align="center">
-  <img src="pictures/f.png" alt="ForgeZero Logo" width="180" />
-  
-  <br />
-  <br />
-  
-  <p>
-    <img src="https://img.shields.io/badge/Version-1.3.0-blue?style=for-the-badge" alt="Version" />
-    <img src="https://img.shields.io/badge/Language-Go-00ADD8?style=for-the-badge&logo=go" alt="Language" />
-    <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License" />
-  </p>
-</div>
 
 > **Version:** 1.3.0 &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
 
