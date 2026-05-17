@@ -403,9 +403,14 @@ func main() {
 				exclude = cfg.Exclude
 			}
 			var ignoreMatcher *ignore.IgnoreMatcher
+			var err error
 			if cfg != nil && cfg.IgnoreFile != "" {
 				if _, err := os.Stat(cfg.IgnoreFile); err == nil {
-					ignoreMatcher, _ = ignore.LoadIgnoreFile(cfg.IgnoreFile)
+					if ignoreMatcher, err = ignore.LoadIgnoreFile(cfg.IgnoreFile); err != nil {
+						if verbose {
+							fmt.Printf("warning: cannot load ignore file %s: %v\n", cfg.IgnoreFile, err)
+						}
+					}
 				}
 			}
 			var includes []string
