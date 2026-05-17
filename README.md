@@ -1,23 +1,30 @@
 # ☘️ ForgeZero (fz) — Complete Documentation
 
 <div align="center">
-  <img src="pictures/fz.jpg" alt="ForgeZero Logo" width="180" />
-  
-  <br />
-  <br />
-  
+  <table style="border:none; background:transparent;">
+    <tr>
+      <td style="vertical-align:middle; padding-right:32px; border:none;">
+        <img src="pictures/fz.jpg" alt="ForgeZero Logo" width="180" />
+      </td>
+      <td style="vertical-align:middle; border:none;">
+        <h3 style="margin:0 0 8px 0;">ForgeZero — zero-overhead build tool for assembly & C</h3>
+        <p style="margin:0; color:#555;">One command. Any assembler. Any platform.</p>
+        <br/>
+        <img src="https://github.com/alexvoste/ForgeZero/actions/workflows/go.yml/badge.svg" alt="Build Status"/>
+        &nbsp;
+        <img src="https://img.shields.io/github/go-mod/go-version/alexvoste/ForgeZero" alt="Go Version"/>
+        &nbsp;
+        <img src="https://img.shields.io/github/license/alexvoste/ForgeZero" alt="License"/>
+        &nbsp;
+        <img src="https://img.shields.io/github/commits-since/alexvoste/ForgeZero/v1.5.0" alt="Commits"/>
+      </td>
+    </tr>
+  </table>
 </div>
-
-![Build Status](https://github.com/alexvoste/ForgeZero/actions/workflows/go.yml/badge.svg)
-![Go Version](https://img.shields.io/github/go-mod/go-version/alexvoste/ForgeZero)
-![License](https://img.shields.io/github/license/alexvoste/ForgeZero)
-![Commits](https://img.shields.io/github/commits-since/alexvoste/ForgeZero/v1.3.0)
 
 > **Version:** 1.5.0 &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
 
 ForgeZero is a high-performance, zero-overhead build tool for assembly and C developers. It wraps NASM, GAS, FASM, GCC, Clang, and LD into a single unified command-line interface — no Makefiles, no build scripts, no configuration required to get started.
-
-One command. Any assembler. Any platform.
 
 ---
 
@@ -52,6 +59,14 @@ One command. Any assembler. Any platform.
     - 10.4 [JSON Output](#104-json-output)
     - 10.5 [Clean](#105-clean)
 11. [Configuration File Reference](#11-configuration-file-reference)
+    - 11.1 [Basic Fields](#111-basic-fields)
+    - 11.2 [Multiple Source Directories](#112-multiple-source-directories)
+    - 11.3 [Explicit Source File Lists](#113-explicit-source-file-lists)
+    - 11.4 [Include & Exclude Patterns](#114-include--exclude-patterns)
+    - 11.5 [Library Linking](#115-library-linking)
+    - 11.6 [Custom Compiler & Linker Flags](#116-custom-compiler--linker-flags)
+    - 11.7 [.fzignore File](#117-fzignore-file)
+    - 11.8 [Full Annotated Example](#118-full-annotated-example)
 12. [Assembler Backends](#12-assembler-backends)
     - 12.1 [NASM (.asm)](#121-nasm-asm)
     - 12.2 [GAS (.s / .S)](#122-gas-s--s)
@@ -76,6 +91,16 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 - Caches compiled objects so unchanged files are never recompiled.
 - Optionally watches the filesystem and rebuilds on every save.
 - Emits structured JSON build reports for CI/CD integration.
+
+**What's new in v1.5.0:**
+
+- **Multiple source directories** — `source_dirs` accepts a list of directories scanned in parallel.
+- **Explicit source file lists** — `source_files` lets you enumerate exactly which files to build, bypassing directory scanning entirely.
+- **`include` patterns** — counterpart to `exclude`; only files matching at least one pattern are considered.
+- **Library linking** — `libs` config field adds `-l<lib>` flags to the linker without manual `flags.ld` entries.
+- **Per-tool custom flags** — `flags.asm`, `flags.cc`, and `flags.ld` in config pass arbitrary arguments to each tool.
+- **`.fzignore` file** — a `.gitignore`-style file for fine-grained exclusion rules during recursive scanning.
+- **Multi-level config merging** — system-level, user-level, and project-level YAML configs are merged in order.
 
 ForgeZero is intentionally lightweight — a single statically compiled Go binary with no runtime dependencies beyond the standard assembler/compiler toolchain.
 
@@ -393,6 +418,21 @@ fz -dir ./src
 ./src
 ```
 
+**Build multiple directories (v1.5.0):**
+
+```yaml
+# .fz.yaml
+source_dirs:
+  - kernel
+  - libc
+  - drivers
+output: myos
+```
+
+```bash
+fz
+```
+
 ---
 
 ## 5. Supported Languages & Extensions
@@ -404,6 +444,8 @@ fz -dir ./src
 | `.S` | Assembly | GAS via `gcc -c` | AT&T syntax + C preprocessor |
 | `.fasm` | Assembly | FASM | Requires separate install |
 | `.c` | C | GCC or Clang | Strict flags + sanitizers by default |
+
+All other file extensions are silently ignored during directory and recursive scanning.
 
 ---
 
@@ -462,6 +504,15 @@ fz -config ./configs/release.yaml
 ```
 
 CLI flags always take precedence over config file values.
+
+**Config merging (v1.5.0):** ForgeZero now supports multi-level config files merged in priority order:
+
+1. System-level config: `/etc/fz/fz.yaml`
+2. User-level config: `~/.config/fz/fz.yaml`
+3. Project-level config: `.fz.yaml` in the working directory
+4. CLI flags (highest priority, always override everything)
+
+Each level overrides values from the previous one. This lets you set organization-wide defaults at the system level, personal preferences at the user level, and project-specific overrides in the project directory.
 
 ---
 
@@ -731,62 +782,248 @@ ForgeZero accepts YAML configuration files. The file is searched automatically i
 
 CLI flags always override config file values.
 
-**Full annotated example:**
+### 11.1 Basic Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `source_dir` | string | — | Single source directory (kept for backward compatibility) |
+| `source_dirs` | `[]string` | — | Multiple source directories, each scanned recursively |
+| `source_files` | `[]string` | — | Exact list of files to build; if set, `source_dirs` is ignored |
+| `output` | string | auto | Output binary name |
+| `mode` | string | `auto` | Linking mode: `auto`, `c`, or `raw` |
+| `debug` | bool | `false` | Emit debug symbols (`-g`) |
+| `verbose` | bool | `false` | Print all invoked commands |
+| `keep_obj` | bool | `false` | Preserve object files after linking |
+| `no_cache` | bool | `false` | Disable build cache |
+| `sanitize` | bool | `true` | Enable ASan + UBSan for C |
+| `strict` | bool | `false` | Strict sanitizer mode, prefers `clang` |
+| `ignore_file` | string | `.fzignore` | Path to a `.gitignore`-style exclusion file |
+
+---
+
+### 11.2 Multiple Source Directories
+
+The `source_dirs` field (new in v1.5.0) lets you build from multiple directories in a single `fz` invocation. All directories are scanned recursively and their files are compiled together into one binary.
+
+```yaml
+source_dirs:
+  - kernel
+  - libc
+  - drivers
+output: forgeos.elf
+mode: raw
+```
+
+This is equivalent to building `kernel/`, `libc/`, and `drivers/` as if they were one large directory. Object file names are prefixed with their parent directory to avoid collisions:
+
+| Source file | Object file |
+|-------------|-------------|
+| `kernel/boot.asm` | `kernel_boot_asm.o` |
+| `libc/string.c` | `libc_string_c.o` |
+| `drivers/uart.c` | `drivers_uart_c.o` |
+
+---
+
+### 11.3 Explicit Source File Lists
+
+When `source_files` is set, `fz` builds exactly and only those files. Directory scanning is skipped entirely.
+
+```yaml
+source_files:
+  - boot/start.asm
+  - kernel/main.c
+  - kernel/irq.c
+output: kernel.elf
+mode: raw
+```
+
+Each path is verified to exist at startup. If a file is missing, `fz` exits with code `2` before compiling anything.
+
+`source_files` takes precedence over `source_dirs` and `source_dir` — if all three are set, only `source_files` is used.
+
+---
+
+### 11.4 Include & Exclude Patterns
+
+**`exclude`** — glob patterns; any file or directory matching at least one pattern is skipped:
+
+```yaml
+exclude:
+  - "test_*"       # skip files whose names start with test_
+  - "*/legacy/"    # skip any directory named legacy
+  - "*.tmp"        # skip all .tmp files
+```
+
+**`include`** (new in v1.5.0) — glob patterns; only files matching at least one pattern are considered. If `include` is not set (the default), all supported extensions are included.
+
+```yaml
+include:
+  - "*.asm"
+  - "*.c"
+```
+
+**Evaluation order during recursive scanning:**
+
+1. Check `exclude` patterns — skip if matched.
+2. Check `.fzignore` file — skip if matched.
+3. Check `include` patterns — skip if none match (when `include` is set).
+4. Check supported extensions (`.asm`, `.s`, `.S`, `.fasm`, `.c`) — skip all others.
+
+---
+
+### 11.5 Library Linking
+
+The `libs` field (new in v1.5.0) specifies system libraries to link against. Each entry is passed to the linker as `-l<lib>`:
+
+```yaml
+libs:
+  - m         # -lm  (math)
+  - pthread   # -lpthread
+  - c         # -lc
+```
+
+Libraries are appended to the linker command after all object files. They are resolved from standard system library paths. To add non-standard search paths, use `flags.ld: ["-L/path/to/libs"]`.
+
+This works in all linking modes (`auto`, `c`, `raw`).
+
+---
+
+### 11.6 Custom Compiler & Linker Flags
+
+The `flags` block (extended in v1.5.0 to include `flags.cc`) lets you pass arbitrary extra arguments to each tool:
+
+```yaml
+flags:
+  asm:                              # appended after standard assembler flags
+    - -DDEBUG_BUILD
+    - -I./include
+
+  cc:                               # appended after -Wall -Wextra -Werror ... but before -c
+    - -O3
+    - -march=native
+    - -DNDEBUG
+    - -ffreestanding
+
+  ld:                               # appended at the end of the linker command, before -o
+    - -T
+    - linker.ld
+    - -Map
+    - output.map
+    - -z
+    - max-page-size=0x1000
+```
+
+**Flag insertion points:**
+
+| Tool | Standard flags | Your `flags.*` | Final flag |
+|------|---------------|----------------|------------|
+| NASM | `-felf64 <src> -o <obj>` | inserted before `-o` | — |
+| GCC (asm) | `-c <src> -o <obj>` | inserted before `-c` | — |
+| GCC (C) | `-Wall -Wextra ... -c <src> -o <obj>` | inserted after warning flags | — |
+| GCC/LD (link) | `<objects>` | inserted after objects | `-o <binary>` |
+
+---
+
+### 11.7 .fzignore File
+
+The `.fzignore` file works exactly like `.gitignore`. It is loaded from the project root (or from the path set by `ignore_file` in config) and applied during all recursive directory scans.
+
+**Syntax rules:**
+
+- `*.o` — ignore all files ending in `.o`
+- `temp/` — ignore any directory named `temp` anywhere in the tree (trailing `/` means directory)
+- `build/output` — ignore this exact relative path
+- `# comment` — lines starting with `#` are ignored
+- Blank lines are ignored
+- `*` matches any sequence of characters except `/`
+
+**Example `.fzignore`:**
+
+```
+# Compiled objects
+*.o
+*.swp
+
+# Directories to skip entirely
+temp/
+test_*/
+vendor/
+
+# Specific files
+legacy/old_abi.asm
+```
+
+`.fzignore` is evaluated after `exclude` patterns. If a file is excluded by either, it is skipped.
+
+---
+
+### 11.8 Full Annotated Example
 
 ```yaml
 # fz.yaml
 
-# Source — choose one:
-source_dir: ./src         # Build all supported files recursively
-# source_file: main.asm   # Or build a single file
+# --- Source selection ---
 
-# Output
-output: myprogram         # Name of the final binary
+# Option A: multiple directories (new in v1.5.0)
+source_dirs:
+  - kernel
+  - libc
+  - drivers
 
-# Build options
-mode: auto                # auto | c | raw
-debug: false              # Include debug symbols (-g)
-verbose: false            # Print all invoked commands
-keep_obj: false           # Keep object files after linking
-no_cache: false           # Disable build cache
+# Option B: single directory (backward compatible)
+# source_dir: ./src
 
-# C-specific
-sanitize: true            # Enable ASan + UBSan
-strict: false             # Enable stricter sanitizers, prefer clang
+# Option C: exact file list (new in v1.5.0; overrides source_dirs when set)
+# source_files:
+#   - boot/start.asm
+#   - kernel/main.c
 
-# File filtering
-exclude:                  # Glob patterns — matching files/dirs are skipped
-  - vendor/
-  - "*_test.asm"
-  - legacy/
+# --- Output ---
+output: forgeos.elf           # Name of the final binary
 
-# Extra flags passed directly to assembler and linker
+# --- Build options ---
+mode: raw                     # auto | c | raw
+debug: true                   # Include debug symbols (-g)
+verbose: false                # Print all invoked commands
+keep_obj: true                # Keep object files after linking
+no_cache: false               # Disable build cache
+
+# --- C-specific ---
+sanitize: true                # Enable ASan + UBSan
+strict: false                 # Stricter sanitizers, prefer clang
+
+# --- File filtering ---
+exclude:
+  - "test_*"
+  - "*/legacy/"
+  - "*.tmp"
+
+include:                      # Only files matching at least one pattern (new in v1.5.0)
+  - "*.asm"
+  - "*.c"
+  - "*.s"
+
+# --- Library linking (new in v1.5.0) ---
+libs:
+  - gcc
+  - m
+
+# --- Custom flags (new: flags.cc in v1.5.0) ---
 flags:
-  asm:                    # Appended to nasm / gcc / fasm invocations
+  asm:
     - -DDEBUG_BUILD
     - -I./include
-  ld:                     # Appended to the linker invocation
-    - -lm
-    - -lpthread
+  cc:
+    - -O2
+    - -march=native
+    - -ffreestanding
+  ld:
+    - -T
+    - linker.ld
+
+# --- .fzignore path (new in v1.5.0) ---
+ignore_file: .myfzignore      # Default is .fzignore
 ```
-
-**Field reference:**
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `source_dir` | string | — | Directory to build recursively |
-| `source_file` | string | — | Single source file to build |
-| `output` | string | auto | Output binary name |
-| `mode` | string | `auto` | Linking mode: `auto`, `c`, or `raw` |
-| `debug` | bool | `false` | Emit debug symbols |
-| `verbose` | bool | `false` | Verbose command output |
-| `keep_obj` | bool | `false` | Preserve object files after linking |
-| `no_cache` | bool | `false` | Disable build cache |
-| `sanitize` | bool | `true` | Enable sanitizers for C |
-| `strict` | bool | `false` | Strict sanitizer mode, prefers `clang` |
-| `exclude` | list | — | Glob patterns for files/dirs to ignore |
-| `flags.asm` | list | — | Extra flags appended to assembler invocations |
-| `flags.ld` | list | — | Extra flags appended to linker invocations |
 
 ---
 
@@ -949,6 +1186,84 @@ fz -dir ./src
 ```
 
 All `.asm`, `.s`, `.S`, `.fasm`, and `.c` files under `./src/` are compiled and linked into a single binary.
+
+---
+
+### Build from multiple directories (v1.5.0)
+
+```bash
+cat .fz.yaml
+# source_dirs: [src, lib]
+# exclude: ["test_*", "draft/"]
+# output: release
+# mode: auto
+
+fz
+```
+
+---
+
+### Build with explicit file list (v1.5.0)
+
+```yaml
+# .fz.yaml
+source_files:
+  - boot/start.asm
+  - kernel/main.c
+output: kernel.elf
+mode: raw
+```
+
+```bash
+fz
+```
+
+Only those two files are compiled, regardless of what else exists in the project.
+
+---
+
+### Link against system libraries (v1.5.0)
+
+```yaml
+# .fz.yaml
+source_files: [calc.c]
+libs: [m]
+output: calc
+```
+
+```bash
+fz
+```
+
+Equivalent to: `gcc calc.o -lm -o calc`
+
+---
+
+### Custom compilation flags (v1.5.0)
+
+```yaml
+# .fz.yaml
+source_files: [main.c]
+flags:
+  cc: ["-O3", "-march=native"]
+  ld: ["-Wl,--gc-sections"]
+```
+
+```bash
+fz
+```
+
+---
+
+### Using .fzignore (v1.5.0)
+
+```bash
+cat .fzignore
+# temp/
+# *.bak
+
+fz -dir .   # temp/ and *.bak files are silently skipped
+```
 
 ---
 
@@ -1147,6 +1462,32 @@ fz -dir ./src -no-cache
 
 ---
 
+### source_files path not found
+
+When using `source_files` in the config, all paths are verified before compilation begins. If a file is missing:
+
+```
+fz: argument error: source file not found: kernel/main.c
+```
+
+Check that the path is relative to the directory where you run `fz`, not relative to the config file location.
+
+---
+
+### libs not found at link time
+
+If a library listed in `libs` is not in the system's standard library search path, the linker will report `cannot find -l<name>`. Add the directory containing the library via `flags.ld`:
+
+```yaml
+libs:
+  - mylib
+flags:
+  ld:
+    - -L/path/to/custom/libs
+```
+
+---
+
 ### Watch mode does not detect changes on WSL2
 
 WSL2 has known issues with `inotify`-based watching when files are edited from Windows applications (e.g. VS Code on the Windows side). Edit files from within the WSL2 terminal to get reliable events. This is a WSL2 kernel limitation, not a ForgeZero bug.
@@ -1173,7 +1514,14 @@ gcc --version
 
 | Feature | Status |
 |---------|--------|
-| `exclude` patterns in config file | Planned |
+| `exclude` patterns in config file | ✅ Done (v1.5.0) |
+| `include` patterns in config file | ✅ Done (v1.5.0) |
+| Multiple `source_dirs` | ✅ Done (v1.5.0) |
+| Explicit `source_files` list | ✅ Done (v1.5.0) |
+| `libs` field for library linking | ✅ Done (v1.5.0) |
+| `flags.cc` for C compiler flags | ✅ Done (v1.5.0) |
+| `.fzignore` file support | ✅ Done (v1.5.0) |
+| Multi-level config merging | ✅ Done (v1.5.0) |
 | `-asm-flag` and `-ld-flag` CLI flags for custom pass-through flags | Planned |
 | Colored terminal output (green success / red error) | Planned |
 | C++ support (`.cpp`, `.cxx`) with `g++` / `clang++` | Planned |
