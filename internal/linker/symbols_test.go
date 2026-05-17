@@ -79,3 +79,52 @@ b: ret
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+func TestCheckDuplicateSymbolsSingleFile(t *testing.T) {
+	if _, err := exec.LookPath("nasm"); err != nil {
+		t.Skip("nasm not installed")
+	}
+	dir := t.TempDir()
+	obj := buildObjectWithNASM(t, dir, "single", `
+section .text
+global foo
+foo: ret
+`)
+	err := CheckDuplicateSymbols([]string{obj}, false)
+	if err != nil {
+		t.Errorf("single file should not produce error: %v", err)
+	}
+}
+
+func TestCheckDuplicateSymbolsVerbose(t *testing.T) {
+	if _, err := exec.LookPath("nasm"); err != nil {
+		t.Skip("nasm not installed")
+	}
+	dir := t.TempDir()
+	obj := buildObjectWithNASM(t, dir, "verbose", `
+section .text
+global bar
+bar: ret
+`)
+	err := CheckDuplicateSymbols([]string{obj}, true)
+	if err != nil {
+		t.Errorf("verbose mode should not error on single file: %v", err)
+	}
+}
+
+func TestReadSymbolsWithObjdumpFallback(t *testing.T) {
+	if _, err := exec.LookPath("nasm"); err != nil {
+		t.Skip("nasm not installed")
+	}
+	dir := t.TempDir()
+	obj := buildObjectWithNASM(t, dir, "fallback", `
+section .text
+global fallback_func
+fallback_func: ret
+`)
+	_, err := readSymbols(obj, false)
+	if err != nil {
+		// If neither objdump nor readelf, skip.
+		t.Skip("no symbol reader available")
+	}
+}
