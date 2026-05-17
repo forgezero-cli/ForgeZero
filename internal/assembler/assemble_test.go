@@ -43,6 +43,19 @@ _start:
 	}
 }
 
+func TestAssembleNASMFailure(t *testing.T) {
+	if _, err := exec.LookPath("nasm"); err != nil {
+		t.Skip("nasm not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "bad.asm", "invalid asm content")
+	obj := filepath.Join(dir, "bad.o")
+	err := Assemble(context.Background(), src, obj, false, false, "auto")
+	if err == nil {
+		t.Error("expected error for invalid asm")
+	}
+}
+
 func TestAssembleGAS(t *testing.T) {
 	if _, err := exec.LookPath("gcc"); err != nil {
 		t.Skip("gcc not installed")
@@ -62,6 +75,19 @@ _start:
 	}
 	if _, err := os.Stat(obj); err != nil {
 		t.Error("object file not created")
+	}
+}
+
+func TestAssembleGASFailure(t *testing.T) {
+	if _, err := exec.LookPath("gcc"); err != nil {
+		t.Skip("gcc not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "bad.s", "invalid asm content")
+	obj := filepath.Join(dir, "bad.o")
+	err := Assemble(context.Background(), src, obj, false, false, "auto")
+	if err == nil {
+		t.Error("expected error for invalid asm")
 	}
 }
 
@@ -89,6 +115,19 @@ _start:
 	}
 }
 
+func TestAssembleFASMFailure(t *testing.T) {
+	if _, err := exec.LookPath("fasm"); err != nil {
+		t.Skip("fasm not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "bad.fasm", "invalid fasm")
+	obj := filepath.Join(dir, "bad.o")
+	err := Assemble(context.Background(), src, obj, false, false, "auto")
+	if err == nil {
+		t.Error("expected error for invalid fasm")
+	}
+}
+
 func TestAssembleUnsupported(t *testing.T) {
 	dir := t.TempDir()
 	src := writeTempFile(t, dir, "test.cpp", "int main(){}")
@@ -96,5 +135,34 @@ func TestAssembleUnsupported(t *testing.T) {
 	err := Assemble(context.Background(), src, obj, false, false, "auto")
 	if err == nil {
 		t.Error("expected error for unsupported extension")
+	}
+}
+
+func TestAssembleC(t *testing.T) {
+	if _, err := exec.LookPath("gcc"); err != nil {
+		t.Skip("gcc not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "test.c", "int main() { return 0; }")
+	obj := filepath.Join(dir, "test.o")
+	err := Assemble(context.Background(), src, obj, false, false, "auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(obj); err != nil {
+		t.Error("object file not created")
+	}
+}
+
+func TestAssembleCFailure(t *testing.T) {
+	if _, err := exec.LookPath("gcc"); err != nil {
+		t.Skip("gcc not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "bad.c", "int main() { return ")
+	obj := filepath.Join(dir, "bad.o")
+	err := Assemble(context.Background(), src, obj, false, false, "auto")
+	if err == nil {
+		t.Error("expected error for invalid C code")
 	}
 }
