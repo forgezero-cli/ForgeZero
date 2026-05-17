@@ -9,6 +9,8 @@ import (
 	"fz/internal/utils"
 )
 
+var OutputFormat = "elf"
+
 func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode string) error {
 	if err := utils.CheckFileExists(src); err != nil {
 		return err
@@ -45,7 +47,11 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 }
 
 func assembleNASM(ctx context.Context, src, obj string, debug, verbose bool) error {
-	args := []string{"-felf64", src, "-o", obj}
+	formatFlag := "-felf64"
+	if OutputFormat == "bin" {
+		formatFlag = "-fbin"
+	}
+	args := []string{formatFlag, src, "-o", obj}
 	if debug {
 		args = append([]string{"-g"}, args...)
 	}
