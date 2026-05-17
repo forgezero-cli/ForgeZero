@@ -13,6 +13,7 @@ import (
 	"fz/internal/builder"
 	"fz/internal/config"
 	"fz/internal/linker"
+	"fz/internal/man"
 	"fz/internal/utils"
 	"fz/internal/watcher"
 )
@@ -30,42 +31,64 @@ type BuildReport struct {
 var version = "1.3.0"
 
 func printHelp() {
-	fmt.Fprintf(os.Stderr, `fz - assembly swiss army knife
+	cyan := "\033[36m"
+	green := "\033[32m"
+	blue := "\033[34m"
+	bold := "\033[1m"
+	reset := "\033[0m"
 
-Usage:
-  fz [options] (-asm <file> | -cc <file> | -dir <dir> | (no args with config))
+	fmt.Fprintln(os.Stderr, "\n"+cyan+bold+"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"+reset)
+	fmt.Fprintln(os.Stderr, cyan+bold+"  fz - assembly swiss army knife "+reset)
+	fmt.Fprintln(os.Stderr, cyan+bold+"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"+reset+"\n")
 
-Options:
-  -asm <file>            Assembler source (.asm, .s, .S, .fasm)
-  -cc <file>             C source (compiled with -Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion)
-  -dir <dir>             Build all supported files in directory (recursive)
-  -out <name>            Output binary name
-  -out-obj <name>        Object file name (single file only)
-  -mode <auto|c|raw>     Linking mode (default: auto)
-  -debug                 Emit debug information (-g)
-  -verbose               Print executed commands
-  -keep-obj              Keep temporary object files when using -dir
-  -no-cache              Disable incremental cache
-  -no-symbol-check       Skip duplicate symbol pre‑check
-  -sanitize              Enable sanitizers for C (default: true)
-  -no-sanitize           Disable sanitizers
-  -strict                Enable aggressive sanitizers (use-after-return, use-after-scope) – requires clang
-  -clean                 Remove all build artifacts (.fz_objs, .fz_cache, binaries)
-  -watch                 Watch source files and rebuild automatically
-  -json                  Output build report in JSON format (CI/CD)
-  -config <file>         Config file path (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)
-  -v, -version           Show version
-  -h, -help              Show this help
+	fmt.Fprintln(os.Stderr, bold+"Usage:"+reset)
+	fmt.Fprintln(os.Stderr, "  "+green+"fz [options] (-asm <file> | -cc <file> | -dir <dir>)"+reset+"\n")
 
-Examples:
-  fz -asm boot.asm
-  fz -cc main.c -strict
-  fz -dir ./src -out myapp
-  fz -dir . -clean
-  fz -config build.yaml
+	fmt.Fprintln(os.Stderr, blue+bold+"Build Source:"+reset)
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-asm, --assembler <file>     "+reset+"Assembler source (.asm, .s, .S, .fasm)")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-cc <file>                   "+reset+"C source (strict warnings enabled)")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-dir <directory>             "+reset+"Build all supported files recursively\n")
 
-Supported extensions: .asm, .s, .S, .fasm, .c
-`)
+	fmt.Fprintln(os.Stderr, blue+bold+"Output Control:"+reset)
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-out <name>                  "+reset+"Output binary name")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-out-obj <name>              "+reset+"Object file name (single file only)")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-keep-obj                    "+reset+"Keep temporary object files (when using -dir)\n")
+
+	fmt.Fprintln(os.Stderr, blue+bold+"Linking Mode:"+reset)
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-mode <auto|c|raw>           "+reset+"Linking mode (default: auto)\n")
+
+	fmt.Fprintln(os.Stderr, blue+bold+"C‑specific & Sanitizers:"+reset)
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-sanitize                    "+reset+"Enable ASan + UBSan (default: on)")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-no-sanitize                 "+reset+"Disable sanitizers")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-strict                      "+reset+"Use clang + advanced sanitizers (use-after-return, etc.)\n")
+
+	fmt.Fprintln(os.Stderr, blue+bold+"Debugging & Verbosity:"+reset)
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-debug                       "+reset+"Emit debug symbols (-g)")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-verbose                     "+reset+"Print every command executed\n")
+
+	fmt.Fprintln(os.Stderr, blue+bold+"Performance / Cache:"+reset)
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-no-cache                    "+reset+"Disable incremental cache")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-no-symbol-check             "+reset+"Skip duplicate symbol pre‑check\n")
+
+	fmt.Fprintln(os.Stderr, blue+bold+"Other:"+reset)
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-clean                       "+reset+"Remove all build artifacts (.fz_objs, .fz_cache, binaries)")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-watch                       "+reset+"Watch files and auto‑rebuild")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-json                        "+reset+"Output build report in JSON (for CI/CD)")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-config <file>               "+reset+"Config file (default: .fz.yaml, fz.yaml, ...)")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-man                         "+reset+"Generate roff man page and exit\n")
+
+	fmt.Fprintln(os.Stderr, blue+bold+"Info:"+reset)
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-h, --help                   "+reset+"Show this help")
+	fmt.Fprintln(os.Stderr, "  "+cyan+"-v, --version                "+reset+"Show version\n")
+
+	fmt.Fprintln(os.Stderr, blue+bold+"Examples:"+reset)
+	fmt.Fprintln(os.Stderr, "  "+green+"  fz -asm boot.asm"+reset)
+	fmt.Fprintln(os.Stderr, "  "+green+"  fz -cc main.c -strict -verbose"+reset)
+	fmt.Fprintln(os.Stderr, "  "+green+"  fz -dir ./src -out myapp -watch"+reset)
+	fmt.Fprintln(os.Stderr, "  "+green+"  fz -json -cc test.c"+reset)
+	fmt.Fprintln(os.Stderr, "  "+green+"  fz -dir . -clean"+reset+"\n")
+
+	fmt.Fprintln(os.Stderr, blue+bold+"Supported extensions:"+reset+" "+cyan+".asm, .s, .S, .fasm, .c"+reset+"\n")
 }
 
 func main() {
@@ -91,6 +114,7 @@ func main() {
 		jsonOutput    bool
 		showVersion   bool
 		showHelp      bool
+		showMan       bool
 	)
 
 	flag.StringVar(&asmPath, "asm", "", "")
@@ -117,10 +141,15 @@ func main() {
 	flag.BoolVar(&showVersion, "version", false, "")
 	flag.BoolVar(&showHelp, "h", false, "")
 	flag.BoolVar(&showHelp, "help", false, "")
+	flag.BoolVar(&showMan, "man", false, "")
 
 	flag.Usage = printHelp
 	flag.Parse()
 
+	if showMan {
+		fmt.Print(man.GenerateManPage(version))
+		os.Exit(0)
+	}
 	if showHelp {
 		printHelp()
 		os.Exit(0)
