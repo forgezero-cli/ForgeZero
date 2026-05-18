@@ -1,7 +1,6 @@
 package updater
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,14 +8,12 @@ import (
 
 func TestGetLatestVersion(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		release := Release{TagName: "v1.7.1"}
-		json.NewEncoder(w).Encode(release)
+		w.Write([]byte(`{"tag_name":"v1.7.1"}`))
 	}))
 	defer server.Close()
 	oldURL := apiURL
-	defer func() { apiURL = oldURL }()
 	apiURL = server.URL
-
+	defer func() { apiURL = oldURL }()
 	version, err := GetLatestVersion()
 	if err != nil {
 		t.Fatal(err)
@@ -32,14 +29,10 @@ func TestGetLatestVersionNotFound(t *testing.T) {
 	}))
 	defer server.Close()
 	oldURL := apiURL
-	defer func() { apiURL = oldURL }()
 	apiURL = server.URL
-
-	version, err := GetLatestVersion()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if version != "" {
-		t.Errorf("expected empty version on 404, got %s", version)
+	defer func() { apiURL = oldURL }()
+	_, err := GetLatestVersion()
+	if err == nil {
+		t.Error("expected error for 404")
 	}
 }
