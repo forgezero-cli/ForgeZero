@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"fz/internal/assembler"
+	"fz/internal/utils"
 )
 
 type MockRunner struct {
@@ -522,5 +525,480 @@ func TestLinkWithLdMissingLib(t *testing.T) {
 	}
 	if !contains(capturedArgs, "-lm") || !contains(capturedArgs, "-lc") {
 		t.Error("library flags missing")
+	}
+}
+
+func TestLinkMultipleWithClangNoFallbackError(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("clang error")
+		},
+	}
+	objFiles := []string{"a.o"}
+	err := linkMultipleWithClang(context.Background(), objFiles, "bin", false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "use -verbose for details") {
+		t.Error("should hint -verbose")
+	}
+}
+
+func TestTryAutoLinkMultipleStrictClangSuccess(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	clangCalled := false
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			if name == "clang" {
+				clangCalled = true
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("clang not installed, cannot test strict mode branch")
+	}
+	objFiles := []string{"a.o"}
+	err := tryAutoLinkMultiple(context.Background(), objFiles, "bin", false, true, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !clangCalled {
+		t.Error("clang not called in strict mode")
+	}
+}
+
+func TestTryAutoLinkMultipleStrictClangFailThenGcc(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if name == "clang" {
+				return "", fmt.Errorf("clang fails")
+			}
+			if name == "gcc" {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("clang not installed, cannot test clang failure path")
+	}
+	objFiles := []string{"a.o"}
+	err := tryAutoLinkMultiple(context.Background(), objFiles, "bin", false, true, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 3 {
+		t.Errorf("expected 3 calls, got %d", callCount)
+	}
+}
+
+func TestLinkWithGccNoFallbackError(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("gcc error")
+		},
+	}
+	err := linkWithGcc(context.Background(), "obj", "bin", false, false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "use -verbose for details") {
+		t.Error("should hint -verbose")
+	}
+}
+
+func TestLinkWithGccFallbackBothFail(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			return "", fmt.Errorf("always fails")
+		},
+	}
+	err := linkWithGcc(context.Background(), "obj", "bin", false, true, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestTryAutoLinkStrictClangSuccess(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	clangCalled := false
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			if name == "clang" {
+				clangCalled = true
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("clang not installed, cannot test strict clang path")
+	}
+	err := tryAutoLink(context.Background(), "obj.o", "bin", false, true, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !clangCalled {
+		t.Error("clang not called in strict mode")
+	}
+}
+
+func TestTryAutoLinkStrictClangFailGccSuccess(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if name == "clang" {
+				return "", fmt.Errorf("clang error")
+			}
+			if name == "gcc" {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("clang not installed, cannot test clang failure path")
+	}
+	err := tryAutoLink(context.Background(), "obj.o", "bin", false, true, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 3 {
+		t.Errorf("expected 3 calls, got %d", callCount)
+	}
+}
+
+func TestLinkWithClangNoFallbackError(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("clang error")
+		},
+	}
+	err := linkWithClang(context.Background(), "obj.o", "bin", false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "use -verbose for details") {
+		t.Error("should hint -verbose")
+	}
+}
+
+func TestLinkMultipleWithClangFallbackToNoPie(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first fail")
+			}
+			if callCount == 2 && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	objFiles := []string{"a.o"}
+	err := linkMultipleWithClang(context.Background(), objFiles, "bin", false, true, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestCheckDuplicateSymbolsVerboseReal(t *testing.T) {
+	if _, err := exec.LookPath("nasm"); err != nil {
+		t.Skip("nasm not installed")
+	}
+	if _, err := exec.LookPath("objdump"); err != nil {
+		t.Skip("objdump not installed")
+	}
+	dir := t.TempDir()
+	buildObjectWithNASM(t, dir, "dup1", `
+section .text
+global dup
+dup: ret
+`)
+	buildObjectWithNASM(t, dir, "dup2", `
+section .text
+global dup
+dup: ret
+`)
+	obj1 := filepath.Join(dir, "dup1.o")
+	obj2 := filepath.Join(dir, "dup2.o")
+	err := CheckDuplicateSymbols([]string{obj1, obj2}, true)
+	if err == nil {
+		t.Error("expected duplicate symbol error")
+	}
+	if !strings.Contains(err.Error(), "duplicate global symbols") {
+		t.Errorf("wrong error: %v", err)
+	}
+}
+
+func TestTryAutoLinkMultipleStrictClangFailGccSuccess(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if name == "clang" {
+				return "", fmt.Errorf("clang error")
+			}
+			if name == "gcc" {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("clang not installed")
+	}
+	objFiles := []string{"a.o"}
+	err := tryAutoLinkMultiple(context.Background(), objFiles, "bin", false, true, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 3 {
+		t.Errorf("expected 3 calls, got %d", callCount)
+	}
+}
+
+func TestLinkMultipleWithGccSanitizeStrict(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	var capturedArgs []string
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			capturedArgs = args
+			return "", nil
+		},
+	}
+	objFiles := []string{"a.o"}
+	err := linkMultipleWithGcc(context.Background(), objFiles, "bin", false, false, true, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(capturedArgs, "-fsanitize=address") {
+		t.Error("missing -fsanitize=address")
+	}
+	if !contains(capturedArgs, "-fsanitize-address-use-after-scope") {
+		t.Error("missing strict flag")
+	}
+}
+
+func TestLinkMultipleWithGccNoFallbackError(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("gcc error")
+		},
+	}
+	objFiles := []string{"a.o"}
+	err := linkMultipleWithGcc(context.Background(), objFiles, "bin", false, false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "use -verbose for details") {
+		t.Error("should hint -verbose")
+	}
+}
+
+func TestSetOutputFormat(t *testing.T) {
+	oldFormat := assembler.OutputFormat
+	defer func() { assembler.OutputFormat = oldFormat }()
+
+	err := SetOutputFormat("elf64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assembler.OutputFormat != "elf64" {
+		t.Errorf("expected elf64, got %s", assembler.OutputFormat)
+	}
+
+	err = SetOutputFormat("elf32")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assembler.OutputFormat != "elf32" {
+		t.Errorf("expected elf32, got %s", assembler.OutputFormat)
+	}
+
+	err = SetOutputFormat("bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assembler.OutputFormat != "bin" {
+		t.Errorf("expected bin, got %s", assembler.OutputFormat)
+	}
+
+	err = SetOutputFormat("invalid")
+	if err == nil {
+		t.Error("expected error for invalid format")
+	}
+	if !strings.Contains(err.Error(), "invalid output format") {
+		t.Errorf("wrong error message: %v", err)
+	}
+}
+
+func TestLinkGccNotFound(t *testing.T) {
+	// Create a dummy object file
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "obj.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "bin")
+
+	oldCheck := utils.CheckToolFunc
+	defer func() { utils.CheckToolFunc = oldCheck }()
+	utils.CheckToolFunc = func(name string) error {
+		if name == "gcc" {
+			return fmt.Errorf("gcc not found")
+		}
+		return nil
+	}
+	err := Link(context.Background(), obj, bin, false, "c", false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "gcc not found") {
+		t.Errorf("wrong error: %v", err)
+	}
+}
+
+func TestLinkLdNotFound(t *testing.T) {
+	// Create a dummy object file
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "obj.o")
+	if err := os.WriteFile(obj, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "bin")
+
+	oldCheck := utils.CheckToolFunc
+	defer func() { utils.CheckToolFunc = oldCheck }()
+	utils.CheckToolFunc = func(name string) error {
+		if name == "ld" {
+			return fmt.Errorf("ld not found")
+		}
+		return nil
+	}
+	err := Link(context.Background(), obj, bin, false, "raw", false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "ld not found") {
+		t.Errorf("wrong error: %v", err)
+	}
+}
+
+func TestLinkMultipleGccNotFound(t *testing.T) {
+	oldCheck := utils.CheckToolFunc
+	defer func() { utils.CheckToolFunc = oldCheck }()
+	utils.CheckToolFunc = func(name string) error {
+		if name == "gcc" {
+			return fmt.Errorf("gcc not found")
+		}
+		return nil
+	}
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "a.o")
+	err := os.WriteFile(obj, []byte("fake"), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = LinkMultiple(context.Background(), []string{obj}, "bin", false, "c", false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "gcc not found") {
+		t.Errorf("wrong error: %v", err)
+	}
+}
+
+func TestLinkMultipleLdNotFound(t *testing.T) {
+	oldCheck := utils.CheckToolFunc
+	defer func() { utils.CheckToolFunc = oldCheck }()
+	utils.CheckToolFunc = func(name string) error {
+		if name == "ld" {
+			return fmt.Errorf("ld not found")
+		}
+		return nil
+	}
+
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "a.o")
+	err := os.WriteFile(obj, []byte("fake"), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = LinkMultiple(context.Background(), []string{obj}, "bin", false, "raw", false, false, false, nil)
+
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "ld not found") {
+		t.Errorf("wrong error: %v", err)
+	}
+}
+
+func TestTryAutoLinkNoGccNoLd(t *testing.T) {
+	oldCheck := utils.CheckToolFunc
+	defer func() { utils.CheckToolFunc = oldCheck }()
+	utils.CheckToolFunc = func(name string) error {
+		return fmt.Errorf("tool not found")
+	}
+	err := tryAutoLink(context.Background(), "obj.o", "bin", false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "auto linking failed") {
+		t.Errorf("wrong error: %v", err)
+	}
+}
+
+func TestTryAutoLinkMultipleNoGccNoLd(t *testing.T) {
+	oldCheck := utils.CheckToolFunc
+	defer func() { utils.CheckToolFunc = oldCheck }()
+	utils.CheckToolFunc = func(name string) error {
+		return fmt.Errorf("tool not found")
+	}
+	objFiles := []string{"a.o"}
+	err := tryAutoLinkMultiple(context.Background(), objFiles, "bin", false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "auto linking failed") {
+		t.Errorf("wrong error: %v", err)
 	}
 }
