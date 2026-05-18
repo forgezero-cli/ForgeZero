@@ -14,7 +14,7 @@ type BuildState struct {
 	TextAddr      string
 	Out           string
 	SourcePath    string
-	SourceType    string // "asm", "cc", "dir"
+	SourceType    string
 }
 
 func DefaultState() *BuildState {
