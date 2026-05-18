@@ -2,6 +2,7 @@ package builder
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -148,5 +149,41 @@ func TestCleanDir(t *testing.T) {
 	}
 	if _, err := os.Stat(objFile); !os.IsNotExist(err) {
 		t.Error(".o file not removed")
+	}
+}
+
+func TestThreeMainFiles(t *testing.T) {
+	dir := t.TempDir()
+	mainContent := `
+#include <stdio.h>
+void a(void);
+void b(void);
+void c(void);
+int main() { a(); b(); c(); return 0; }
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.c"), []byte(mainContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a", "b", "c"} {
+		sub := filepath.Join(dir, name)
+		if err := os.Mkdir(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		content := fmt.Sprintf(`
+#include <stdio.h>
+void %s(void) { printf("%%s\\n", __FILE__); }
+`, name)
+		if err := os.WriteFile(filepath.Join(sub, name+".c"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outBin := filepath.Join(t.TempDir(), "three_main")
+	ctx := context.Background()
+	_, err := BuildDir(ctx, []string{dir}, outBin, false, true, "c", false, false, true, false, false, nil, nil, nil, nil, nil, 1, "executable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(outBin); err != nil {
+		t.Error("binary not created")
 	}
 }
