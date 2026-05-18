@@ -10,7 +10,10 @@ import (
 	"strings"
 )
 
-var apiURL = "https://api.github.com/repos/forgezero-cli/ForgeZero/releases/latest"
+var (
+	apiURL             = "https://api.github.com/repos/forgezero-cli/ForgeZero/releases/latest"
+	executablePathFunc = os.Executable
+)
 
 type Release struct {
 	TagName string `json:"tag_name"`
@@ -64,7 +67,7 @@ func UpdateSelf(currentVersion string) error {
 	}
 	defer resp.Body.Close()
 
-	exePath, err := os.Executable()
+	exePath, err := executablePathFunc()
 	if err != nil {
 		return err
 	}
