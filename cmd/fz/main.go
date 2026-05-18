@@ -33,7 +33,7 @@ type BuildReport struct {
 	Error       string   `json:"error,omitempty"`
 }
 
-var version = "1.7.1"
+var version = "1.8.0"
 
 func printHelp() {
 	fmt.Fprintf(os.Stderr, `
@@ -110,6 +110,8 @@ func main() {
 		shellMode     bool
 		jobs          int
 		updateMode    bool
+		buildType     string
+		libMode       bool
 	)
 
 	flag.StringVar(&asmPath, "asm", "", "")
@@ -144,6 +146,9 @@ func main() {
 	flag.BoolVar(&shellMode, "shell", false, "run interactive shell")
 	flag.IntVar(&jobs, "j", 1, "number of parallel jobs (0 = auto = CPU cores)")
 	flag.BoolVar(&updateMode, "update", false, "update fz to the latest version")
+	flag.StringVar(&buildType, "type", "executable", "build type: executable (default) or static")
+	flag.BoolVar(&libMode, "lib", false, "build static library (archive)")
+
 	flag.Usage = printHelp
 	flag.Parse()
 	if initMode {
@@ -153,6 +158,15 @@ func main() {
 		}
 		fmt.Println("project initialized. edit .fz.yaml to configure ur build.")
 		return
+	}
+
+	if libMode {
+		buildType = "static"
+	}
+
+	if buildType != "executable" && buildType != "static" {
+		fmt.Fprintf(os.Stderr, "error: -type must be executable or static")
+		os.Exit(2)
 	}
 
 	if updateMode {
@@ -462,7 +476,7 @@ func main() {
 			if cfg != nil {
 				libs = cfg.Libs
 			}
-			res, err := builder.BuildDir(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude, sourceFilesList, ignoreMatcher, includes, libs, jobs)
+			res, err := builder.BuildDir(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude, sourceFilesList, ignoreMatcher, includes, libs, jobs, buildType)
 			if err != nil {
 				return err
 			}
