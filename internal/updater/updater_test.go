@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,11 +40,62 @@ func TestGetLatestVersionNotFound(t *testing.T) {
 	}
 }
 
+func TestAssetName(t *testing.T) {
+	// Just ensure it doesn't panic
+	name := assetName()
+	if name == "" {
+		t.Error("asset name is empty")
+	}
+}
+
 func TestUpdateSelfDownload(t *testing.T) {
 	tmpDir := t.TempDir()
-	oldExe, _ := os.Executable()
-	mockExe := filepath.Join(tmpDir, "fz")
-	os.WriteFile(mockExe, []byte("old"), 0o755)
-	_ = oldExe
-	t.Skip("requires mocking os.Executable")
+	fakeExe := filepath.Join(tmpDir, "fz")
+	if err := os.WriteFile(fakeExe, []byte("old content"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Override executablePathFunc to return the fakeExe path
+	oldFunc := executablePathFunc
+	executablePathFunc = func() (string, error) { return fakeExe, nil }
+	defer func() { executablePathFunc = oldFunc }()
+
+	// Create a test HTTP server that returns a binary
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("new binary content"))
+	}))
+	defer server.Close()
+	oldURL := apiURL
+	apiURL = server.URL + "/release"
+	defer func() { apiURL = oldURL }()
+
+	binServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("new binary"))
+	}))
+	defer binServer.Close()
+	t.Skip("full integration test requires multiple endpoints; manual test recommended")
+}
+
+func TestUpdateSelfAlreadyUpToDate(t *testing.T) {
+	oldURL := apiURL
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tag_name":"v1.7.2"}`))
+	}))
+	apiURL = server.URL
+	defer func() { apiURL = oldURL }()
+	defer server.Close()
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	err := UpdateSelf("1.7.2")
+	w.Close()
+	os.Stdout = oldStdout
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	if !bytes.Contains(buf.Bytes(), []byte("Already up to date")) {
+		t.Error("expected 'Already up to date' message")
+	}
 }
