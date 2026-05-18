@@ -1,0 +1,36 @@
+name: Deploy Binaries to Wienton Mirror
+
+on:
+  push:
+    tags:
+      - 'v*' 
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24.4'
+      - name: Build all binaries
+        run: |
+          mkdir -p build
+          GOOS=linux GOARCH=amd64 go build -o build/fz-linux-amd64
+          GOOS=linux GOARCH=arm64 go build -o build/fz-linux-arm64
+          GOOS=windows GOARCH=amd64 go build -o build/fz-windows-amd64.exe
+          GOOS=darwin GOARCH=amd64 go build -o build/fz-darwin-amd64
+          GOOS=darwin GOARCH=arm64 go build -o build/fz-darwin-arm64
+
+      - name: Push to Server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "build/*"
+          target: "/var/www/fz_ru/dist/latest/"
+          strip_components: 1
+
