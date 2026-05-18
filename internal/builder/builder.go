@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"fz/internal/assembler"
+	"fz/internal/config"
 	"fz/internal/linker"
 	"fz/internal/utils"
 )
@@ -375,4 +376,30 @@ func CleanDir(dir string, verbose bool) error {
 		}
 	}
 	return nil
+}
+
+func CollectSourceFiles(cfg *config.Config, dirs []string) ([]string, error) {
+	var srcFiles []string
+	if cfg != nil && len(cfg.SourceFiles) > 0 {
+		return cfg.SourceFiles, nil
+	}
+	for _, dir := range dirs {
+		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(path))
+			if utils.SupportedExtension(ext) {
+				srcFiles = append(srcFiles, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return srcFiles, nil
 }
