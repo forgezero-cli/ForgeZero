@@ -195,7 +195,7 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 	for i, p := range pairs {
 		select {
 		case <-stopChan:
-			break
+			return nil, firstErr
 		default:
 			jobsChan <- job{idx: i, p: p}
 		}
