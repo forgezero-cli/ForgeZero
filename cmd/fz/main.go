@@ -65,7 +65,8 @@ Options:
   -format <elf|bin>      Output format: elf (default) or bin (flat binary, no linking)
   -h, --help             Show this help
   -v, --version          Show version
--j <n>                 Number of parallel jobs (0 = auto = CPU cores)
+-j <n>                   Number of parallel jobs (0 = auto = CPU cores)
+-target 							 Target triple(default: x86_64-linux-gnu)
 
 Examples:
   fz -asm boot.asm
@@ -112,6 +113,7 @@ func main() {
 		updateMode    bool
 		buildType     string
 		libMode       bool
+		target        string
 	)
 
 	flag.StringVar(&asmPath, "asm", "", "")
@@ -148,6 +150,7 @@ func main() {
 	flag.BoolVar(&updateMode, "update", false, "update fz to the latest version")
 	flag.StringVar(&buildType, "type", "executable", "build type: executable (default) or static")
 	flag.BoolVar(&libMode, "lib", false, "build static library (archive)")
+	flag.StringVar(&target, "target", "x86_64-linux-gnu", "target triple (e.g., x86_64-linux-gnu, arm-linux-gnueabihf, riscv64-unknown-elf)")
 
 	flag.Usage = printHelp
 	flag.Parse()
@@ -159,7 +162,8 @@ func main() {
 		fmt.Println("project initialized. edit .fz.yaml to configure ur build.")
 		return
 	}
-
+	assembler.Target = target
+	linker.Target = target
 	if libMode {
 		buildType = "static"
 	}
