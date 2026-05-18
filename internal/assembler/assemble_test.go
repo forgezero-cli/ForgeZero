@@ -128,7 +128,6 @@ func TestAssembleFASMFailure(t *testing.T) {
 	}
 }
 
-
 func TestAssembleC(t *testing.T) {
 	if _, err := exec.LookPath("gcc"); err != nil {
 		t.Skip("gcc not installed")
@@ -158,3 +157,37 @@ func TestAssembleCFailure(t *testing.T) {
 	}
 }
 
+func TestAssembleCpp(t *testing.T) {
+	if _, err := exec.LookPath("g++"); err != nil {
+		t.Skip("g++ not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "test.cpp", `
+#include <cstdio>
+int main() {
+    printf("C++ works\n");
+    return 0;
+}
+`)
+	obj := filepath.Join(dir, "test.o")
+	err := Assemble(context.Background(), src, obj, false, false, "auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(obj); err != nil {
+		t.Error("object file not created")
+	}
+}
+
+func TestAssembleCppFailure(t *testing.T) {
+	if _, err := exec.LookPath("g++"); err != nil {
+		t.Skip("g++ not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "bad.cpp", "invalid c++")
+	obj := filepath.Join(dir, "bad.o")
+	err := Assemble(context.Background(), src, obj, false, false, "auto")
+	if err == nil {
+		t.Error("expected error for invalid C++")
+	}
+}
