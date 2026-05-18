@@ -33,7 +33,7 @@ type BuildReport struct {
 	Error       string   `json:"error,omitempty"`
 }
 
-var version = "1.7.0"
+var version = "1.7.1"
 
 func printHelp() {
 	fmt.Fprintf(os.Stderr, `
