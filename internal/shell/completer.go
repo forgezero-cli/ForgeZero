@@ -17,11 +17,6 @@ var suggestions = []prompt.Suggest{
 	{Text: "help", Description: "Show help"},
 }
 
-var setKeys = []string{
-	"mode", "format", "strict", "sanitize", "verbose", "debug",
-	"no-cache", "no-symbol-check", "keep-obj", "ld-script", "text-addr", "out",
-}
-
 func Completer(in prompt.Document) []prompt.Suggest {
 	w := in.GetWordBeforeCursor()
 	if w == "" {
