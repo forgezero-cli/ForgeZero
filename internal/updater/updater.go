@@ -11,24 +11,24 @@ import (
 )
 
 const (
-	repoOwner = "alexvoste"
+	repoOwner = "forgezero-cli"
 	repoName  = "ForgeZero"
-	apiURL    = "https://api.github.com/repos/%s/%s/releases/latest"
 )
+
+var apiURL = fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", repoOwner, repoName)
 
 type Release struct {
 	TagName string `json:"tag_name"`
 }
 
 func GetLatestVersion() (string, error) {
-	url := fmt.Sprintf(apiURL, repoOwner, repoName)
-	resp, err := http.Get(url)
+	resp, err := http.Get(apiURL)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return "", nil // no releases, treat as no update available
+		return "", nil
 	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("GitHub API returned %s", resp.Status)
@@ -52,9 +52,8 @@ func UpdateSelf(currentVersion string) error {
 	if latest != "" {
 		fmt.Printf("New version available: %s (current: %s)\n", latest, currentVersion)
 	} else {
-		fmt.Printf("Current version: %s. No release tags found, will update to latest via 'go install'.\n", currentVersion)
+		fmt.Printf("Current version: %s. No release tags found, will update via 'go install'.\n", currentVersion)
 	}
-
 	goPath, err := exec.LookPath("go")
 	if err != nil {
 		fmt.Println("Go is not installed. Please update manually using:")
@@ -63,11 +62,7 @@ func UpdateSelf(currentVersion string) error {
 	}
 	fmt.Print("Updating via 'go install'... ")
 	cmd := exec.Command(goPath, "install", fmt.Sprintf("github.com/%s/%s/cmd/fz@latest", repoOwner, repoName))
-	cmd.Env = append(
-		os.Environ(),
-		"GOOS="+runtime.GOOS,
-		"GOARCH="+runtime.GOARCH,
-	)
+	cmd.Env = append(os.Environ(), "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
