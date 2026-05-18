@@ -10,11 +10,7 @@ import (
 	"strings"
 )
 
-const (
-	repoOwner = "forgezero-cli"
-	repoName  = "ForgeZero"
-	apiURL    = "https://api.github.com/repos/%s/%s/releases/latest"
-)
+var apiURL = "https://api.github.com/repos/forgezero-cli/ForgeZero/releases/latest"
 
 type Release struct {
 	TagName string `json:"tag_name"`
@@ -25,8 +21,7 @@ type Release struct {
 }
 
 func GetLatestVersion() (string, error) {
-	url := fmt.Sprintf(apiURL, repoOwner, repoName)
-	resp, err := http.Get(url)
+	resp, err := http.Get(apiURL)
 	if err != nil {
 		return "", err
 	}
@@ -62,7 +57,7 @@ func UpdateSelf(currentVersion string) error {
 	fmt.Printf("New version available: %s (current: %s)\n", latest, currentVersion)
 
 	asset := assetName()
-	url := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s/%s", repoOwner, repoName, latest, asset)
+	url := fmt.Sprintf("https://github.com/forgezero-cli/ForgeZero/releases/download/v%s/%s", latest, asset)
 	resp, err := http.Get(url)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("could not download binary: %v", err)
