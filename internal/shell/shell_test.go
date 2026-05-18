@@ -3,6 +3,8 @@ package shell
 import (
 	"bytes"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -87,5 +89,75 @@ func TestCmdSet(t *testing.T) {
 	args = []string{"set", "invalid"}
 	if err := cmdSet(state, args); err == nil {
 		t.Error("expected error for invalid set syntax")
+	}
+}
+
+func TestCmdBuild(t *testing.T) {
+	if _, err := exec.LookPath("nasm"); err != nil {
+		t.Skip("nasm not installed")
+	}
+	if _, err := exec.LookPath("ld"); err != nil {
+		t.Skip("ld not installed")
+	}
+	state := DefaultState()
+	tempDir := t.TempDir()
+	src := filepath.Join(tempDir, "test.asm")
+	err := os.WriteFile(src, []byte(`
+section .text
+global _start
+_start:
+	mov eax, 60
+	xor edi, edi
+	syscall
+`), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.SourcePath = src
+	state.SourceType = "asm"
+	state.Out = filepath.Join(tempDir, "myapp")
+	state.Format = "elf64"
+	state.Mode = "raw"
+	state.Verbose = true
+	state.Debug = false
+	state.NoSymbolCheck = false
+	state.Sanitize = false
+	state.Strict = false
+	state.KeepObj = false
+	state.NoCache = false
+	err = cmdBuild(state)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+	if _, err := os.Stat(state.Out); err != nil {
+		t.Error("output binary not created")
+	}
+	info, err := os.Stat(state.Out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Error("output binary is not executable")
+	}
+}
+
+func TestCmdClean(t *testing.T) {
+	state := DefaultState()
+	dir := t.TempDir()
+	state.SourcePath = dir
+	state.SourceType = "dir"
+	objDir := filepath.Join(dir, ".fz_objs")
+	cacheDir := filepath.Join(dir, ".fz_cache")
+	os.MkdirAll(objDir, 0o755)
+	os.MkdirAll(cacheDir, 0o755)
+	err := cmdClean(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(objDir); !os.IsNotExist(err) {
+		t.Error(".fz_objs not removed")
+	}
+	if _, err := os.Stat(cacheDir); !os.IsNotExist(err) {
+		t.Error(".fz_cache not removed")
 	}
 }
