@@ -26,6 +26,8 @@
 
 ForgeZero is a high-performance, zero-overhead build tool for assembly and C developers. It wraps NASM, GAS, FASM, GCC, Clang, and LD into a single unified command-line interface — no Makefiles, no build scripts, no configuration required to get started.
 
+> Inspired by the simplicity of **Suckless** and the efficiency of **TinyCC**
+
 ---
 
 ## Table of Contents
