@@ -435,3 +435,92 @@ func TestLinkWithGccFallbackNoPieVerbose(t *testing.T) {
 		t.Errorf("expected 2 calls, got %d", callCount)
 	}
 }
+
+func TestTryAutoLinkMultipleClangSuccess(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	clangCalled := false
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			if name == "clang" {
+				clangCalled = true
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("clang not installed, cannot test strict mode branch")
+	}
+	objFiles := []string{"a.o"}
+	err := tryAutoLinkMultiple(context.Background(), objFiles, "bin", false, true, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !clangCalled {
+		t.Error("clang not called in strict mode")
+	}
+}
+
+func TestTryAutoLinkMultipleNoLinker(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	oldPath := os.Getenv("PATH")
+	os.Setenv("PATH", "")
+	defer os.Setenv("PATH", oldPath)
+
+	objFiles := []string{"a.o"}
+	err := tryAutoLinkMultiple(context.Background(), objFiles, "bin", false, false, false, nil)
+	if err == nil {
+		t.Error("expected error when no linker")
+	}
+	if err.Error() != "auto linking failed: no suitable linker" {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLinkMultipleWithGccFallbackNoPie(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first fail")
+			}
+			if callCount == 2 && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	objFiles := []string{"a.o"}
+	err := linkMultipleWithGcc(context.Background(), objFiles, "bin", false, true, false, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestLinkWithLdMissingLib(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	var capturedArgs []string
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			capturedArgs = args
+			return "", nil
+		},
+	}
+	libs := []string{"m", "c"}
+	err := linkWithLd(context.Background(), "obj.o", "bin", false, libs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(capturedArgs, "-lm") || !contains(capturedArgs, "-lc") {
+		t.Error("library flags missing")
+	}
+}
