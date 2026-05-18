@@ -340,3 +340,56 @@ func TestTryAutoLinkMultipleClangFailFallbackToGcc(t *testing.T) {
 		t.Errorf("expected 2 calls (clang fail, gcc success), got %d", callCount)
 	}
 }
+
+func TestLinkWithGccFallbackToNoPie(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first gcc fails")
+			}
+			if callCount == 2 && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := linkWithGcc(context.Background(), "obj", "bin", false, true, false, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+// Test linkWithClang fallback to -no-pie
+func TestLinkWithClangFallbackToNoPie(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first clang fails")
+			}
+			if callCount == 2 && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := linkWithClang(context.Background(), "obj", "bin", false, true, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
