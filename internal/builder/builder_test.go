@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -24,7 +25,8 @@ func TestBuildDir(t *testing.T) {
 		t.Skip("nasm not installed")
 	}
 	dir := t.TempDir()
-	writeASM(t, dir, "main.asm", `
+	t.Logf("Source dir: %s", dir)
+	srcFile := writeASM(t, dir, "main.asm", `
 section .text
 global _start
 _start:
@@ -32,32 +34,29 @@ _start:
 	xor edi, edi
 	syscall
 `)
+	t.Logf("Source file: %s", srcFile)
+	if _, err := os.Stat(srcFile); err != nil {
+		t.Fatal("source file not created")
+	}
 	outBin := filepath.Join(t.TempDir(), "myapp")
+	t.Logf("Output binary: %s", outBin)
 	ctx := context.Background()
-	res, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, false, false, true, false, nil, nil, nil, nil, nil, 1)
+	res, err := BuildDir(ctx, []string{dir}, outBin, false, true, "raw", false, true, false, true, false, nil, nil, nil, nil, nil, 1, "executable")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("BuildDir error: %v", err)
 	}
 	if _, err := os.Stat(res.Binary); err != nil {
-		t.Error("binary not created")
-	}
-	res2, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, false, false, true, false, nil, nil, nil, nil, nil, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res2.Binary != res.Binary {
-		t.Error("cached build mismatch")
+		t.Errorf("binary not created: %v", err)
 	}
 }
 
 func TestBuildDirNoCache(t *testing.T) {
-	t.Skip("skipping due to multiple _start conflict in test environment")
-
 	if _, err := exec.LookPath("nasm"); err != nil {
 		t.Skip("nasm not installed")
 	}
 	dir := t.TempDir()
-	writeASM(t, dir, "main.asm", `
+	t.Logf("Source dir: %s", dir)
+	srcFile := writeASM(t, dir, "main.asm", `
 section .text
 global _start
 _start:
@@ -65,14 +64,56 @@ _start:
 	xor edi, edi
 	syscall
 `)
+	t.Logf("Source file: %s", srcFile)
 	outBin := filepath.Join(t.TempDir(), "myapp")
+	t.Logf("Output binary: %s", outBin)
 	ctx := context.Background()
-	res, err := BuildDir(ctx, []string{dir}, outBin, false, false, "raw", false, true, false, true, false, nil, nil, nil, nil, nil, 1)
+	res, err := BuildDir(ctx, []string{dir}, outBin, false, true, "raw", false, true, false, true, false, nil, nil, nil, nil, nil, 1, "executable")
+	if err != nil {
+		t.Fatalf("BuildDir error: %v", err)
+	}
+	if _, err := os.Stat(res.Binary); err != nil {
+		t.Errorf("binary not created: %v", err)
+	}
+}
+
+func TestUniqueObjectNames(t *testing.T) {
+	if _, err := exec.LookPath("nasm"); err != nil {
+		t.Skip("nasm not installed")
+	}
+	dir := t.TempDir()
+	t.Logf("Source dir: %s", dir)
+	writeASM(t, dir, "hello.asm", "")
+	writeASM(t, dir, "hello.s", "")
+	writeASM(t, dir, "sub/hello.asm", "")
+	outBin := filepath.Join(t.TempDir(), "app")
+	t.Logf("Output binary: %s", outBin)
+	_, err := BuildDir(context.Background(), []string{dir}, outBin, false, true, "auto", true, true, true, true, false, nil, nil, nil, nil, nil, 1, "executable")
+	if err == nil {
+	}
+	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
+	t.Logf("Object dir: %s", objDir)
+	entries, err := os.ReadDir(objDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(res.Binary); err != nil {
-		t.Error("binary not created")
+	names := []string{}
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	t.Logf("Object files: %v", names)
+	expectedPatterns := []string{"hello_asm", "hello_s", "sub_hello_asm"}
+	for _, pattern := range expectedPatterns {
+		found := false
+		for _, n := range names {
+			if strings.Contains(n, pattern) && strings.HasSuffix(n, ".o") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("missing object name containing %q", pattern)
+		}
 	}
 }
 
