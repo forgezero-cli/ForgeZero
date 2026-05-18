@@ -1,23 +1,74 @@
 package shell
 
 import (
+	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
+	"time"
 
+	"fz/internal/assembler"
 	"fz/internal/builder"
+	"fz/internal/linker"
+	"fz/internal/utils"
 )
 
 func cmdBuild(state *BuildState) error {
-	fmt.Println("Building with current state...")
-	// TODO: integration with builder
+	if state.SourcePath == "" {
+		return fmt.Errorf("no source path set")
+	}
+
+	if state.SourceType == "dir" {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		var dirs []string
+		if state.SourcePath != "" {
+			dirs = []string{state.SourcePath}
+		} else {
+			dirs = []string{"."}
+		}
+		res, err := builder.BuildDir(ctx, dirs, state.Out, state.Debug, state.Verbose, state.Mode,
+			state.KeepObj, state.NoCache, state.NoSymbolCheck, state.Sanitize, state.Strict,
+			nil, nil, nil, nil, nil, 1, "executable")
+		if err != nil {
+			return err
+		}
+		state.Out = res.Binary
+		return nil
+	}
+
+	ext := filepath.Ext(state.SourcePath)
+	if !utils.SupportedExtension(ext) {
+		return fmt.Errorf("unsupported extension: %s", ext)
+	}
+	binName, objName := utils.DeriveNames(state.SourcePath, state.Out, "")
+	if state.Verbose {
+		if ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" {
+			fmt.Printf("Compiling %s -> %s\n", state.SourcePath, objName)
+		} else {
+			fmt.Printf("Assembling %s -> %s\n", state.SourcePath, objName)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if err := assembler.Assemble(ctx, state.SourcePath, objName, state.Debug, state.Verbose, state.Mode); err != nil {
+		return err
+	}
+	if state.Verbose {
+		fmt.Printf("Linking %s -> %s (mode: %s)\n", objName, binName, state.Mode)
+	}
+	if err := linker.Link(ctx, objName, binName, state.Verbose, state.Mode, state.NoSymbolCheck, state.Sanitize, state.Strict, nil); err != nil {
+		return err
+	}
+	state.Out = binName
 	return nil
 }
 
 func cmdClean(state *BuildState) error {
-	if state.SourceType == "dir" && state.SourcePath != "" {
-		return builder.CleanDir(state.SourcePath, state.Verbose)
+	if state.SourceType != "dir" {
+		return fmt.Errorf("clean only works for directory builds")
 	}
-	return fmt.Errorf("no source directory specified")
+	return builder.CleanDir(state.SourcePath, state.Verbose)
 }
 
 func cmdSet(state *BuildState, args []string) error {
