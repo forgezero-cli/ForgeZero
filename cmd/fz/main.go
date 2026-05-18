@@ -12,6 +12,7 @@ import (
 
 	"fz/internal/assembler"
 	"fz/internal/builder"
+	"fz/internal/compilecommands"
 	"fz/internal/config"
 	"fz/internal/ignore"
 	initpkg "fz/internal/init"
@@ -44,29 +45,37 @@ Usage:
 
 Options:
   -asm <file>            Assembler source (.asm, .s, .S, .fasm)
-  -cc <file>             C source (compiled with -Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion)
-  -dir <dir>             Build all supported files in directory (recursive)
+  -cc <file>             C source (strict warnings enabled)
+  -dir <dir>             Build all supported files recursively
   -out <name>            Output binary name
   -out-obj <name>        Object file name (single file only)
   -mode <auto|c|raw>     Linking mode (default: auto)
-  -debug                 Emit debug information (-g)
-  -verbose               Print executed commands
-  -keep-obj              Keep temporary object files when using -dir
+  -debug                 Emit debug symbols (-g)
+  -verbose               Print every command executed
+  -keep-obj              Keep temporary object files (when using -dir)
   -no-cache              Disable incremental cache
   -no-symbol-check       Skip duplicate symbol pre‑check
   -sanitize              Enable sanitizers for C (default: true)
   -no-sanitize           Disable sanitizers
   -strict                Enable aggressive sanitizers (use-after-return, use-after-scope) – prefers clang
   -clean                 Remove all build artifacts (.fz_objs, .fz_cache, binaries)
-  -watch                 Watch source files and rebuild automatically
-  -json                  Output build report in JSON format (CI/CD)
-  -config <file>         Config file path (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)
+  -watch                 Watch files and auto‑rebuild
+  -json                  Output build report in JSON (for CI/CD)
+  -config <file>         Config file (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)
   -man                   Generate roff man page and exit
-  -format <elf|bin>      Output format: elf (default) or bin (flat binary, no linking)
+  -format <elf32|elf64|bin> Output format: elf64 (default), elf32, bin (flat binary)
+  -T <file>              Linker script (passed to ld)
+  -Ttext <addr>          Set text segment address
+  -j <n>                 Number of parallel jobs (0 = auto = CPU cores)
+  -target <triple>       Target triple (default: x86_64-linux-gnu)
+  -type <executable|static> Build type: executable (default) or static (library)
+  -lib                   Shortcut for -type static
+  -compile-commands      Generate compile_commands.json for LSP and exit
+  -init                  Initialize project: create .fz.yaml and .fzignore
+  -shell                 Run interactive shell
+  -update                Update fz to the latest version
   -h, --help             Show this help
   -v, --version          Show version
--j <n>                   Number of parallel jobs (0 = auto = CPU cores)
--target 							 Target triple(default: x86_64-linux-gnu)
 
 Examples:
   fz -asm boot.asm
@@ -75,45 +84,47 @@ Examples:
   fz -json -cc test.c
   fz -dir . -clean
   fz -asm boot.asm -format bin -out boot.bin
+  fz -target arm-linux-gnueabihf -cc test.c -out test_arm
 
-Supported extensions: .asm, .s, .S, .fasm, .c
+Supported extensions: .asm, .s, .S, .fasm, .c, .cpp, .cc, .cxx
 `)
 }
 
 func main() {
 	var (
-		asmPath       string
-		ccPath        string
-		dirPath       string
-		debug         bool
-		verbose       bool
-		outBin        string
-		outObj        string
-		timeoutSec    int
-		mode          string
-		keepObj       bool
-		clean         bool
-		noCache       bool
-		configPath    string
-		noSymbolCheck bool
-		watch         bool
-		sanitize      bool
-		noSanitize    bool
-		strict        bool
-		jsonOutput    bool
-		showVersion   bool
-		showHelp      bool
-		showMan       bool
-		format        string
-		initMode      bool
-		ldScript      string
-		textAddr      string
-		shellMode     bool
-		jobs          int
-		updateMode    bool
-		buildType     string
-		libMode       bool
-		target        string
+		asmPath            string
+		ccPath             string
+		dirPath            string
+		debug              bool
+		verbose            bool
+		outBin             string
+		outObj             string
+		timeoutSec         int
+		mode               string
+		keepObj            bool
+		clean              bool
+		noCache            bool
+		configPath         string
+		noSymbolCheck      bool
+		watch              bool
+		sanitize           bool
+		noSanitize         bool
+		strict             bool
+		jsonOutput         bool
+		showVersion        bool
+		showHelp           bool
+		showMan            bool
+		format             string
+		initMode           bool
+		ldScript           string
+		textAddr           string
+		shellMode          bool
+		jobs               int
+		updateMode         bool
+		buildType          string
+		libMode            bool
+		target             string
+		genCompileCommands bool
 	)
 
 	flag.StringVar(&asmPath, "asm", "", "")
@@ -151,6 +162,7 @@ func main() {
 	flag.StringVar(&buildType, "type", "executable", "build type: executable (default) or static")
 	flag.BoolVar(&libMode, "lib", false, "build static library (archive)")
 	flag.StringVar(&target, "target", "x86_64-linux-gnu", "target triple (e.g., x86_64-linux-gnu, arm-linux-gnueabihf, riscv64-unknown-elf)")
+	flag.BoolVar(&genCompileCommands, "compile-commands", false, "generate compile_commands.json for LSP and exit")
 
 	flag.Usage = printHelp
 	flag.Parse()
@@ -282,6 +294,23 @@ func main() {
 				return config.DefaultConfigPath()
 			}())
 		}
+	}
+
+	if genCompileCommands {
+		dirs := []string{"."}
+		if cfg != nil && len(cfg.SourceDir) > 0 {
+			dirs = cfg.SourceDirs
+		} else if cfg != nil && cfg.SourceDir != "" {
+			dirs = []string{cfg.SourceDir}
+		}
+		if err := compilecommands.Generate(cfg, dirs[0]); err != nil {
+			fmt.Fprintf(os.Stderr, "error generating compile_commands.json: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("compile_commands.json generated")
+
+		return
 	}
 
 	if clean {
