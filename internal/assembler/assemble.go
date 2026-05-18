@@ -194,3 +194,7 @@ func assembleCpp(ctx context.Context, src, obj string, debug, verbose bool) erro
 	}
 	return nil
 }
+
+func CCForTarget() string {
+	return ccForTarget()
+}
