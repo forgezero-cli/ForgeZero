@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"fz/internal/assembler"
 	"fz/internal/builder"
@@ -20,20 +21,25 @@ func Generate(cfg *config.Config, rootDir string) error {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
-	srcFiles, err := builder.CollectSourceFiles(cfg, []string{"."})
+	srcFiles, err := builder.CollectSourceFiles(cfg, []string{rootDir})
 	if err != nil {
 		return err
 	}
+	seen := make(map[string]bool)
 	var commands []CompileCommand
 	for _, src := range srcFiles {
+		ext := strings.ToLower(filepath.Ext(src))
+		if ext != ".c" && ext != ".cpp" && ext != ".cc" && ext != ".cxx" {
+			continue
+		}
 		absSrc, err := filepath.Abs(src)
 		if err != nil {
 			return err
 		}
-		ext := filepath.Ext(src)
-		if ext != ".c" && ext != ".cpp" && ext != ".cc" && ext != ".cxx" {
+		if seen[absSrc] {
 			continue
 		}
+		seen[absSrc] = true
 		dir := filepath.Dir(absSrc)
 		args := []string{assembler.CCForTarget()}
 		args = append(args, "-c", absSrc)
