@@ -99,3 +99,25 @@ func TestUpdateSelfAlreadyUpToDate(t *testing.T) {
 		t.Error("expected 'Already up to date' message")
 	}
 }
+
+func TestUpdateSelfPermissionDenied(t *testing.T) {
+	oldFunc := executablePathFunc
+	defer func() { executablePathFunc = oldFunc }()
+	tmpDir := t.TempDir()
+	fakeExe := filepath.Join(tmpDir, "fz_ro")
+	if err := os.WriteFile(fakeExe, []byte("old"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	executablePathFunc = func() (string, error) { return fakeExe, nil }
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("new binary"))
+	}))
+	defer server.Close()
+	oldURL := apiURL
+	apiURL = server.URL + "/release"
+	defer func() { apiURL = oldURL }()
+	err := UpdateSelf("0.0.0")
+	if err == nil {
+		t.Error("expected permission error when writing to read-only file")
+	}
+}
