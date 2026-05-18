@@ -393,3 +393,45 @@ func TestLinkWithClangFallbackToNoPie(t *testing.T) {
 		t.Errorf("expected 2 calls, got %d", callCount)
 	}
 }
+
+func TestLinkWithGccVerboseError(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("gcc error")
+		},
+	}
+	err := linkWithGcc(context.Background(), "obj", "bin", true, false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "gcc error") {
+		t.Errorf("error should contain command output: %v", err)
+	}
+}
+
+func TestLinkWithGccFallbackNoPieVerbose(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first fail")
+			}
+			if callCount == 2 && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := linkWithGcc(context.Background(), "obj", "bin", true, true, false, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
