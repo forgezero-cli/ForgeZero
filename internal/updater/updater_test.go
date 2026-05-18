@@ -3,6 +3,8 @@ package updater
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -35,4 +37,13 @@ func TestGetLatestVersionNotFound(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for 404")
 	}
+}
+
+func TestUpdateSelfDownload(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldExe, _ := os.Executable()
+	mockExe := filepath.Join(tmpDir, "fz")
+	os.WriteFile(mockExe, []byte("old"), 0o755)
+	_ = oldExe
+	t.Skip("requires mocking os.Executable")
 }
