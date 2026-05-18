@@ -18,6 +18,7 @@ import (
 	"fz/internal/linker"
 	"fz/internal/man"
 	"fz/internal/shell"
+	"fz/internal/updater"
 	"fz/internal/utils"
 	"fz/internal/watcher"
 )
@@ -108,6 +109,7 @@ func main() {
 		textAddr      string
 		shellMode     bool
 		jobs          int
+		updateMode    bool
 	)
 
 	flag.StringVar(&asmPath, "asm", "", "")
@@ -141,7 +143,7 @@ func main() {
 	flag.StringVar(&textAddr, "Ttext", "", "set text segment address (passed to ld)")
 	flag.BoolVar(&shellMode, "shell", false, "run interactive shell")
 	flag.IntVar(&jobs, "j", 1, "number of parallel jobs (0 = auto = CPU cores)")
-
+	flag.BoolVar(&updateMode, "update", false, "update fz to the latest version")
 	flag.Usage = printHelp
 	flag.Parse()
 	if initMode {
@@ -150,6 +152,14 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println("project initialized. edit .fz.yaml to configure ur build.")
+		return
+	}
+
+	if updateMode {
+		if err := updater.UpdateSelf(version); err != nil {
+			fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
