@@ -52,31 +52,39 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly and C dev
 9. [C Compilation](#9-c-compilation)
    - 9.1 [Strict Warning Flags](#91-strict-warning-flags)
    - 9.2 [Sanitizers](#92-sanitizers)
-10. [Internal Mechanisms](#10-internal-mechanisms)
-    - 10.1 [Build Cache](#101-build-cache)
-    - 10.2 [Pre-link Symbol Check](#102-pre-link-symbol-check)
-    - 10.3 [Watch Mode](#103-watch-mode)
-    - 10.4 [JSON Output](#104-json-output)
-    - 10.5 [Clean](#105-clean)
-11. [Configuration File Reference](#11-configuration-file-reference)
-    - 11.1 [Basic Fields](#111-basic-fields)
-    - 11.2 [Multiple Source Directories](#112-multiple-source-directories)
-    - 11.3 [Explicit Source File Lists](#113-explicit-source-file-lists)
-    - 11.4 [Include & Exclude Patterns](#114-include--exclude-patterns)
-    - 11.5 [Library Linking](#115-library-linking)
-    - 11.6 [Custom Compiler & Linker Flags](#116-custom-compiler--linker-flags)
-    - 11.7 [.fzignore File](#117-fzignore-file)
-    - 11.8 [Full Annotated Example](#118-full-annotated-example)
-12. [Assembler Backends](#12-assembler-backends)
-    - 12.1 [NASM (.asm)](#121-nasm-asm)
-    - 12.2 [GAS (.s / .S)](#122-gas-s--s)
-    - 12.3 [FASM (.fasm)](#123-fasm-fasm)
-13. [Examples](#13-examples)
-14. [Exit Codes](#14-exit-codes)
-15. [Troubleshooting](#15-troubleshooting)
-16. [Roadmap](#16-roadmap)
-17. [Contributing](#17-contributing)
-18. [License](#18-license)
+10. [C++ Compilation](#10-c-compilation-1)
+11. [Cross-Compilation](#11-cross-compilation)
+12. [Static Library Mode](#12-static-library-mode)
+13. [Internal Mechanisms](#13-internal-mechanisms)
+    - 13.1 [Build Cache](#131-build-cache)
+    - 13.2 [Pre-link Symbol Check](#132-pre-link-symbol-check)
+    - 13.3 [Watch Mode](#133-watch-mode)
+    - 13.4 [JSON Output](#134-json-output)
+    - 13.5 [Clean](#135-clean)
+    - 13.6 [Parallel Builds](#136-parallel-builds)
+    - 13.7 [Interactive Shell](#137-interactive-shell)
+14. [Configuration File Reference](#14-configuration-file-reference)
+    - 14.1 [Basic Fields](#141-basic-fields)
+    - 14.2 [Multiple Source Directories](#142-multiple-source-directories)
+    - 14.3 [Explicit Source File Lists](#143-explicit-source-file-lists)
+    - 14.4 [Include & Exclude Patterns](#144-include--exclude-patterns)
+    - 14.5 [Library Linking](#145-library-linking)
+    - 14.6 [Custom Compiler & Linker Flags](#146-custom-compiler--linker-flags)
+    - 14.7 [.fzignore File](#147-fzignore-file)
+    - 14.8 [Full Annotated Example](#148-full-annotated-example)
+15. [Assembler Backends](#15-assembler-backends)
+    - 15.1 [NASM (.asm)](#151-nasm-asm)
+    - 15.2 [GAS (.s / .S)](#152-gas-s--s)
+    - 15.3 [FASM (.fasm)](#153-fasm-fasm)
+16. [Project Initialization](#16-project-initialization)
+17. [LSP & IDE Integration](#17-lsp--ide-integration)
+18. [Self-Update](#18-self-update)
+19. [Examples](#19-examples)
+20. [Exit Codes](#20-exit-codes)
+21. [Troubleshooting](#21-troubleshooting)
+22. [Roadmap](#22-roadmap)
+23. [Contributing](#23-contributing)
+24. [License](#24-license)
 
 ---
 
@@ -91,6 +99,42 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 - Caches compiled objects so unchanged files are never recompiled.
 - Optionally watches the filesystem and rebuilds on every save.
 - Emits structured JSON build reports for CI/CD integration.
+- Generates `compile_commands.json` for full LSP and IDE integration.
+- Supports cross-compilation to ARM, RISC-V, and other targets via `-target`.
+- Builds static libraries (`.a`) in addition to executables.
+- Compiles C++ (`.cpp`, `.cc`, `.cxx`) with the same strict standards as C.
+
+**What's new in v1.9.0:**
+
+- **Cross-compilation** — `-target <triple>` supports ARM, RISC-V, x86_64, and any standard GNU cross-compilation triple. `fz` auto-detects the correct prefixed compilers and linkers.
+- **LSP support** — `-compile-commands` generates `compile_commands.json` for clangd, ccls, and any LSP-aware editor (Neovim, VSCode, CLion, etc.).
+- **Smart self-update** — `fz -update` now creates a backup of the old binary at `/usr/local/bin/fz.old` before installing the new one.
+- **Improved test coverage** — linker coverage raised to 60%+ (from 17%); all packages above 40%.
+- **Pluggable `CheckTool`** — internal tool-presence checks are now injectable for testing toolchain-absent scenarios.
+- **Shell builds single files** — the interactive shell (`fz -shell`) can now compile and run individual source files.
+- **Object file collision fix** — multi-directory projects no longer produce colliding `.o` names; each object is uniquely named from its full source path.
+
+**What's new in v1.8.0:**
+
+- **Static libraries** — `-type static` and `-lib` build `.a` archives via `ar` instead of producing a linked executable.
+- **Unique object file names** — directory builds with files of the same base name in different subdirectories now compile without conflicts.
+- **Builder stability** — fixed test reliability issues and removed `..` path components from all generated object file names.
+
+**What's new in v1.7.0:**
+
+- **Parallel builds** — `-j N` compiles all source files concurrently (0 = auto = number of CPU cores).
+- **Linker scripts and text address** — `-T <script>` and `-Ttext <addr>` pass linker scripts and entry addresses directly to `ld`.
+- **Interactive shell** — `fz -shell` opens a REPL for running `fz` commands without re-invoking the binary.
+- **Output formats** — `-format elf32`, `-format elf64`, `-format bin` explicitly control the output format (default `elf64`).
+- **C++ support** — `.cpp`, `.cc`, and `.cxx` files are compiled with `g++` or `clang++`, subject to the same strict warning flags.
+
+**What's new in v1.6.0:**
+
+- **Project initialization** — `fz -init` scaffolds a new project: creates `.fz.yaml`, `.fzignore`, and `README.md` in the current directory.
+- **Flat binary output** — `-format bin` produces raw flat binaries for bootloaders, firmware, and embedded targets.
+- **Library linking** — the `libs` field in config adds `-l<lib>` flags to the linker without manual `flags.ld` entries.
+- **Custom flags** — `flags.cc`, `flags.asm`, and `flags.ld` in `.fz.yaml` pass arbitrary extra arguments to each tool.
+- **`utils.CopyFile`** — internal utility for safe file duplication used by the update and static library subsystems.
 
 **What's new in v1.5.0:**
 
@@ -110,20 +154,35 @@ ForgeZero is intentionally lightweight — a single statically compiled Go binar
 
 ### Assembler and compiler tools
 
-| Source type   | Required tool        | Notes |
-|---------------|----------------------|-------|
-| `.asm`        | `nasm`               | x86/x86-64 Intel syntax |
-| `.s` / `.S`   | `gcc` (drives `as`)  | AT&T syntax; `.S` files are C-preprocessed first |
-| `.fasm`       | `fasm`               | Must be downloaded separately from flatassembler.net |
-| `.c`          | `gcc` or `clang`     | `clang` preferred when `-strict` is used |
+| Source type        | Required tool          | Notes |
+|--------------------|------------------------|-------|
+| `.asm`             | `nasm`                 | x86/x86-64 Intel syntax |
+| `.s` / `.S`        | `gcc` (drives `as`)    | AT&T syntax; `.S` files are C-preprocessed first |
+| `.fasm`            | `fasm`                 | Must be downloaded separately from flatassembler.net |
+| `.c`               | `gcc` or `clang`       | `clang` preferred when `-strict` is used |
+| `.cpp` / `.cc` / `.cxx` | `g++` or `clang++` | Same strict flags as C; `clang++` preferred in strict mode |
 
 ### Linker tools
 
 | Linker  | Required for |
 |---------|--------------|
 | `gcc`   | Default linking, C runtime support |
-| `ld`    | Raw linking (`-mode raw`) |
+| `ld`    | Raw linking (`-mode raw`), linker scripts |
 | `clang` | Strict sanitizer mode (`-strict`) |
+| `ar`    | Static library mode (`-type static`) |
+
+### Cross-compilation tools (optional)
+
+When using `-target <triple>`, `fz` looks for prefixed toolchain binaries on your `PATH`. For example:
+
+| Target triple            | Expected compiler prefix     |
+|--------------------------|------------------------------|
+| `arm-linux-gnueabihf`    | `arm-linux-gnueabihf-gcc`    |
+| `aarch64-linux-gnu`      | `aarch64-linux-gnu-gcc`      |
+| `riscv64-linux-gnu`      | `riscv64-linux-gnu-gcc`      |
+| `x86_64-linux-gnu`       | `x86_64-linux-gnu-gcc`       |
+
+Install cross-compilers via your package manager (e.g. `sudo apt install gcc-arm-linux-gnueabihf`).
 
 ### Optional tools (used internally)
 
@@ -154,6 +213,14 @@ sudo apt install -y nasm gcc binutils
 
 ```bash
 sudo apt install -y clang
+```
+
+**Install cross-compilation toolchain (optional):**
+
+```bash
+sudo apt install -y gcc-arm-linux-gnueabihf
+sudo apt install -y gcc-aarch64-linux-gnu
+sudo apt install -y gcc-riscv64-linux-gnu
 ```
 
 **Install FASM (optional, for `.fasm` files):**
@@ -411,11 +478,42 @@ fz -cc main.c
 ./main
 ```
 
+**Compile a C++ file:**
+
+```bash
+fz -cc main.cpp
+./main
+```
+
 **Build an entire directory:**
 
 ```bash
 fz -dir ./src
 ./src
+```
+
+**Initialize a new project:**
+
+```bash
+fz -init
+```
+
+**Build with cross-compilation:**
+
+```bash
+fz -cc main.c -target arm-linux-gnueabihf
+```
+
+**Generate LSP compilation database:**
+
+```bash
+fz -compile-commands
+```
+
+**Build a static library:**
+
+```bash
+fz -dir ./src -type static -lib mylib
 ```
 
 **Build multiple directories (v1.5.0):**
@@ -437,13 +535,14 @@ fz
 
 ## 5. Supported Languages & Extensions
 
-| Extension | Language | Backend | Notes |
-|-----------|----------|---------|-------|
-| `.asm` | Assembly | NASM | x86/x86-64, Intel syntax, ELF64 |
-| `.s` | Assembly | GAS via `gcc -c` | AT&T syntax |
-| `.S` | Assembly | GAS via `gcc -c` | AT&T syntax + C preprocessor |
-| `.fasm` | Assembly | FASM | Requires separate install |
-| `.c` | C | GCC or Clang | Strict flags + sanitizers by default |
+| Extension          | Language   | Backend          | Notes |
+|--------------------|------------|------------------|-------|
+| `.asm`             | Assembly   | NASM             | x86/x86-64, Intel syntax, ELF64 |
+| `.s`               | Assembly   | GAS via `gcc -c` | AT&T syntax |
+| `.S`               | Assembly   | GAS via `gcc -c` | AT&T syntax + C preprocessor |
+| `.fasm`            | Assembly   | FASM             | Requires separate install |
+| `.c`               | C          | GCC or Clang     | Strict flags + sanitizers by default |
+| `.cpp` / `.cc` / `.cxx` | C++   | G++ or Clang++   | Same strict flags as C (v1.7.0+) |
 
 All other file extensions are silently ignored during directory and recursive scanning.
 
@@ -458,6 +557,7 @@ Compiles and links a single source file into a binary.
 ```bash
 fz -asm program.asm
 fz -cc main.c
+fz -cc main.cpp
 ```
 
 - Output binary name is derived from the source filename (`program.asm` → `program`).
@@ -472,13 +572,14 @@ Recursively scans a directory for all supported source files, compiles each to a
 fz -dir ./src
 ```
 
-**Object file naming** — names are generated to prevent collisions across subdirectories:
+**Object file naming** — names are generated to prevent collisions across subdirectories. Each object file name is derived from the full relative path of its source file, ensuring uniqueness even when files share the same base name:
 
-| Source file | Object file |
-|-------------|-------------|
-| `src/hello.asm` | `hello_asm.o` |
-| `src/hello.s` | `hello_s.o` |
-| `src/sub/hello.asm` | `sub_hello_asm.o` |
+| Source file          | Object file          |
+|----------------------|----------------------|
+| `src/hello.asm`      | `src_hello_asm.o`    |
+| `src/hello.s`        | `src_hello_s.o`      |
+| `src/sub/hello.asm`  | `src_sub_hello_asm.o` |
+| `lib/hello.asm`      | `lib_hello_asm.o`    |
 
 Object files live in `.fz_objs/` and are removed after linking unless `-keep-obj` is passed. The output binary is named after the directory (`src` → `src` on Linux/macOS, `src.exe` on Windows).
 
@@ -524,28 +625,39 @@ Each level overrides values from the previous one. This lets you set organizatio
 fz [options]
 ```
 
-At least one of `-asm`, `-cc`, or `-dir` is required (or a valid config file must be present in the working directory).
+At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, or a valid config file must be present.
 
 ### Full Flag Reference
 
 | Flag | Argument | Default | Description |
 |------|----------|---------|-------------|
 | `-asm` | `<file>` | — | Assemble the given assembly source file. |
-| `-cc` | `<file>` | — | Compile the given C source file. |
+| `-cc` | `<file>` | — | Compile the given C or C++ source file. |
 | `-dir` | `<dir>` | — | Recursively build all supported files in the directory. |
 | `-out` | `<name>` | Derived from source | Name of the output binary. |
 | `-out-obj` | `<name>` | `<basename>.o` | Object file name (single-file mode only). |
 | `-mode` | `auto\|c\|raw` | `auto` | Linking mode. See [Linking Modes](#8-linking-modes). |
+| `-format` | `elf32\|elf64\|bin` | `elf64` | Output format for assembled binaries. |
+| `-target` | `<triple>` | — | Cross-compilation target triple (e.g. `arm-linux-gnueabihf`). |
+| `-type` | `executable\|static` | `executable` | Output type: linked binary or static library (`.a`). |
+| `-lib` | `<name>` | — | Output library name when `-type static` is used (without `lib` prefix or `.a` suffix). |
+| `-j` | `<N>` | `1` | Parallel compilation jobs. `0` = auto (number of CPU cores). |
+| `-T` | `<script>` | — | Linker script to pass to `ld`. |
+| `-Ttext` | `<addr>` | — | Entry point address to pass to the linker (hex or decimal). |
 | `-debug` | — | off | Pass `-g` to the assembler/compiler to emit debug symbols. |
 | `-verbose` | — | off | Print each external command to stdout before running it. |
 | `-keep-obj` | — | off | Preserve object files after linking (directory mode). |
 | `-no-cache` | — | off | Disable the build cache; always recompile every file. |
 | `-no-symbol-check` | — | off | Skip the pre-link duplicate symbol check. |
-| `-sanitize` | — | **on** | Enable `-fsanitize=address,undefined` for C. Disable with `-sanitize=false`. |
-| `-strict` | — | off | Stricter sanitizers + use-after-return/scope checks. Prefers `clang`. |
+| `-sanitize` | — | **on** | Enable `-fsanitize=address,undefined` for C/C++. Disable with `-sanitize=false`. |
+| `-strict` | — | off | Stricter sanitizers + use-after-return/scope checks. Prefers `clang`/`clang++`. |
 | `-json` | — | off | Suppress normal output; emit a JSON build report to stdout. |
 | `-watch` | — | off | Watch source files for changes and rebuild automatically. |
 | `-clean` | — | off | Remove all build artifacts and exit. |
+| `-compile-commands` | — | off | Generate `compile_commands.json` for LSP/IDE integration. |
+| `-init` | — | off | Scaffold a new project: creates `.fz.yaml`, `.fzignore`, and `README.md`. |
+| `-shell` | — | off | Open interactive REPL shell. |
+| `-update` | — | off | Download and install the latest `fz` binary; backs up current binary to `fz.old`. |
 | `-config` | `<file>` | auto-detect | Path to a YAML configuration file. |
 | `-timeout` | `<sec>` | `60` | Timeout in seconds for each sub-command. |
 | `-h`, `--help` | — | — | Print help and exit. |
@@ -650,9 +762,186 @@ fz -cc main.c -sanitize=false
 
 ---
 
-## 10. Internal Mechanisms
+## 10. C++ Compilation
 
-### 10.1 Build Cache
+Added in **v1.7.0**. ForgeZero compiles `.cpp`, `.cc`, and `.cxx` files using `g++` or `clang++`. The same strict warning flags applied to C are applied identically to C++:
+
+```
+-Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion
+```
+
+Sanitizers are also enabled by default for C++ in the same way as C.
+
+`clang++` is preferred when `-strict` is active. If `clang++` is not available, `g++` is used with the supported subset of sanitizer flags.
+
+**Single C++ file:**
+
+```bash
+fz -cc main.cpp
+fz -cc main.cc
+fz -cc main.cxx
+```
+
+**Mixed C and C++ project directory:**
+
+```bash
+fz -dir ./src
+```
+
+`fz` dispatches `.c` files to `gcc`/`clang` and `.cpp`/`.cc`/`.cxx` files to `g++`/`clang++` automatically. All objects are linked together in a single step.
+
+**Disable sanitizers for release:**
+
+```bash
+fz -cc main.cpp -sanitize=false
+```
+
+---
+
+## 11. Cross-Compilation
+
+Added in **v1.9.0**. The `-target` flag enables cross-compilation to any architecture supported by the GNU toolchain installed on your system.
+
+### Basic Usage
+
+```bash
+fz -cc main.c -target arm-linux-gnueabihf
+fz -cc main.c -target aarch64-linux-gnu
+fz -cc main.c -target riscv64-linux-gnu
+fz -dir ./src -target arm-linux-gnueabihf -out firmware
+```
+
+### How It Works
+
+When `-target <triple>` is set, `fz` constructs the expected prefixed compiler and linker names by prepending the triple to the tool name:
+
+- Compiler: `<triple>-gcc` (e.g. `arm-linux-gnueabihf-gcc`)
+- C++ compiler: `<triple>-g++`
+- Linker: `<triple>-gcc` or `<triple>-ld` depending on the linking mode
+- Archiver: `<triple>-ar` (when `-type static`)
+
+`fz` verifies that the prefixed compiler is available on `PATH` before starting the build. If the cross-compiler is not found, the build exits with code `2` and a clear error message naming the missing tool.
+
+### Installing Cross-Compilers
+
+**Debian / Ubuntu:**
+
+```bash
+sudo apt install gcc-arm-linux-gnueabihf         # ARMv7 hard-float
+sudo apt install gcc-aarch64-linux-gnu           # ARM64
+sudo apt install gcc-riscv64-linux-gnu           # RISC-V 64-bit
+```
+
+**Fedora:**
+
+```bash
+sudo dnf install gcc-arm-linux-gnu
+sudo dnf install gcc-aarch64-linux-gnu
+```
+
+**Arch Linux:**
+
+```bash
+sudo pacman -S arm-linux-gnueabihf-gcc
+sudo pacman -S aarch64-linux-gnu-gcc
+```
+
+### Cross-Compilation with a Config File
+
+```yaml
+# .fz.yaml
+source_dirs:
+  - src
+output: firmware.elf
+target: arm-linux-gnueabihf
+mode: raw
+flags:
+  cc:
+    - -mcpu=cortex-m4
+    - -mfpu=fpv4-sp-d16
+    - -mfloat-abi=hard
+    - -ffreestanding
+  ld:
+    - -T
+    - linker.ld
+```
+
+```bash
+fz
+```
+
+### Notes
+
+- All standard `fz` features work with cross-compilation: build cache, parallel builds, sanitizer flags (if the cross-compiler supports them), static libraries, and JSON output.
+- Sanitizers may not be available for all cross-compilation targets. If the cross-compiler reports an unsupported sanitizer flag, use `-sanitize=false`.
+- `-strict` mode selects `<triple>-clang` if available; otherwise falls back to `<triple>-gcc`.
+
+---
+
+## 12. Static Library Mode
+
+Added in **v1.8.0**. ForgeZero can produce static libraries (`.a` archives) instead of linked executables.
+
+### Basic Usage
+
+```bash
+fz -dir ./src -type static -lib mylib
+```
+
+This compiles all source files in `./src/` into object files, then archives them into `libmylib.a` using `ar`.
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `-type static` | Build a static library instead of an executable |
+| `-lib <name>` | Name of the library (without `lib` prefix and `.a` suffix) |
+
+The output file is always named `lib<name>.a`. For example, `-lib mylib` produces `libmylib.a`.
+
+### Using a Config File
+
+```yaml
+# .fz.yaml
+source_dirs:
+  - src
+type: static
+lib: mylib
+```
+
+```bash
+fz
+```
+
+### Linking Against the Produced Library
+
+```bash
+fz -cc main.c -mode c
+# manually link, or add to another fz project's libs:
+```
+
+```yaml
+# dependent project .fz.yaml
+source_files:
+  - main.c
+libs:
+  - mylib
+flags:
+  ld:
+    - -L./path/to/libmylib
+```
+
+### Notes
+
+- `-type static` is incompatible with `-mode raw` (raw mode produces executables via `ld`). Use `-mode c` or `-mode auto` when also producing a static library.
+- Sanitizer flags are applied to object compilation as normal, but the final `ar` step does not link, so sanitizer runtime linking happens only when the consumer links the library into an executable.
+- Cross-compilation works: `fz -dir ./src -type static -lib mylib -target arm-linux-gnueabihf` uses `arm-linux-gnueabihf-ar`.
+
+---
+
+## 13. Internal Mechanisms
+
+### 13.1 Build Cache
 
 ForgeZero caches compiled object files in `.fz_cache/` to skip recompilation of unchanged sources.
 
@@ -661,8 +950,9 @@ ForgeZero caches compiled object files in `.fz_cache/` to skip recompilation of 
 - SHA-256 hash of the source file contents
 - `-debug` flag state (`true`/`false`)
 - `-mode` value (`auto`, `c`, or `raw`)
+- `-target` value (empty string for native builds)
 
-If all three match an existing cache entry, the stored object file is reused. The assembler/compiler is never invoked for that file.
+If all four match an existing cache entry, the stored object file is reused. The assembler/compiler is never invoked for that file.
 
 **Disable caching:**
 
@@ -680,7 +970,7 @@ The cache is stored as plain files under `.fz_cache/` and can be safely deleted 
 
 ---
 
-### 10.2 Pre-link Symbol Check
+### 13.2 Pre-link Symbol Check
 
 Before invoking the linker, `fz` scans all compiled object files for duplicate global symbol definitions. This catches conflicts — such as `_start` or a global function defined in two files — before the linker emits a cryptic error.
 
@@ -698,7 +988,7 @@ Use this when intentionally relying on weak symbols or linker scripts that resol
 
 ---
 
-### 10.3 Watch Mode
+### 13.3 Watch Mode
 
 Watch mode monitors source files (and the config file, if present) for filesystem changes and triggers a rebuild automatically.
 
@@ -713,7 +1003,7 @@ Press `Ctrl+C` to exit.
 
 ---
 
-### 10.4 JSON Output
+### 13.4 JSON Output
 
 When `-json` is passed, all standard output is suppressed. On completion (or on error), a single JSON object is written to stdout:
 
@@ -724,7 +1014,7 @@ When `-json` is passed, all standard output is suppressed. On completion (or on 
   "duration_ms": 342,
   "binary": "./src",
   "source_files": ["src/main.asm", "src/utils.asm"],
-  "object_files": ["main_asm.o", "utils_asm.o"],
+  "object_files": ["src_main_asm.o", "src_utils_asm.o"],
   "error": null
 }
 ```
@@ -756,7 +1046,7 @@ echo "Build succeeded in ${duration}ms"
 
 ---
 
-### 10.5 Clean
+### 13.5 Clean
 
 The `-clean` flag removes all artifacts produced by `fz`:
 
@@ -776,13 +1066,74 @@ Deleted items:
 
 ---
 
-## 11. Configuration File Reference
+### 13.6 Parallel Builds
+
+Added in **v1.7.0**. The `-j` flag controls how many source files are compiled concurrently.
+
+```bash
+fz -dir ./src -j 4      # compile up to 4 files simultaneously
+fz -dir ./src -j 0      # auto: use all available CPU cores
+```
+
+By default, `fz` compiles files sequentially (`-j 1`). On large projects, parallel builds significantly reduce total build time.
+
+When `-j 0` is specified, `fz` queries the system for the number of logical CPU cores and uses that value. On a 16-core machine, this is equivalent to `-j 16`.
+
+Parallel compilation does not affect the linking step — all objects must be compiled before linking begins. Build cache hits are served from disk without spawning a compiler process, so cached files do not consume a worker slot.
+
+---
+
+### 13.7 Interactive Shell
+
+Added in **v1.7.0**, extended in **v1.9.0**.
+
+```bash
+fz -shell
+```
+
+Opens a REPL where you can issue `fz` commands interactively without re-invoking the binary. Useful for rapid iteration during development.
+
+**Supported shell commands:**
+
+| Command | Description |
+|---------|-------------|
+| `build <file>` | Compile and link a single source file |
+| `build -dir <dir>` | Build all files in a directory |
+| `set <flag> <value>` | Set a build flag for subsequent commands (e.g. `set mode raw`) |
+| `clean` | Remove build artifacts |
+| `help` | List available commands |
+| `exit` | Exit the shell |
+
+**Example session:**
+
+```
+fz> build main.c
+[fz] Compiling main.c...
+[fz] Linking...
+[fz] Done: ./main (1 file, 214ms)
+
+fz> set mode raw
+[fz] mode = raw
+
+fz> build boot.asm
+[fz] Assembling boot.asm...
+[fz] Linking (raw)...
+[fz] Done: ./boot (1 file, 89ms)
+
+fz> exit
+```
+
+The interactive shell is fully tested as of v1.9.0 — `SplitCommand`, `CmdSet`, and `CmdBuild` are covered by the test suite.
+
+---
+
+## 14. Configuration File Reference
 
 ForgeZero accepts YAML configuration files. The file is searched automatically in this order: `.fz.yaml`, `fz.yaml`, `.fz.yml`, `fz.yml`. Use `-config <path>` to specify explicitly.
 
 CLI flags always override config file values.
 
-### 11.1 Basic Fields
+### 14.1 Basic Fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -791,17 +1142,22 @@ CLI flags always override config file values.
 | `source_files` | `[]string` | — | Exact list of files to build; if set, `source_dirs` is ignored |
 | `output` | string | auto | Output binary name |
 | `mode` | string | `auto` | Linking mode: `auto`, `c`, or `raw` |
+| `format` | string | `elf64` | Output format: `elf32`, `elf64`, or `bin` |
+| `target` | string | — | Cross-compilation target triple |
+| `type` | string | `executable` | Output type: `executable` or `static` |
+| `lib` | string | — | Library name for `-type static` (without `lib` prefix / `.a` suffix) |
+| `jobs` | int | `1` | Parallel compilation jobs (`0` = auto) |
 | `debug` | bool | `false` | Emit debug symbols (`-g`) |
 | `verbose` | bool | `false` | Print all invoked commands |
 | `keep_obj` | bool | `false` | Preserve object files after linking |
 | `no_cache` | bool | `false` | Disable build cache |
-| `sanitize` | bool | `true` | Enable ASan + UBSan for C |
-| `strict` | bool | `false` | Strict sanitizer mode, prefers `clang` |
+| `sanitize` | bool | `true` | Enable ASan + UBSan for C/C++ |
+| `strict` | bool | `false` | Strict sanitizer mode, prefers `clang`/`clang++` |
 | `ignore_file` | string | `.fzignore` | Path to a `.gitignore`-style exclusion file |
 
 ---
 
-### 11.2 Multiple Source Directories
+### 14.2 Multiple Source Directories
 
 The `source_dirs` field (new in v1.5.0) lets you build from multiple directories in a single `fz` invocation. All directories are scanned recursively and their files are compiled together into one binary.
 
@@ -816,15 +1172,15 @@ mode: raw
 
 This is equivalent to building `kernel/`, `libc/`, and `drivers/` as if they were one large directory. Object file names are prefixed with their parent directory to avoid collisions:
 
-| Source file | Object file |
-|-------------|-------------|
-| `kernel/boot.asm` | `kernel_boot_asm.o` |
-| `libc/string.c` | `libc_string_c.o` |
-| `drivers/uart.c` | `drivers_uart_c.o` |
+| Source file         | Object file          |
+|---------------------|----------------------|
+| `kernel/boot.asm`   | `kernel_boot_asm.o`  |
+| `libc/string.c`     | `libc_string_c.o`    |
+| `drivers/uart.c`    | `drivers_uart_c.o`   |
 
 ---
 
-### 11.3 Explicit Source File Lists
+### 14.3 Explicit Source File Lists
 
 When `source_files` is set, `fz` builds exactly and only those files. Directory scanning is skipped entirely.
 
@@ -843,7 +1199,7 @@ Each path is verified to exist at startup. If a file is missing, `fz` exits with
 
 ---
 
-### 11.4 Include & Exclude Patterns
+### 14.4 Include & Exclude Patterns
 
 **`exclude`** — glob patterns; any file or directory matching at least one pattern is skipped:
 
@@ -867,11 +1223,11 @@ include:
 1. Check `exclude` patterns — skip if matched.
 2. Check `.fzignore` file — skip if matched.
 3. Check `include` patterns — skip if none match (when `include` is set).
-4. Check supported extensions (`.asm`, `.s`, `.S`, `.fasm`, `.c`) — skip all others.
+4. Check supported extensions (`.asm`, `.s`, `.S`, `.fasm`, `.c`, `.cpp`, `.cc`, `.cxx`) — skip all others.
 
 ---
 
-### 11.5 Library Linking
+### 14.5 Library Linking
 
 The `libs` field (new in v1.5.0) specifies system libraries to link against. Each entry is passed to the linker as `-l<lib>`:
 
@@ -888,9 +1244,9 @@ This works in all linking modes (`auto`, `c`, `raw`).
 
 ---
 
-### 11.6 Custom Compiler & Linker Flags
+### 14.6 Custom Compiler & Linker Flags
 
-The `flags` block (extended in v1.5.0 to include `flags.cc`) lets you pass arbitrary extra arguments to each tool:
+The `flags` block lets you pass arbitrary extra arguments to each tool:
 
 ```yaml
 flags:
@@ -919,12 +1275,12 @@ flags:
 |------|---------------|----------------|------------|
 | NASM | `-felf64 <src> -o <obj>` | inserted before `-o` | — |
 | GCC (asm) | `-c <src> -o <obj>` | inserted before `-c` | — |
-| GCC (C) | `-Wall -Wextra ... -c <src> -o <obj>` | inserted after warning flags | — |
+| GCC (C/C++) | `-Wall -Wextra ... -c <src> -o <obj>` | inserted after warning flags | — |
 | GCC/LD (link) | `<objects>` | inserted after objects | `-o <binary>` |
 
 ---
 
-### 11.7 .fzignore File
+### 14.7 .fzignore File
 
 The `.fzignore` file works exactly like `.gitignore`. It is loaded from the project root (or from the path set by `ignore_file` in config) and applied during all recursive directory scans.
 
@@ -957,14 +1313,14 @@ legacy/old_abi.asm
 
 ---
 
-### 11.8 Full Annotated Example
+### 14.8 Full Annotated Example
 
 ```yaml
 # fz.yaml
 
 # --- Source selection ---
 
-# Option A: multiple directories (new in v1.5.0)
+# Option A: multiple directories (v1.5.0+)
 source_dirs:
   - kernel
   - libc
@@ -973,13 +1329,21 @@ source_dirs:
 # Option B: single directory (backward compatible)
 # source_dir: ./src
 
-# Option C: exact file list (new in v1.5.0; overrides source_dirs when set)
+# Option C: exact file list (v1.5.0+; overrides source_dirs when set)
 # source_files:
 #   - boot/start.asm
 #   - kernel/main.c
 
 # --- Output ---
 output: forgeos.elf           # Name of the final binary
+format: elf64                 # elf32 | elf64 | bin
+
+# --- Cross-compilation (v1.9.0+) ---
+# target: arm-linux-gnueabihf
+
+# --- Static library (v1.8.0+) ---
+# type: static
+# lib: forgeos
 
 # --- Build options ---
 mode: raw                     # auto | c | raw
@@ -987,10 +1351,11 @@ debug: true                   # Include debug symbols (-g)
 verbose: false                # Print all invoked commands
 keep_obj: true                # Keep object files after linking
 no_cache: false               # Disable build cache
+jobs: 0                       # Parallel jobs (0 = auto)
 
-# --- C-specific ---
+# --- C/C++ options ---
 sanitize: true                # Enable ASan + UBSan
-strict: false                 # Stricter sanitizers, prefer clang
+strict: false                 # Stricter sanitizers, prefer clang/clang++
 
 # --- File filtering ---
 exclude:
@@ -998,17 +1363,18 @@ exclude:
   - "*/legacy/"
   - "*.tmp"
 
-include:                      # Only files matching at least one pattern (new in v1.5.0)
+include:                      # Only files matching at least one pattern (v1.5.0+)
   - "*.asm"
   - "*.c"
+  - "*.cpp"
   - "*.s"
 
-# --- Library linking (new in v1.5.0) ---
+# --- Library linking ---
 libs:
   - gcc
   - m
 
-# --- Custom flags (new: flags.cc in v1.5.0) ---
+# --- Custom flags ---
 flags:
   asm:
     - -DDEBUG_BUILD
@@ -1021,15 +1387,15 @@ flags:
     - -T
     - linker.ld
 
-# --- .fzignore path (new in v1.5.0) ---
+# --- .fzignore path ---
 ignore_file: .myfzignore      # Default is .fzignore
 ```
 
 ---
 
-## 12. Assembler Backends
+## 15. Assembler Backends
 
-### 12.1 NASM (.asm)
+### 15.1 NASM (.asm)
 
 **Command:** `nasm -felf64 <file> -o <output.o>`
 
@@ -1063,7 +1429,7 @@ fz -asm hello.asm
 
 ---
 
-### 12.2 GAS (.s / .S)
+### 15.2 GAS (.s / .S)
 
 **Command:** `gcc -c <file> -o <output.o>`
 
@@ -1097,7 +1463,7 @@ fz -asm hello.s
 
 ---
 
-### 12.3 FASM (.fasm)
+### 15.3 FASM (.fasm)
 
 **Command:** `fasm <file> <output.o>`
 
@@ -1132,7 +1498,127 @@ fz -asm hello.fasm
 
 ---
 
-## 13. Examples
+## 16. Project Initialization
+
+Added in **v1.6.0**. The `-init` flag scaffolds a new ForgeZero project in the current directory.
+
+```bash
+mkdir myproject && cd myproject
+fz -init
+```
+
+**Files created:**
+
+| File | Contents |
+|------|----------|
+| `.fz.yaml` | Minimal project configuration with commented fields |
+| `.fzignore` | Sensible default ignore rules (object files, editor swap files, common build directories) |
+| `README.md` | Project README template with `fz` build instructions |
+
+If any of these files already exist, `fz -init` skips them and reports which files were created versus skipped. No existing file is overwritten.
+
+**Generated `.fz.yaml`:**
+
+```yaml
+# .fz.yaml — ForgeZero project configuration
+# Run `fz` to build. Run `fz -h` for all options.
+
+source_dir: src
+output: myproject
+mode: auto
+sanitize: true
+```
+
+**Generated `.fzignore`:**
+
+```
+*.o
+*.a
+*.out
+*.bin
+*.elf
+.fz_objs/
+.fz_cache/
+*.swp
+*.swo
+*~
+```
+
+After running `fz -init`, create a `src/` directory and start writing code — `fz` will find and compile everything automatically.
+
+---
+
+## 17. LSP & IDE Integration
+
+Added in **v1.9.0**. The `-compile-commands` flag generates `compile_commands.json` in the project root.
+
+```bash
+fz -compile-commands
+fz -dir ./src -compile-commands
+```
+
+`compile_commands.json` is the **Compilation Database** format understood by every major language server: clangd, ccls, and others. Generating it once gives any LSP-aware editor full knowledge of the project's include paths, compiler flags, and file graph.
+
+**Editor setup:**
+
+| Editor | Language server | Notes |
+|--------|----------------|-------|
+| Neovim | clangd | Install via Mason (`MasonInstall clangd`); clangd auto-detects `compile_commands.json` |
+| VSCode | clangd extension | Install the `clangd` extension; point it to the project root |
+| CLion | Built-in | Open the project root; CLion reads `compile_commands.json` automatically |
+| Helix | clangd | Set `language-server = "clangd"` in `languages.toml` |
+| Emacs | eglot / lsp-mode | Both read `compile_commands.json` from the project root |
+
+**Combine with a regular build:**
+
+`-compile-commands` can be combined with any build invocation. The compilation database is generated alongside the normal build output:
+
+```bash
+fz -dir ./src -compile-commands
+```
+
+**Cross-compilation and LSP:**
+
+When `-target` is set, the generated `compile_commands.json` includes the correct cross-compiler and target flags. This lets clangd provide accurate diagnostics for the target architecture, not the host:
+
+```bash
+fz -dir ./src -target arm-linux-gnueabihf -compile-commands
+```
+
+---
+
+## 18. Self-Update
+
+Added in **v1.9.0**, replacing the basic update mechanism from earlier versions.
+
+```bash
+fz -update
+```
+
+**What happens:**
+
+1. `fz` fetches the latest release binary from the ForgeZero GitHub releases page.
+2. The current binary at `/usr/local/bin/fz` (or wherever `fz` is installed) is copied to `/usr/local/bin/fz.old`.
+3. The new binary replaces the current one.
+4. `fz` reports the version it upgraded from and to.
+
+**Rolling back:**
+
+If the new version has issues, restore the previous binary:
+
+```bash
+sudo cp /usr/local/bin/fz.old /usr/local/bin/fz
+```
+
+**Notes:**
+
+- The update command requires write permission to the directory where `fz` is installed. Run with `sudo` if needed: `sudo fz -update`.
+- Only one backup (`fz.old`) is maintained. Running `-update` twice replaces the backup with the intermediate version, not the original.
+- If the download fails (no network, rate-limited), the current binary is left untouched and `fz.old` is not created.
+
+---
+
+## 19. Examples
 
 ### Minimal builds
 
@@ -1141,6 +1627,19 @@ fz -asm hello.asm       # NASM
 fz -asm hello.s         # GAS
 fz -asm hello.fasm      # FASM
 fz -cc main.c           # C
+fz -cc main.cpp         # C++
+```
+
+---
+
+### Initialize a new project
+
+```bash
+mkdir myproject && cd myproject
+fz -init
+mkdir src
+echo 'int main(void) { return 0; }' > src/main.c
+fz
 ```
 
 ---
@@ -1162,10 +1661,10 @@ gdb ./hello
 ### Bare-metal / bootloader binary
 
 ```bash
-fz -asm boot.asm -mode raw -out boot.bin
+fz -asm boot.asm -mode raw -format bin -out boot.bin
 ```
 
-Calls `ld` directly; no C runtime, no ELF overhead beyond the object format.
+Calls `ld` directly and emits a flat binary. No C runtime, no ELF overhead.
 
 ---
 
@@ -1185,7 +1684,43 @@ Compiles with maximum warning flags and all sanitizer checks. Prefers `clang` fo
 fz -dir ./src
 ```
 
-All `.asm`, `.s`, `.S`, `.fasm`, and `.c` files under `./src/` are compiled and linked into a single binary.
+All `.asm`, `.s`, `.S`, `.fasm`, `.c`, `.cpp`, `.cc`, and `.cxx` files under `./src/` are compiled and linked into a single binary.
+
+---
+
+### Parallel build
+
+```bash
+fz -dir ./src -j 0
+```
+
+Compiles all source files concurrently using all available CPU cores.
+
+---
+
+### Cross-compile for ARM
+
+```bash
+fz -cc main.c -target arm-linux-gnueabihf -sanitize=false
+```
+
+---
+
+### Build a static library
+
+```bash
+fz -dir ./src -type static -lib mylib
+ls libmylib.a
+```
+
+---
+
+### Generate LSP compilation database
+
+```bash
+fz -dir ./src -compile-commands
+cat compile_commands.json
+```
 
 ---
 
@@ -1222,7 +1757,7 @@ Only those two files are compiled, regardless of what else exists in the project
 
 ---
 
-### Link against system libraries (v1.5.0)
+### Link against system libraries
 
 ```yaml
 # .fz.yaml
@@ -1239,7 +1774,7 @@ Equivalent to: `gcc calc.o -lm -o calc`
 
 ---
 
-### Custom compilation flags (v1.5.0)
+### Custom compilation flags
 
 ```yaml
 # .fz.yaml
@@ -1255,7 +1790,7 @@ fz
 
 ---
 
-### Using .fzignore (v1.5.0)
+### Using .fzignore
 
 ```bash
 cat .fzignore
@@ -1322,6 +1857,28 @@ fz -config ./configs/release.yaml
 
 ---
 
+### Update fz with rollback
+
+```bash
+sudo fz -update
+# If something breaks:
+sudo cp /usr/local/bin/fz.old /usr/local/bin/fz
+```
+
+---
+
+### Interactive shell session
+
+```bash
+fz -shell
+# fz> build main.c
+# fz> set mode raw
+# fz> build boot.asm
+# fz> exit
+```
+
+---
+
 ### Clean all build artifacts
 
 ```bash
@@ -1330,17 +1887,17 @@ fz -dir . -clean
 
 ---
 
-## 14. Exit Codes
+## 20. Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | `0` | Success — binary was produced without errors. |
 | `1` | Build error — assembler, compiler, or linker failed; or a duplicate global symbol was detected. Check stderr for details. |
-| `2` | Argument error — invalid or missing flags, source file not found, or unreadable configuration file. |
+| `2` | Argument error — invalid or missing flags, source file not found, cross-compiler not found on PATH, or unreadable configuration file. |
 
 ---
 
-## 15. Troubleshooting
+## 21. Troubleshooting
 
 ### `fz: command not found`
 
@@ -1375,6 +1932,37 @@ wget https://flatassembler.net/fasm-1.73.32.tgz
 tar -xzf fasm-1.73.32.tgz
 sudo cp fasm/fasm /usr/local/bin/
 chmod +x /usr/local/bin/fasm
+```
+
+---
+
+### `g++: command not found`
+
+Install the C++ compiler:
+
+```bash
+sudo apt install g++           # Debian / Ubuntu
+sudo dnf install gcc-c++       # Fedora
+sudo pacman -S gcc             # Arch (g++ included)
+brew install gcc               # macOS
+```
+
+---
+
+### Cross-compiler not found
+
+When using `-target <triple>`, `fz` looks for `<triple>-gcc` on your `PATH`. If it is not found:
+
+```
+fz: argument error: cross-compiler not found: arm-linux-gnueabihf-gcc
+```
+
+Install the appropriate cross-compilation toolchain:
+
+```bash
+sudo apt install gcc-arm-linux-gnueabihf     # Debian / Ubuntu
+sudo dnf install gcc-arm-linux-gnu           # Fedora
+sudo pacman -S arm-linux-gnueabihf-gcc       # Arch
 ```
 
 ---
@@ -1462,7 +2050,7 @@ fz -dir ./src -no-cache
 
 ---
 
-### source_files path not found
+### `source_files` path not found
 
 When using `source_files` in the config, all paths are verified before compilation begins. If a file is missing:
 
@@ -1474,7 +2062,7 @@ Check that the path is relative to the directory where you run `fz`, not relativ
 
 ---
 
-### libs not found at link time
+### `libs` not found at link time
 
 If a library listed in `libs` is not in the system's standard library search path, the linker will report `cannot find -l<name>`. Add the directory containing the library via `flags.ld`:
 
@@ -1484,6 +2072,34 @@ libs:
 flags:
   ld:
     - -L/path/to/custom/libs
+```
+
+---
+
+### `fz -init` reports files already exist
+
+`fz -init` never overwrites existing files. If `.fz.yaml`, `.fzignore`, or `README.md` already exist in the current directory, they are left unchanged and a message is printed for each skipped file. Delete or rename the existing files before running `fz -init` if you want fresh scaffolding.
+
+---
+
+### `compile_commands.json` not picked up by editor
+
+Ensure the file is in the **project root** — the directory you open in your editor, not a subdirectory. Most language servers (clangd, ccls) search upward from the currently edited file and stop at the first `compile_commands.json` they find.
+
+Regenerate after adding new source files or changing compiler flags:
+
+```bash
+fz -compile-commands
+```
+
+---
+
+### `fz -update` fails with permission denied
+
+The update command writes to the directory where `fz` is currently installed (typically `/usr/local/bin/`). Run with elevated privileges:
+
+```bash
+sudo fz -update
 ```
 
 ---
@@ -1510,7 +2126,7 @@ gcc --version
 
 ---
 
-## 16. Roadmap
+## 22. Roadmap
 
 | Feature | Status |
 |---------|--------|
@@ -1522,17 +2138,32 @@ gcc --version
 | `flags.cc` for C compiler flags | ✅ Done (v1.5.0) |
 | `.fzignore` file support | ✅ Done (v1.5.0) |
 | Multi-level config merging | ✅ Done (v1.5.0) |
-| `-asm-flag` and `-ld-flag` CLI flags for custom pass-through flags | Planned |
+| `fz -init` project scaffolding | ✅ Done (v1.6.0) |
+| `-format bin` flat binary output | ✅ Done (v1.6.0) |
+| `utils.CopyFile` internal utility | ✅ Done (v1.6.0) |
+| Parallel builds (`-j N`) | ✅ Done (v1.7.0) |
+| Linker scripts (`-T`, `-Ttext`) | ✅ Done (v1.7.0) |
+| Interactive shell (`fz -shell`) | ✅ Done (v1.7.0) |
+| Output format selection (`elf32`, `elf64`, `bin`) | ✅ Done (v1.7.0) |
+| C++ support (`.cpp`, `.cc`, `.cxx`) | ✅ Done (v1.7.0) |
+| Static library mode (`-type static`) | ✅ Done (v1.8.0) |
+| Unique object file names (path-based) | ✅ Done (v1.8.0) |
+| Builder stability and `..` path fix | ✅ Done (v1.8.0) |
+| Cross-compilation (`-target <triple>`) | ✅ Done (v1.9.0) |
+| LSP integration (`-compile-commands`) | ✅ Done (v1.9.0) |
+| Smart self-update with rollback (`fz -update`) | ✅ Done (v1.9.0) |
+| Linker test coverage 60%+ | ✅ Done (v1.9.0) |
+| Shell builds single files + shell tests | ✅ Done (v1.9.0) |
 | Colored terminal output (green success / red error) | Planned |
-| C++ support (`.cpp`, `.cxx`) with `g++` / `clang++` | Planned |
 | GDB integration and improved debug workflow | Planned |
 | Man page (`man fz`) | Planned |
 | Windows native support without WSL2 | In progress |
 | macOS full support and testing | In progress |
+| `-asm-flag` and `-ld-flag` CLI pass-through flags | Planned |
 
 ---
 
-## 17. Contributing
+## 23. Contributing
 
 Contributions are welcome: bug reports, feature requests, documentation improvements, and code patches.
 
@@ -1552,7 +2183,7 @@ Repository: [github.com/alexvoste/ForgeZero](https://github.com/alexvoste/ForgeZ
 
 ---
 
-## 18. License
+## 24. License
 
 ForgeZero is released under the **MIT License**.
 
