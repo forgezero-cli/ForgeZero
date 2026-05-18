@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -189,5 +190,29 @@ func TestAssembleCppFailure(t *testing.T) {
 	err := Assemble(context.Background(), src, obj, false, false, "auto")
 	if err == nil {
 		t.Error("expected error for invalid C++")
+	}
+}
+
+func TestCrossCompilerNotFound(t *testing.T) {
+	oldTarget := Target
+	defer func() { Target = oldTarget }()
+	Target = "arm-linux-gnueabihf"
+	// If the compiler is already installed, skip the test
+	if _, err := exec.LookPath("arm-linux-gnueabihf-gcc"); err == nil {
+		t.Skip("cross-compiler present, cannot test missing tool")
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "test.c")
+	if err := os.WriteFile(src, []byte("int main(){}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	obj := filepath.Join(dir, "test.o")
+	err := Assemble(context.Background(), src, obj, false, false, "auto")
+	if err == nil {
+		t.Error("expected error because cross-compiler missing")
+		return
+	}
+	if !strings.Contains(err.Error(), "arm-linux-gnueabihf-gcc") {
+		t.Errorf("error should mention missing compiler: %v", err)
 	}
 }
