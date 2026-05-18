@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 )
@@ -43,12 +42,12 @@ func GetLatestVersion() (string, error) {
 }
 
 func assetName() string {
-	os := runtime.GOOS
+	osName := runtime.GOOS
 	arch := runtime.GOARCH
-	if os == "windows" {
-		return fmt.Sprintf("fz-%s-%s.exe", os, arch)
+	if osName == "windows" {
+		return fmt.Sprintf("fz-%s-%s.exe", osName, arch)
 	}
-	return fmt.Sprintf("fz-%s-%s", os, arch)
+	return fmt.Sprintf("fz-%s-%s", osName, arch)
 }
 
 func UpdateSelf(currentVersion string) error {
@@ -65,42 +64,28 @@ func UpdateSelf(currentVersion string) error {
 	asset := assetName()
 	url := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s/%s", repoOwner, repoName, latest, asset)
 	resp, err := http.Get(url)
-	if err == nil && resp.StatusCode == http.StatusOK {
-		defer resp.Body.Close()
-		exePath, err := os.Executable()
-		if err != nil {
-			return err
-		}
-		backupPath := exePath + ".old"
-		os.Rename(exePath, backupPath)
-		out, err := os.Create(exePath)
-		if err != nil {
-			os.Rename(backupPath, exePath)
-			return err
-		}
-		defer out.Close()
-		if _, err := io.Copy(out, resp.Body); err != nil {
-			os.Rename(backupPath, exePath)
-			return err
-		}
-		os.Chmod(exePath, 0o755)
-		fmt.Println("Update successful. Backup saved as", backupPath)
-		return nil
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("could not download binary: %v", err)
 	}
-	fmt.Println("Prebuilt binary not found, falling back to 'go install'...")
-	goPath, err := exec.LookPath("go")
+	defer resp.Body.Close()
+
+	exePath, err := os.Executable()
 	if err != nil {
-		fmt.Println("Go is not installed. Please update manually:")
-		fmt.Printf("  go install github.com/%s/%s/cmd/fz@latest\n", repoOwner, repoName)
-		return nil
-	}
-	cmd := exec.Command(goPath, "install", fmt.Sprintf("github.com/%s/%s/cmd/fz@latest", repoOwner, repoName))
-	cmd.Env = append(os.Environ(), "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
 		return err
 	}
-	fmt.Println("Update successful. Please restart fz.")
+	backupPath := exePath + ".old"
+	os.Rename(exePath, backupPath)
+	out, err := os.Create(exePath)
+	if err != nil {
+		os.Rename(backupPath, exePath)
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		os.Rename(backupPath, exePath)
+		return err
+	}
+	os.Chmod(exePath, 0o755)
+	fmt.Printf("Update successful. Backup saved as %s\n", backupPath)
 	return nil
 }
