@@ -12,6 +12,19 @@ import (
 	"strings"
 )
 
+var CheckToolFunc = func(name string) error {
+	_, err := exec.LookPath(name)
+	if err != nil {
+		return fmt.Errorf("required tool not found in PATH: %s", name)
+	}
+
+	return nil
+}
+
+func CheckTool(name string) error {
+	return CheckToolFunc(name)
+}
+
 func DeriveNames(src, outFlag, outObjFlag string) (bin, obj string) {
 	base := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
 	objDefault := base + ".o"
@@ -61,14 +74,6 @@ func SupportedExtension(ext string) bool {
 		return true
 	}
 	return false
-}
-
-func CheckTool(name string) error {
-	_, err := exec.LookPath(name)
-	if err != nil {
-		return fmt.Errorf("required tool not found in PATH: %s", name)
-	}
-	return nil
 }
 
 func IsWindows() bool {
