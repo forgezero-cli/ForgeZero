@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,20 +12,31 @@ import (
 	"time"
 )
 
+type MockRunner struct {
+	RunFunc func(ctx context.Context, verbose bool, name string, args ...string) (string, error)
+}
+
+func (m *MockRunner) Run(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+	if m.RunFunc != nil {
+		return m.RunFunc(ctx, verbose, name, args...)
+	}
+	return "", nil
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
 func TestIsWindows(t *testing.T) {
 	got := IsWindows()
 	expected := runtime.GOOS == "windows"
 	if got != expected {
 		t.Errorf("IsWindows() = %v, want %v", got, expected)
-	}
-}
-
-func TestCheckTool(t *testing.T) {
-	if err := CheckTool("go"); err != nil {
-		t.Errorf("CheckTool(go) failed: %v", err)
-	}
-	if err := CheckTool("nonexistent_tool_xyz"); err == nil {
-		t.Error("CheckTool(nonexistent) should fail")
 	}
 }
 
@@ -116,15 +129,6 @@ func TestRunCommandSilent(t *testing.T) {
 	_, err = RunCommandSilent(ctx, false, "false")
 	if err == nil {
 		t.Error("false command should fail")
-	}
-}
-
-func TestRunCommandSilentTimeout(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
-	_, err := RunCommandSilent(ctx, false, "sleep", "1")
-	if err == nil {
-		t.Error("expected timeout error")
 	}
 }
 
@@ -247,3 +251,132 @@ func TestRunCommandSilentWithStderr(t *testing.T) {
 		t.Error("expected stderr output")
 	}
 }
+
+func TestCheckTool(t *testing.T) {
+	oldFunc := CheckToolFunc
+	defer func() { CheckToolFunc = oldFunc }()
+
+	CheckToolFunc = func(name string) error {
+		return fmt.Errorf("mock error")
+	}
+	err := CheckTool("any")
+	if err == nil {
+		t.Error("expected error")
+	}
+
+	CheckToolFunc = oldFunc
+	if err := CheckTool("go"); err != nil {
+		t.Error("go should be found in PATH")
+	}
+}
+
+func TestHashDirPermissionDenied(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission test not reliable on Windows")
+	}
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	if err := os.Mkdir(sub, 0o000); err != nil {
+		t.Skip("cannot set permission")
+	}
+	defer os.Chmod(sub, 0o755)
+	_, err := HashDir(sub)
+	if err == nil {
+		t.Error("expected error due to permission denied")
+	}
+}
+
+func TestCopyFileSrcNotExist(t *testing.T) {
+	err := CopyFile("nonexistent", "dst")
+	if err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestRunCommandSilentTimeout(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	_, err := RunCommandSilent(ctx, false, "sleep", "1")
+	if err == nil {
+		t.Error("expected timeout error")
+	}
+}
+
+func TestHashDirSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skip("symlink not supported")
+	}
+	_, err := HashDir(dir)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestRunCommandSilentContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := RunCommandSilent(ctx, false, "sleep", "1")
+	if err == nil {
+		t.Error("expected error due to cancelled context")
+	}
+}
+
+func TestCheckToolNotFound(t *testing.T) {
+	err := CheckTool("_this_tool_should_not_exist_xyz_")
+	if err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestDeriveNamesWithFlags(t *testing.T) {
+	src := "test.asm"
+	bin, obj := DeriveNames(src, "myprog", "myobj.o")
+	if bin != "myprog" {
+		t.Errorf("bin = %v, want myprog", bin)
+	}
+	if obj != "myobj.o" {
+		t.Errorf("obj = %v, want myobj.o", obj)
+	}
+}
+
+func TestSupportedExtensionAll(t *testing.T) {
+	exts := []string{".asm", ".s", ".S", ".fasm", ".c", ".cpp", ".cc", ".cxx"}
+	for _, ext := range exts {
+		if !SupportedExtension(ext) {
+			t.Errorf("SupportedExtension(%q) = false, want true", ext)
+		}
+	}
+	if SupportedExtension(".go") {
+		t.Error("SupportedExtension(.go) should be false")
+	}
+}
+
+func TestRunCommandSilentErrorVerbose(t *testing.T) {
+	oldStderr := os.Stderr
+	rErr, wErr, _ := os.Pipe()
+	os.Stderr = wErr
+
+	ctx := context.Background()
+	_, err := RunCommandSilent(ctx, true, "sh", "-c", "echo error >&2 && exit 1")
+
+	wErr.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error")
+	}
+
+	var bufErr bytes.Buffer
+	bufErr.ReadFrom(rErr)
+	if !strings.Contains(bufErr.String(), "error") {
+		t.Errorf("stderr output missing, got: %q", bufErr.String())
+	}
+}
+
+// ----- Test linkWithGcc with no fallback and error (already exists, but ensure verbose branch) -----
