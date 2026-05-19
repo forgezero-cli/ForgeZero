@@ -34,7 +34,7 @@ type BuildReport struct {
 	Error       string   `json:"error,omitempty"`
 }
 
-var version = "1.9.1"
+var version = "1.9.2"
 
 func printHelp() {
 	fmt.Fprintf(os.Stderr, `
