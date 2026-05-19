@@ -16,6 +16,8 @@ var (
 	LdScript string
 	TextAddr string
 	Target   = "x86_64-linux-gnu"
+	LdFlags  string
+	Shared   bool
 )
 
 func ldForTarget() string {
@@ -167,6 +169,12 @@ func linkWithClang(ctx context.Context, obj, bin string, verbose bool, allowNoPi
 		args = append(args, "-l"+lib)
 	}
 	args = ApplyGccLdFlags(args, LdScript, TextAddr)
+	if LdFlags != "" {
+		args = append(args, strings.Fields(LdFlags)...)
+	}
+	if Shared {
+		args = append(args, "-shared")
+	}
 	if verbose {
 		fmt.Printf("Running: %s %s\n", clangForTarget(), strings.Join(args, " "))
 	}
@@ -206,6 +214,12 @@ func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieF
 		args = append(args, "-l"+lib)
 	}
 	args = ApplyGccLdFlags(args, LdScript, TextAddr)
+	if LdFlags != "" {
+		args = append(args, strings.Fields(LdFlags)...)
+	}
+	if Shared {
+		args = append(args, "-shared")
+	}
 	if verbose {
 		fmt.Printf("Running: %s %s\n", gccForTarget(), strings.Join(args, " "))
 	}
@@ -242,6 +256,12 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool, libs []strin
 		args = append(args, "-l"+lib)
 	}
 	args = ApplyLdFlags(args, LdScript, TextAddr)
+	if LdFlags != "" {
+		args = append(args, strings.Fields(LdFlags)...)
+	}
+	if Shared {
+		args = append(args, "-shared")
+	}
 	if verbose {
 		fmt.Printf("Running: %s %s\n", ldForTarget(), strings.Join(args, " "))
 	}
@@ -292,6 +312,12 @@ func linkMultipleWithClang(ctx context.Context, objFiles []string, bin string, v
 		args = append(args, "-l"+lib)
 	}
 	args = ApplyGccLdFlags(args, LdScript, TextAddr)
+	if LdFlags != "" {
+		args = append(args, strings.Fields(LdFlags)...)
+	}
+	if Shared {
+		args = append(args, "-shared")
+	}
 	if verbose {
 		fmt.Printf("Running: %s %s\n", clangForTarget(), strings.Join(args, " "))
 	}
@@ -331,6 +357,12 @@ func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, ver
 		args = append(args, "-l"+lib)
 	}
 	args = ApplyGccLdFlags(args, LdScript, TextAddr)
+	if LdFlags != "" {
+		args = append(args, strings.Fields(LdFlags)...)
+	}
+	if Shared {
+		args = append(args, "-shared")
+	}
 	if verbose {
 		fmt.Printf("Running: %s %s\n", gccForTarget(), strings.Join(args, " "))
 	}
@@ -367,6 +399,12 @@ func linkMultipleWithLd(ctx context.Context, objFiles []string, bin string, verb
 		args = append(args, "-l"+lib)
 	}
 	args = ApplyLdFlags(args, LdScript, TextAddr)
+	if LdFlags != "" {
+		args = append(args, strings.Fields(LdFlags)...)
+	}
+	if Shared {
+		args = append(args, "-shared")
+	}
 	if verbose {
 		fmt.Printf("Running: %s %s\n", ldForTarget(), strings.Join(args, " "))
 	}
@@ -392,6 +430,12 @@ func linkWindowsImpl(ctx context.Context, obj, bin string, verbose bool, mode st
 		args = append(args, "-l"+lib)
 	}
 	args = ApplyGccLdFlags(args, LdScript, TextAddr)
+	if LdFlags != "" {
+		args = append(args, strings.Fields(LdFlags)...)
+	}
+	if Shared {
+		args = append(args, "-shared")
+	}
 	if verbose {
 		fmt.Printf("Running: clang %s\n", strings.Join(args, " "))
 	}
@@ -417,6 +461,12 @@ func linkMultipleWindowsImpl(ctx context.Context, objFiles []string, bin string,
 		args = append(args, "-l"+lib)
 	}
 	args = ApplyGccLdFlags(args, LdScript, TextAddr)
+	if LdFlags != "" {
+		args = append(args, strings.Fields(LdFlags)...)
+	}
+	if Shared {
+		args = append(args, "-shared")
+	}
 	if verbose {
 		fmt.Printf("Running: clang %s\n", strings.Join(args, " "))
 	}
