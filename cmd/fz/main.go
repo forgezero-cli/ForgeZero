@@ -213,7 +213,7 @@ func main() {
 	if showVersion {
 		if jsonOutput {
 			report := BuildReport{Status: "info", ExitCode: 0, DurationMs: 0, Binary: version}
-			json.NewEncoder(os.Stdout).Encode(report)
+			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
 			fmt.Printf("fz version %s\n", version)
 		}
@@ -257,7 +257,7 @@ func main() {
 		errMsg := "specify only one of -asm, -cc, or -dir"
 		if jsonOutput {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
-			json.NewEncoder(os.Stdout).Encode(report)
+			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
 			fmt.Fprintln(os.Stderr, errMsg)
 		}
@@ -278,7 +278,7 @@ func main() {
 	if err != nil {
 		if jsonOutput {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: err.Error()}
-			json.NewEncoder(os.Stdout).Encode(report)
+			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
 			fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		}
@@ -325,7 +325,7 @@ func main() {
 			errMsg := "-clean requires -dir or source_dir/source_dirs in config"
 			if jsonOutput {
 				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
-				json.NewEncoder(os.Stdout).Encode(report)
+				_ = json.NewEncoder(os.Stdout).Encode(report)
 			} else {
 				fmt.Fprintln(os.Stderr, errMsg)
 			}
@@ -334,7 +334,7 @@ func main() {
 		if err := builder.CleanDir(targetDir, verbose); err != nil {
 			if jsonOutput {
 				report := BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
-				json.NewEncoder(os.Stdout).Encode(report)
+				_ = json.NewEncoder(os.Stdout).Encode(report)
 			} else {
 				fmt.Fprintf(os.Stderr, "clean failed: %v\n", err)
 			}
@@ -342,7 +342,7 @@ func main() {
 		}
 		if jsonOutput {
 			report := BuildReport{Status: "success", ExitCode: 0, DurationMs: 0, Binary: "cleaned"}
-			json.NewEncoder(os.Stdout).Encode(report)
+			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
 			fmt.Printf("Cleaned %s\n", targetDir)
 		}
@@ -384,7 +384,10 @@ func main() {
 		errMsg := "missing source: use -asm, -cc, -dir, or config"
 		if jsonOutput {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
-			json.NewEncoder(os.Stdout).Encode(report)
+			if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
+				fmt.Fprintf(os.Stderr, "error: failed to encode report: %v\n", err)
+				os.Exit(1)
+			}
 		} else {
 			fmt.Fprintln(os.Stderr, errMsg)
 		}
@@ -394,7 +397,10 @@ func main() {
 		errMsg := "cannot specify both single file and -dir"
 		if jsonOutput {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
-			json.NewEncoder(os.Stdout).Encode(report)
+			if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
+				fmt.Fprintf(os.Stderr, "error: failed to encode report: %v\n", err)
+				os.Exit(1)
+			}
 		} else {
 			fmt.Fprintln(os.Stderr, errMsg)
 		}
@@ -540,7 +546,10 @@ func main() {
 				ObjectFiles: objectFiles,
 				Error:       buildErr.Error(),
 			}
-			json.NewEncoder(os.Stdout).Encode(report)
+			if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
+				fmt.Fprintf(os.Stderr, "error: failed to encode report: %v\n", err)
+				os.Exit(1)
+			}
 		} else {
 			fmt.Fprintf(os.Stderr, "build failed: %v\n", buildErr)
 		}
@@ -556,7 +565,10 @@ func main() {
 			SourceFiles: sourceFiles,
 			ObjectFiles: objectFiles,
 		}
-		json.NewEncoder(os.Stdout).Encode(report)
+		if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
+			fmt.Fprintf(os.Stderr, "error: failed to encode report: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	if watch {
@@ -564,7 +576,10 @@ func main() {
 		if err != nil {
 			if jsonOutput {
 				report := BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
-				json.NewEncoder(os.Stdout).Encode(report)
+				if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
+					fmt.Fprintf(os.Stderr, "error: failed to encode report: %v\n", err)
+					os.Exit(1)
+				}
 			} else {
 				fmt.Fprintf(os.Stderr, "watcher error: %v\n", err)
 			}
@@ -585,16 +600,21 @@ func main() {
 		if err := w.AddRecursive(watchTarget); err != nil {
 			if jsonOutput {
 				report := BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
-				json.NewEncoder(os.Stdout).Encode(report)
+				if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
+					fmt.Fprintf(
+						os.Stderr, "error: failed to encode report: %v\n", err,
+					)
+					os.Exit(1)
+				}
 			} else {
 				fmt.Fprintf(os.Stderr, "cannot watch: %v\n", err)
 			}
 			os.Exit(1)
 		}
 		if configPath != "" {
-			w.Add(configPath)
+			_ = w.Add(configPath)
 		} else if cfgFile := config.DefaultConfigPath(); cfgFile != "" {
-			w.Add(cfgFile)
+			_ = w.Add(cfgFile)
 		}
 		if !jsonOutput {
 			fmt.Printf("Watching %s for changes...\n", watchTarget)
