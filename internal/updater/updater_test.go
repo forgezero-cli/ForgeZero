@@ -11,7 +11,9 @@ import (
 
 func TestGetLatestVersion(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"tag_name":"v1.7.1"}`))
+		if _, err := w.Write([]byte(`{"tag_name":"v1.7.1"}`)); err != nil {
+			t.Errorf("mock server write failed: %v", err)
+		}
 	}))
 	defer server.Close()
 	oldURL := apiURL
@@ -61,7 +63,9 @@ func TestUpdateSelfDownload(t *testing.T) {
 
 	// Create a test HTTP server that returns a binary
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("new binary content"))
+		if _, err := w.Write([]byte("new binary content")); err != nil {
+			t.Errorf("mock server write failed: %v", err)
+		}
 	}))
 	defer server.Close()
 	oldURL := apiURL
@@ -69,7 +73,9 @@ func TestUpdateSelfDownload(t *testing.T) {
 	defer func() { apiURL = oldURL }()
 
 	binServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("new binary"))
+		if _, err := w.Write([]byte("new binary")); err != nil {
+			t.Errorf("mock server write failed: %v", err)
+		}
 	}))
 	defer binServer.Close()
 	t.Skip("full integration test requires multiple endpoints; manual test recommended")
@@ -78,7 +84,9 @@ func TestUpdateSelfDownload(t *testing.T) {
 func TestUpdateSelfAlreadyUpToDate(t *testing.T) {
 	oldURL := apiURL
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"tag_name":"v1.7.2"}`))
+		if _, err := w.Write([]byte(`{"tag_name":"v1.7.2"}`)); err != nil {
+			t.Errorf("mock server write failed: %v", err)
+		}
 	}))
 	apiURL = server.URL
 	defer func() { apiURL = oldURL }()
@@ -94,7 +102,9 @@ func TestUpdateSelfAlreadyUpToDate(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("failed to create response body: %v", err)
+	}
 	if !bytes.Contains(buf.Bytes(), []byte("Already up to date")) {
 		t.Error("expected 'Already up to date' message")
 	}
@@ -110,7 +120,9 @@ func TestUpdateSelfPermissionDenied(t *testing.T) {
 	}
 	executablePathFunc = func() (string, error) { return fakeExe, nil }
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("new binary"))
+		if _, err := w.Write([]byte("new binary")); err != nil {
+			t.Errorf("mock server write failed: %v", err)
+		}
 	}))
 	defer server.Close()
 	oldURL := apiURL
