@@ -8,8 +8,15 @@ import (
 func TestMainInit(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(tmpDir)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to test directory: %v\n", err)
+	}
+
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("failed to restore working directory: %v", err)
+		}
+	})
 
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
