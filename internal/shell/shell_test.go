@@ -41,7 +41,9 @@ func TestCmdHelp(t *testing.T) {
 	w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
 	out := buf.String()
 	if !strings.Contains(out, "Commands:") {
 		t.Error("help output missing 'Commands:'")
@@ -60,7 +62,9 @@ func TestCmdShow(t *testing.T) {
 	w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
 	out := buf.String()
 	if !strings.Contains(out, "Mode: raw") {
 		t.Error("show output missing Mode")
@@ -148,8 +152,12 @@ func TestCmdClean(t *testing.T) {
 	state.SourceType = "dir"
 	objDir := filepath.Join(dir, ".fz_objs")
 	cacheDir := filepath.Join(dir, ".fz_cache")
-	os.MkdirAll(objDir, 0o755)
-	os.MkdirAll(cacheDir, 0o755)
+	if err := os.MkdirAll(objDir, 0o755); err != nil {
+		t.Fatalf("failed to create directory %s: %v", objDir, err)
+	}
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatalf("failed to create cache dir %s: %v", cacheDir, err)
+	}
 	err := cmdClean(state)
 	if err != nil {
 		t.Fatal(err)
