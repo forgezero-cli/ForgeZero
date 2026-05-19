@@ -24,7 +24,11 @@ func TestGenerateWithSpacesAndMixedFiles(t *testing.T) {
 		SourceFiles: []string{cFile},
 	}
 	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("failed to restore working directory: %v", err)
+		}
+	})
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
