@@ -3,13 +3,17 @@ package utils
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
+
+	"github.com/zeebo/blake3"
 )
 
 var CheckToolFunc = func(name string) error {
@@ -17,7 +21,6 @@ var CheckToolFunc = func(name string) error {
 	if err != nil {
 		return fmt.Errorf("required tool not found in PATH: %s", name)
 	}
-
 	return nil
 }
 
@@ -70,7 +73,7 @@ func EnsureDir(path string) error {
 func SupportedExtension(ext string) bool {
 	ext = strings.ToLower(ext)
 	switch ext {
-	case ".asm", ".s", ".S", ".fasm", ".c":
+	case ".asm", ".s", ".S", ".fasm", ".c", ".cpp", ".cc", ".cxx":
 		return true
 	}
 	return false
@@ -108,4 +111,52 @@ func CopyFile(src, dst string) error {
 	defer out.Close()
 	_, err = io.Copy(out, in)
 	return err
+}
+
+func HashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	hasher := blake3.New()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func HashDir(root string) (string, error) {
+	var files []string
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		files = append(files, rel)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(files)
+	hasher := blake3.New()
+	for _, rel := range files {
+		hasher.Write([]byte(rel))
+		hasher.Write([]byte{0})
+		fullPath := filepath.Join(root, rel)
+		data, err := os.ReadFile(fullPath)
+		if err != nil {
+			return "", err
+		}
+		hasher.Write(data)
+		hasher.Write([]byte{0})
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
