@@ -5,11 +5,12 @@ go 1.25.0
 require (
 	github.com/c-bata/go-prompt v0.2.6
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/zeebo/blake3 v0.2.4
 	gopkg.in/yaml.v3 v3.0.1
-	honnef.co/go/tools v0.7.0
 )
 
 require (
+	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
 	github.com/mattn/go-colorable v0.1.7 // indirect
 	github.com/mattn/go-isatty v0.0.12 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
