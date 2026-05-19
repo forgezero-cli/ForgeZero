@@ -1,0 +1,14 @@
+[package]
+name = "rustcache"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+sha2 = "0.10"
+
+[[bin]]
+name = "runner"
+path = "src/lib.rs"

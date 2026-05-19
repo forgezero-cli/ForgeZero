@@ -7,5 +7,9 @@ hello
 node_modules/
 package-lock.json
 release
+
+rustcache/target/
+rustcache/Cargo.lock
+
 # OS stuff
 .DS_Store
