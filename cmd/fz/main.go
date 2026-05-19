@@ -18,6 +18,7 @@ import (
 	initpkg "fz/internal/init"
 	"fz/internal/linker"
 	"fz/internal/man"
+	"fz/internal/pkgman"
 	"fz/internal/shell"
 	"fz/internal/updater"
 	"fz/internal/utils"
@@ -125,6 +126,9 @@ func main() {
 		libMode            bool
 		target             string
 		genCompileCommands bool
+		shared             bool
+		ccFlags            string
+		ldFlags            string
 	)
 
 	flag.StringVar(&asmPath, "asm", "", "")
@@ -163,7 +167,9 @@ func main() {
 	flag.BoolVar(&libMode, "lib", false, "build static library (archive)")
 	flag.StringVar(&target, "target", "x86_64-linux-gnu", "target triple (e.g., x86_64-linux-gnu, arm-linux-gnueabihf, riscv64-unknown-elf)")
 	flag.BoolVar(&genCompileCommands, "compile-commands", false, "generate compile_commands.json for LSP and exit")
-
+	flag.BoolVar(&shared, "shared", false, "build shared library instead of executable")
+	flag.StringVar(&ccFlags, "cc-flag", "", "additional C compiler flags (space-separated)")
+	flag.StringVar(&ldFlags, "ld-flag", "", "additional linker flags (space-separated)")
 	flag.Usage = printHelp
 	flag.Parse()
 	if initMode {
@@ -174,6 +180,90 @@ func main() {
 		fmt.Println("project initialized. edit .fz.yaml to configure ur build.")
 		return
 	}
+
+	ctx := context.Background()
+	if len(os.Args) >= 2 && os.Args[1] == "pm" {
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: fz pm <add|remove|list|update|catalog|search|install> [args]")
+			return
+		}
+		subcmd := os.Args[2]
+		switch subcmd {
+		case "add":
+			if len(os.Args) < 4 {
+				fmt.Println("Usage: fz pm add <repo-url> [version]")
+				return
+			}
+			pkgURL := os.Args[3]
+			version := ""
+			if len(os.Args) > 4 {
+				version = os.Args[4]
+			}
+			if err := pkgman.Add(ctx, pkgURL, version); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+		case "remove":
+			if len(os.Args) < 4 {
+				fmt.Println("Usage: fz pm remove <repo-url>")
+				return
+			}
+			if err := pkgman.Remove(ctx, os.Args[3]); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+		case "list":
+			if len(os.Args) == 3 {
+				pkgman.List()
+			} else if os.Args[3] == "catalog" {
+				pkgman.ListCatalog(ctx)
+			} else {
+				fmt.Println("Usage: fz pm list [catalog]")
+			}
+		case "update":
+			if err := pkgman.Update(ctx); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+		case "catalog":
+			pkgman.ListCatalog(ctx)
+		case "search":
+			if len(os.Args) < 4 {
+				fmt.Println("Usage: fz pm search <keyword>")
+				return
+			}
+			if err := pkgman.SearchCatalog(ctx, os.Args[3]); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+		case "install":
+			if len(os.Args) < 4 {
+				fmt.Println("Usage: fz pm install <catalog-package-name>")
+				return
+			}
+			if err := pkgman.InstallFromCatalog(ctx, os.Args[3]); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+		default:
+			fmt.Printf("Unknown pm subcommand: %s\n", subcmd)
+		}
+		return
+	}
+
+	if asmPath == "" && ccPath == "" && dirPath == "" && configPath != "" {
+		cfg, err := config.Load(configPath)
+		if err == nil && (len(cfg.SourceFiles) > 0 || len(cfg.SourceDirs) > 0) {
+			dirPath = "."
+			if len(cfg.SourceFiles) > 0 {
+			}
+		}
+	}
+
+	assembler.CcFlags = ccFlags
+	linker.LdFlags = ldFlags
+	linker.Shared = shared
+
 	assembler.Target = target
 	linker.Target = target
 	if libMode {
