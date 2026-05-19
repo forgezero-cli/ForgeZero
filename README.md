@@ -57,36 +57,38 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly and C dev
 10. [C++ Compilation](#10-c-compilation-1)
 11. [Cross-Compilation](#11-cross-compilation)
 12. [Static Library Mode](#12-static-library-mode)
-13. [Internal Mechanisms](#13-internal-mechanisms)
-    - 13.1 [Build Cache](#131-build-cache)
-    - 13.2 [Pre-link Symbol Check](#132-pre-link-symbol-check)
-    - 13.3 [Watch Mode](#133-watch-mode)
-    - 13.4 [JSON Output](#134-json-output)
-    - 13.5 [Clean](#135-clean)
-    - 13.6 [Parallel Builds](#136-parallel-builds)
-    - 13.7 [Interactive Shell](#137-interactive-shell)
-14. [Configuration File Reference](#14-configuration-file-reference)
-    - 14.1 [Basic Fields](#141-basic-fields)
-    - 14.2 [Multiple Source Directories](#142-multiple-source-directories)
-    - 14.3 [Explicit Source File Lists](#143-explicit-source-file-lists)
-    - 14.4 [Include & Exclude Patterns](#144-include--exclude-patterns)
-    - 14.5 [Library Linking](#145-library-linking)
-    - 14.6 [Custom Compiler & Linker Flags](#146-custom-compiler--linker-flags)
-    - 14.7 [.fzignore File](#147-fzignore-file)
-    - 14.8 [Full Annotated Example](#148-full-annotated-example)
-15. [Assembler Backends](#15-assembler-backends)
-    - 15.1 [NASM (.asm)](#151-nasm-asm)
-    - 15.2 [GAS (.s / .S)](#152-gas-s--s)
-    - 15.3 [FASM (.fasm)](#153-fasm-fasm)
-16. [Project Initialization](#16-project-initialization)
-17. [LSP & IDE Integration](#17-lsp--ide-integration)
-18. [Self-Update](#18-self-update)
-19. [Examples](#19-examples)
-20. [Exit Codes](#20-exit-codes)
-21. [Troubleshooting](#21-troubleshooting)
-22. [Roadmap](#22-roadmap)
-23. [Contributing](#23-contributing)
-24. [License](#24-license)
+13. [Shared Library Mode](#13-shared-library-mode)
+14. [Package Manager (fz pm)](#14-package-manager-fz-pm)
+15. [Internal Mechanisms](#15-internal-mechanisms)
+    - 15.1 [Build Cache (BLAKE3)](#151-build-cache-blake3)
+    - 15.2 [Pre-link Symbol Check](#152-pre-link-symbol-check)
+    - 15.3 [Watch Mode](#153-watch-mode)
+    - 15.4 [JSON Output](#154-json-output)
+    - 15.5 [Clean](#155-clean)
+    - 15.6 [Parallel Builds](#156-parallel-builds)
+    - 15.7 [Interactive Shell](#157-interactive-shell)
+16. [Configuration File Reference](#16-configuration-file-reference)
+    - 16.1 [Basic Fields](#161-basic-fields)
+    - 16.2 [Multiple Source Directories](#162-multiple-source-directories)
+    - 16.3 [Explicit Source File Lists](#163-explicit-source-file-lists)
+    - 16.4 [Include & Exclude Patterns](#164-include--exclude-patterns)
+    - 16.5 [Library Linking](#165-library-linking)
+    - 16.6 [Custom Compiler & Linker Flags](#166-custom-compiler--linker-flags)
+    - 16.7 [.fzignore File](#167-fzignore-file)
+    - 16.8 [Full Annotated Example](#168-full-annotated-example)
+17. [Assembler Backends](#17-assembler-backends)
+    - 17.1 [NASM (.asm)](#171-nasm-asm)
+    - 17.2 [GAS (.s / .S)](#172-gas-s--s)
+    - 17.3 [FASM (.fasm)](#173-fasm-fasm)
+18. [Project Initialization](#18-project-initialization)
+19. [LSP & IDE Integration](#19-lsp--ide-integration)
+20. [Self-Update](#20-self-update)
+21. [Examples](#21-examples)
+22. [Exit Codes](#22-exit-codes)
+23. [Troubleshooting](#23-troubleshooting)
+24. [Roadmap](#24-roadmap)
+25. [Contributing](#25-contributing)
+26. [License](#26-license)
 
 ---
 
@@ -98,13 +100,23 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 - Compiles each source file into an object file with appropriate flags.
 - Checks for duplicate global symbols across all objects before linking.
 - Links everything into a single binary using the most appropriate linker.
-- Caches compiled objects so unchanged files are never recompiled.
+- Caches compiled objects using **BLAKE3** so unchanged files are never recompiled.
 - Optionally watches the filesystem and rebuilds on every save.
 - Emits structured JSON build reports for CI/CD integration.
 - Generates `compile_commands.json` for full LSP and IDE integration.
 - Supports cross-compilation to ARM, RISC-V, and other targets via `-target`.
-- Builds static libraries (`.a`) in addition to executables.
+- Builds static libraries (`.a`) and shared libraries (`.so` / `.dylib`) in addition to executables.
 - Compiles C++ (`.cpp`, `.cc`, `.cxx`) with the same strict standards as C.
+- Manages external C/ASM dependencies via the built-in package manager (`fz pm`).
+
+**What's new in v2.0.0 NEXUS:**
+
+- **BLAKE3 hashing** — cache is up to 7× faster. File hash time for 10 MB dropped from ~58 ms to ~8.7 ms. `internal/utils/hash.go` uses `github.com/zeebo/blake3` with a fast parallel implementation.
+- **Package manager (`fz pm`)** — manage external C/ASM dependencies from Git or the official catalog. Supports `add`, `remove`, `list`, `update`, `catalog`, `search`, and `install` with BLAKE3 hash verification.
+- **Shared library support** — `-shared`, `-cc-flag`, and `-ld-flag` flags for building `.so`, `.dylib`, and `.dll` targets.
+- **High test coverage** — utils 84%, linker 60%, assembler 60%, builder 56%.
+- **All `golangci-lint` warnings fixed** — `errcheck`, `govet`, `ineffassign`, and others.
+- **Context and timeouts for all network/git operations** — no more hanging on slow connections.
 
 **What's new in v1.9.0:**
 
@@ -161,7 +173,7 @@ ForgeZero is intentionally lightweight — a single statically compiled Go binar
 | `.asm`             | `nasm`                 | x86/x86-64 Intel syntax |
 | `.s` / `.S`        | `gcc` (drives `as`)    | AT&T syntax; `.S` files are C-preprocessed first |
 | `.fasm`            | `fasm`                 | Must be downloaded separately from flatassembler.net |
-| `.c`               | `gcc` or `clang`       | `clang` preferred when `-strict` is used |
+| `.c`               | `gcc` or `clang`       | Strict flags + sanitizers by default |
 | `.cpp` / `.cc` / `.cxx` | `g++` or `clang++` | Same strict flags as C; `clang++` preferred in strict mode |
 
 ### Linker tools
@@ -193,6 +205,7 @@ Install cross-compilers via your package manager (e.g. `sudo apt install gcc-arm
 | `nm`       | Pre-link duplicate symbol check (primary) |
 | `objdump`  | Fallback for symbol check |
 | `readelf`  | Second fallback for symbol check |
+| `git`      | Required for `fz pm add` (package manager) |
 
 ### Go version (build from source only)
 
@@ -208,7 +221,7 @@ Go **1.21** or later is required to build `fz` from source.
 
 ```bash
 sudo apt update
-sudo apt install -y nasm gcc binutils
+sudo apt install -y nasm gcc binutils git
 ```
 
 **Install Clang (optional, for `-strict` mode):**
@@ -237,7 +250,7 @@ chmod +x /usr/local/bin/fasm
 **Install ForgeZero via Go:**
 
 ```bash
-go install github.com/alexvoste/ForgeZero/cmd/fz@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 Ensure `~/go/bin` is on your `PATH`:
@@ -261,17 +274,17 @@ fz -v
 
 ```bash
 # Fedora
-sudo dnf install -y nasm gcc binutils clang
+sudo dnf install -y nasm gcc binutils clang git
 
 # RHEL / CentOS — enable EPEL first for nasm
 sudo dnf install -y epel-release
-sudo dnf install -y nasm gcc binutils clang
+sudo dnf install -y nasm gcc binutils clang git
 ```
 
 **Install ForgeZero:**
 
 ```bash
-go install github.com/alexvoste/ForgeZero/cmd/fz@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 ---
@@ -281,7 +294,7 @@ go install github.com/alexvoste/ForgeZero/cmd/fz@latest
 **Install system dependencies:**
 
 ```bash
-sudo pacman -S --noconfirm nasm gcc binutils clang
+sudo pacman -S --noconfirm nasm gcc binutils clang git
 
 # FASM is available in the AUR
 yay -S fasm
@@ -290,7 +303,7 @@ yay -S fasm
 **Install ForgeZero:**
 
 ```bash
-go install github.com/alexvoste/ForgeZero/cmd/fz@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 ---
@@ -300,13 +313,13 @@ go install github.com/alexvoste/ForgeZero/cmd/fz@latest
 **Install system dependencies:**
 
 ```bash
-sudo zypper install -y nasm gcc binutils clang
+sudo zypper install -y nasm gcc binutils clang git
 ```
 
 **Install ForgeZero:**
 
 ```bash
-go install github.com/alexvoste/ForgeZero/cmd/fz@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 ---
@@ -324,7 +337,7 @@ macOS support is in progress. The following setup works for most use cases today
 **Install dependencies:**
 
 ```bash
-brew install nasm gcc go
+brew install nasm gcc go git
 ```
 
 > **Note:** macOS ships `clang` as the system compiler under the `gcc` alias via Xcode Command Line Tools. For full GCC, `brew install gcc` installs it as `gcc-14` (or similar). ForgeZero uses whatever `gcc` resolves to on your `PATH`.
@@ -332,7 +345,7 @@ brew install nasm gcc go
 **Install ForgeZero:**
 
 ```bash
-go install github.com/alexvoste/ForgeZero/cmd/fz@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 Add Go's bin directory to your shell profile:
@@ -378,7 +391,7 @@ Download and run the installer from [msys2.org](https://www.msys2.org/). After i
 
 ```bash
 pacman -Syu
-pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils mingw-w64-x86_64-clang
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils mingw-w64-x86_64-clang git
 ```
 
 **Step 2 — Install NASM for Windows:**
@@ -404,13 +417,13 @@ Download from [go.dev/dl](https://go.dev/dl/) and run the installer.
 Open **Command Prompt** or **PowerShell**:
 
 ```powershell
-go install github.com/alexvoste/ForgeZero/cmd/fz@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 Or build from source:
 
 ```powershell
-git clone https://github.com/alexvoste/ForgeZero.git
+git clone https://github.com/forgezero-cli/ForgeZero.git
 cd ForgeZero
 go build -o fz.exe ./cmd/fz/main.go
 ```
@@ -424,7 +437,7 @@ Move `fz.exe` to a directory on your `PATH`.
 ### 3.7 Build from Source (All Platforms)
 
 ```bash
-git clone https://github.com/alexvoste/ForgeZero.git
+git clone https://github.com/forgezero-cli/ForgeZero.git
 cd ForgeZero
 go build -o fz ./cmd/fz/main.go    # Linux / macOS
 go build -o fz.exe ./cmd/fz/main.go  # Windows
@@ -453,7 +466,7 @@ Move-Item fz.exe C:\Windows\System32\fz.exe
 The simplest method if Go is already configured:
 
 ```bash
-go install github.com/alexvoste/ForgeZero/cmd/fz@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 The binary lands in `$GOPATH/bin`. Verify installation:
@@ -516,6 +529,18 @@ fz -compile-commands
 
 ```bash
 fz -dir ./src -type static -lib mylib
+```
+
+**Build a shared library:**
+
+```bash
+fz -cc mylib.c -shared -o libmylib.so
+```
+
+**Add a package dependency:**
+
+```bash
+fz pm add github.com/me/my-lib
 ```
 
 **Build multiple directories (v1.5.0):**
@@ -627,7 +652,7 @@ Each level overrides values from the previous one. This lets you set organizatio
 fz [options]
 ```
 
-At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, or a valid config file must be present.
+At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, or a valid config file must be present.
 
 ### Full Flag Reference
 
@@ -643,6 +668,9 @@ At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, or a valid config file
 | `-target` | `<triple>` | — | Cross-compilation target triple (e.g. `arm-linux-gnueabihf`). |
 | `-type` | `executable\|static` | `executable` | Output type: linked binary or static library (`.a`). |
 | `-lib` | `<name>` | — | Output library name when `-type static` is used (without `lib` prefix or `.a` suffix). |
+| `-shared` | — | off | Build a shared library (`.so` / `.dylib` / `.dll`). |
+| `-cc-flag` | `<flags>` | — | Extra compiler flags, space-separated, injected after standard flags. |
+| `-ld-flag` | `<flags>` | — | Extra linker flags, space-separated, appended to the linker command. |
 | `-j` | `<N>` | `1` | Parallel compilation jobs. `0` = auto (number of CPU cores). |
 | `-T` | `<script>` | — | Linker script to pass to `ld`. |
 | `-Ttext` | `<addr>` | — | Entry point address to pass to the linker (hex or decimal). |
@@ -664,6 +692,18 @@ At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, or a valid config file
 | `-timeout` | `<sec>` | `60` | Timeout in seconds for each sub-command. |
 | `-h`, `--help` | — | — | Print help and exit. |
 | `-v`, `--version` | — | — | Print version and exit. |
+
+### Package Manager Sub-commands
+
+| Command | Description |
+|---------|-------------|
+| `fz pm add <repo>[@version]` | Clone a package from a Git repository and register it in `.fz.yaml`. |
+| `fz pm remove <package>` | Remove a package and clean up `.fz.yaml` and empty parent directories. |
+| `fz pm list` | List all installed packages. |
+| `fz pm update` | Update all installed packages to the latest commit or tag. |
+| `fz pm catalog` | Browse the official ForgeZero package catalog. |
+| `fz pm search <query>` | Search the catalog by name or keyword. |
+| `fz pm install <name>` | Install a package from the catalog with BLAKE3 hash verification. |
 
 ---
 
@@ -917,11 +957,6 @@ fz
 
 ### Linking Against the Produced Library
 
-```bash
-fz -cc main.c -mode c
-# manually link, or add to another fz project's libs:
-```
-
 ```yaml
 # dependent project .fz.yaml
 source_files:
@@ -935,26 +970,145 @@ flags:
 
 ### Notes
 
-- `-type static` is incompatible with `-mode raw` (raw mode produces executables via `ld`). Use `-mode c` or `-mode auto` when also producing a static library.
-- Sanitizer flags are applied to object compilation as normal, but the final `ar` step does not link, so sanitizer runtime linking happens only when the consumer links the library into an executable.
+- `-type static` is incompatible with `-mode raw`. Use `-mode c` or `-mode auto` when producing a static library.
 - Cross-compilation works: `fz -dir ./src -type static -lib mylib -target arm-linux-gnueabihf` uses `arm-linux-gnueabihf-ar`.
 
 ---
 
-## 13. Internal Mechanisms
+## 13. Shared Library Mode
 
-### 13.1 Build Cache
+Added in **v2.0.0 NEXUS**. ForgeZero can produce shared libraries (`.so`, `.dylib`, `.dll`) using the `-shared` flag.
+
+### Basic Usage
+
+```bash
+# Build a shared library from a C file
+fz -cc mylib.c -shared -o libmylib.so
+
+# With extra compiler and linker flags
+fz -cc mylib.c -shared -cc-flag "-O2 -fPIC" -ld-flag "-pthread" -o libmylib.so
+```
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `-shared` | Build a shared library instead of an executable |
+| `-cc-flag "<flags>"` | Extra compiler flags, space-separated, injected after standard flags |
+| `-ld-flag "<flags>"` | Extra linker flags, space-separated, appended to the linker command |
+
+### How It Works
+
+When `-shared` is set, `fz` adds `-shared` to the linker command. The `-cc-flag` and `-ld-flag` values are split by spaces and injected into the compiler and linker argument lists respectively. The same flags work for C++ files (`.cpp`, `.cc`, `.cxx`).
+
+### Notes
+
+- When building shared libraries for Linux, include `-fPIC` in `-cc-flag` to produce position-independent code.
+- `-shared` can be combined with `-target` for cross-compiled shared libraries.
+- Sanitizer flags are applied to object compilation as normal.
+
+---
+
+## 14. Package Manager (fz pm)
+
+Added in **v2.0.0 NEXUS**. `fz pm` is a built-in package manager for C/ASM projects. It manages external dependencies from Git repositories or from the official ForgeZero package catalog.
+
+### Sub-commands
+
+#### fz pm add
+
+```bash
+# Install a library from GitHub
+fz pm add github.com/me/my-lib
+
+# Install a specific version (tag or commit)
+fz pm add github.com/me/my-lib@v1.2.3
+```
+
+`add` clones the repository into `vendor/`, runs `git checkout` if a version tag is given, and automatically updates `.fz.yaml` (`source_dirs`). All subsequent `fz` builds include the vendored package.
+
+#### fz pm remove
+
+```bash
+fz pm remove my-lib
+```
+
+Deletes the package directory from `vendor/`, cleans up `.fz.yaml`, and removes any empty parent directories left behind.
+
+#### fz pm list
+
+```bash
+fz pm list
+```
+
+Lists all currently installed packages and their versions as recorded in `.fz.yaml`.
+
+#### fz pm update
+
+```bash
+fz pm update
+```
+
+Pulls the latest changes for all installed packages. If a package was installed at a specific tag, it is updated to the latest commit on the default branch unless a version constraint is specified in `.fz.yaml`.
+
+#### fz pm catalog
+
+```bash
+fz pm catalog
+```
+
+Fetches and displays the full list of packages available in the official ForgeZero catalog (`https://raw.githubusercontent.com/forgezero-cli/catalog/main/catalog.json`).
+
+#### fz pm search
+
+```bash
+fz pm search iot
+fz pm search crypto
+```
+
+Searches the official catalog by name or keyword and prints matching packages with their descriptions.
+
+#### fz pm install
+
+```bash
+fz pm install esp-idf
+```
+
+Installs a named package from the official catalog. Unlike `fz pm add`, `install` additionally verifies the package content against a BLAKE3 hash stored in the catalog manifest to ensure integrity.
+
+### How It Works
+
+- Packages are cloned into `vendor/<package-name>/`.
+- `.fz.yaml` is updated automatically to include `vendor/<package-name>` in `source_dirs`.
+- All network and git operations run with context and configurable timeouts (default: 60 s, override with `-timeout`).
+- The catalog is a community-driven JSON file hosted at `https://github.com/forgezero-cli/catalog`.
+
+### Contributing Packages to the Catalog
+
+To add your library to the official catalog, open a pull request at [github.com/forgezero-cli/catalog](https://github.com/forgezero-cli/catalog) and add an entry to `catalog.json` with your repository URL, description, and BLAKE3 hash.
+
+---
+
+## 15. Internal Mechanisms
+
+### 15.1 Build Cache (BLAKE3)
 
 ForgeZero caches compiled object files in `.fz_cache/` to skip recompilation of unchanged sources.
 
 **Cache key** is computed from:
 
-- SHA-256 hash of the source file contents
+- **BLAKE3** hash of the source file contents (replaces SHA256 as of v2.0.0 — up to 7× faster)
 - `-debug` flag state (`true`/`false`)
 - `-mode` value (`auto`, `c`, or `raw`)
 - `-target` value (empty string for native builds)
 
 If all four match an existing cache entry, the stored object file is reused. The assembler/compiler is never invoked for that file.
+
+**BLAKE3 performance:**
+
+| File size | SHA256 (pre-2.0.0) | BLAKE3 (2.0.0+) |
+|-----------|-------------------|-----------------|
+| 10 MB     | ~58 ms            | ~8.7 ms         |
 
 **Disable caching:**
 
@@ -972,7 +1126,7 @@ The cache is stored as plain files under `.fz_cache/` and can be safely deleted 
 
 ---
 
-### 13.2 Pre-link Symbol Check
+### 15.2 Pre-link Symbol Check
 
 Before invoking the linker, `fz` scans all compiled object files for duplicate global symbol definitions. This catches conflicts — such as `_start` or a global function defined in two files — before the linker emits a cryptic error.
 
@@ -990,7 +1144,7 @@ Use this when intentionally relying on weak symbols or linker scripts that resol
 
 ---
 
-### 13.3 Watch Mode
+### 15.3 Watch Mode
 
 Watch mode monitors source files (and the config file, if present) for filesystem changes and triggers a rebuild automatically.
 
@@ -1005,7 +1159,7 @@ Press `Ctrl+C` to exit.
 
 ---
 
-### 13.4 JSON Output
+### 15.4 JSON Output
 
 When `-json` is passed, all standard output is suppressed. On completion (or on error), a single JSON object is written to stdout:
 
@@ -1048,7 +1202,7 @@ echo "Build succeeded in ${duration}ms"
 
 ---
 
-### 13.5 Clean
+### 15.5 Clean
 
 The `-clean` flag removes all artifacts produced by `fz`:
 
@@ -1068,7 +1222,7 @@ Deleted items:
 
 ---
 
-### 13.6 Parallel Builds
+### 15.6 Parallel Builds
 
 Added in **v1.7.0**. The `-j` flag controls how many source files are compiled concurrently.
 
@@ -1085,7 +1239,7 @@ Parallel compilation does not affect the linking step — all objects must be co
 
 ---
 
-### 13.7 Interactive Shell
+### 15.7 Interactive Shell
 
 Added in **v1.7.0**, extended in **v1.9.0**.
 
@@ -1125,17 +1279,15 @@ fz> build boot.asm
 fz> exit
 ```
 
-The interactive shell is fully tested as of v1.9.0 — `SplitCommand`, `CmdSet`, and `CmdBuild` are covered by the test suite.
-
 ---
 
-## 14. Configuration File Reference
+## 16. Configuration File Reference
 
 ForgeZero accepts YAML configuration files. The file is searched automatically in this order: `.fz.yaml`, `fz.yaml`, `.fz.yml`, `fz.yml`. Use `-config <path>` to specify explicitly.
 
 CLI flags always override config file values.
 
-### 14.1 Basic Fields
+### 16.1 Basic Fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -1159,7 +1311,7 @@ CLI flags always override config file values.
 
 ---
 
-### 14.2 Multiple Source Directories
+### 16.2 Multiple Source Directories
 
 The `source_dirs` field (new in v1.5.0) lets you build from multiple directories in a single `fz` invocation. All directories are scanned recursively and their files are compiled together into one binary.
 
@@ -1172,7 +1324,7 @@ output: forgeos.elf
 mode: raw
 ```
 
-This is equivalent to building `kernel/`, `libc/`, and `drivers/` as if they were one large directory. Object file names are prefixed with their parent directory to avoid collisions:
+Object file names are prefixed with their parent directory to avoid collisions:
 
 | Source file         | Object file          |
 |---------------------|----------------------|
@@ -1182,7 +1334,7 @@ This is equivalent to building `kernel/`, `libc/`, and `drivers/` as if they wer
 
 ---
 
-### 14.3 Explicit Source File Lists
+### 16.3 Explicit Source File Lists
 
 When `source_files` is set, `fz` builds exactly and only those files. Directory scanning is skipped entirely.
 
@@ -1201,18 +1353,18 @@ Each path is verified to exist at startup. If a file is missing, `fz` exits with
 
 ---
 
-### 14.4 Include & Exclude Patterns
+### 16.4 Include & Exclude Patterns
 
 **`exclude`** — glob patterns; any file or directory matching at least one pattern is skipped:
 
 ```yaml
 exclude:
-  - "test_*"       # skip files whose names start with test_
-  - "*/legacy/"    # skip any directory named legacy
-  - "*.tmp"        # skip all .tmp files
+  - "test_*"
+  - "*/legacy/"
+  - "*.tmp"
 ```
 
-**`include`** (new in v1.5.0) — glob patterns; only files matching at least one pattern are considered. If `include` is not set (the default), all supported extensions are included.
+**`include`** (new in v1.5.0) — glob patterns; only files matching at least one pattern are considered:
 
 ```yaml
 include:
@@ -1225,13 +1377,13 @@ include:
 1. Check `exclude` patterns — skip if matched.
 2. Check `.fzignore` file — skip if matched.
 3. Check `include` patterns — skip if none match (when `include` is set).
-4. Check supported extensions (`.asm`, `.s`, `.S`, `.fasm`, `.c`, `.cpp`, `.cc`, `.cxx`) — skip all others.
+4. Check supported extensions — skip all others.
 
 ---
 
-### 14.5 Library Linking
+### 16.5 Library Linking
 
-The `libs` field (new in v1.5.0) specifies system libraries to link against. Each entry is passed to the linker as `-l<lib>`:
+The `libs` field specifies system libraries to link against. Each entry is passed to the linker as `-l<lib>`:
 
 ```yaml
 libs:
@@ -1240,29 +1392,25 @@ libs:
   - c         # -lc
 ```
 
-Libraries are appended to the linker command after all object files. They are resolved from standard system library paths. To add non-standard search paths, use `flags.ld: ["-L/path/to/libs"]`.
-
-This works in all linking modes (`auto`, `c`, `raw`).
+To add non-standard search paths, use `flags.ld: ["-L/path/to/libs"]`.
 
 ---
 
-### 14.6 Custom Compiler & Linker Flags
-
-The `flags` block lets you pass arbitrary extra arguments to each tool:
+### 16.6 Custom Compiler & Linker Flags
 
 ```yaml
 flags:
-  asm:                              # appended after standard assembler flags
+  asm:
     - -DDEBUG_BUILD
     - -I./include
 
-  cc:                               # appended after -Wall -Wextra -Werror ... but before -c
+  cc:
     - -O3
     - -march=native
     - -DNDEBUG
     - -ffreestanding
 
-  ld:                               # appended at the end of the linker command, before -o
+  ld:
     - -T
     - linker.ld
     - -Map
@@ -1282,18 +1430,9 @@ flags:
 
 ---
 
-### 14.7 .fzignore File
+### 16.7 .fzignore File
 
 The `.fzignore` file works exactly like `.gitignore`. It is loaded from the project root (or from the path set by `ignore_file` in config) and applied during all recursive directory scans.
-
-**Syntax rules:**
-
-- `*.o` — ignore all files ending in `.o`
-- `temp/` — ignore any directory named `temp` anywhere in the tree (trailing `/` means directory)
-- `build/output` — ignore this exact relative path
-- `# comment` — lines starting with `#` are ignored
-- Blank lines are ignored
-- `*` matches any sequence of characters except `/`
 
 **Example `.fzignore`:**
 
@@ -1315,68 +1454,49 @@ legacy/old_abi.asm
 
 ---
 
-### 14.8 Full Annotated Example
+### 16.8 Full Annotated Example
 
 ```yaml
 # fz.yaml
 
-# --- Source selection ---
-
-# Option A: multiple directories (v1.5.0+)
 source_dirs:
   - kernel
   - libc
   - drivers
 
-# Option B: single directory (backward compatible)
-# source_dir: ./src
+output: forgeos.elf
+format: elf64
 
-# Option C: exact file list (v1.5.0+; overrides source_dirs when set)
-# source_files:
-#   - boot/start.asm
-#   - kernel/main.c
-
-# --- Output ---
-output: forgeos.elf           # Name of the final binary
-format: elf64                 # elf32 | elf64 | bin
-
-# --- Cross-compilation (v1.9.0+) ---
 # target: arm-linux-gnueabihf
 
-# --- Static library (v1.8.0+) ---
 # type: static
 # lib: forgeos
 
-# --- Build options ---
-mode: raw                     # auto | c | raw
-debug: true                   # Include debug symbols (-g)
-verbose: false                # Print all invoked commands
-keep_obj: true                # Keep object files after linking
-no_cache: false               # Disable build cache
-jobs: 0                       # Parallel jobs (0 = auto)
+mode: raw
+debug: true
+verbose: false
+keep_obj: true
+no_cache: false
+jobs: 0
 
-# --- C/C++ options ---
-sanitize: true                # Enable ASan + UBSan
-strict: false                 # Stricter sanitizers, prefer clang/clang++
+sanitize: true
+strict: false
 
-# --- File filtering ---
 exclude:
   - "test_*"
   - "*/legacy/"
   - "*.tmp"
 
-include:                      # Only files matching at least one pattern (v1.5.0+)
+include:
   - "*.asm"
   - "*.c"
   - "*.cpp"
   - "*.s"
 
-# --- Library linking ---
 libs:
   - gcc
   - m
 
-# --- Custom flags ---
 flags:
   asm:
     - -DDEBUG_BUILD
@@ -1389,15 +1509,14 @@ flags:
     - -T
     - linker.ld
 
-# --- .fzignore path ---
-ignore_file: .myfzignore      # Default is .fzignore
+ignore_file: .myfzignore
 ```
 
 ---
 
-## 15. Assembler Backends
+## 17. Assembler Backends
 
-### 15.1 NASM (.asm)
+### 17.1 NASM (.asm)
 
 **Command:** `nasm -felf64 <file> -o <output.o>`
 
@@ -1413,14 +1532,14 @@ section .text
     global _start
 
 _start:
-    mov rax, 1          ; sys_write
-    mov rdi, 1          ; fd = stdout
-    mov rsi, msg        ; buffer
-    mov rdx, len        ; count
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, msg
+    mov rdx, len
     syscall
 
-    mov rax, 60         ; sys_exit
-    xor rdi, rdi        ; exit code 0
+    mov rax, 60
+    xor rdi, rdi
     syscall
 ```
 
@@ -1431,7 +1550,7 @@ fz -asm hello.asm
 
 ---
 
-### 15.2 GAS (.s / .S)
+### 17.2 GAS (.s / .S)
 
 **Command:** `gcc -c <file> -o <output.o>`
 
@@ -1447,13 +1566,13 @@ GAS (GNU Assembler) uses AT&T syntax. Files with the `.S` extension are first pa
     .global _start
 
 _start:
-    movq  $1,   %rax    # sys_write
-    movq  $1,   %rdi    # stdout
+    movq  $1,   %rax
+    movq  $1,   %rdi
     movq  $msg, %rsi
     movq  $len, %rdx
     syscall
 
-    movq  $60,  %rax    # sys_exit
+    movq  $60,  %rax
     xorq  %rdi, %rdi
     syscall
 ```
@@ -1465,7 +1584,7 @@ fz -asm hello.s
 
 ---
 
-### 15.3 FASM (.fasm)
+### 17.3 FASM (.fasm)
 
 **Command:** `fasm <file> <output.o>`
 
@@ -1500,7 +1619,7 @@ fz -asm hello.fasm
 
 ---
 
-## 16. Project Initialization
+## 18. Project Initialization
 
 Added in **v1.6.0**. The `-init` flag scaffolds a new ForgeZero project in the current directory.
 
@@ -1514,7 +1633,7 @@ fz -init
 | File | Contents |
 |------|----------|
 | `.fz.yaml` | Minimal project configuration with commented fields |
-| `.fzignore` | Sensible default ignore rules (object files, editor swap files, common build directories) |
+| `.fzignore` | Sensible default ignore rules |
 | `README.md` | Project README template with `fz` build instructions |
 
 If any of these files already exist, `fz -init` skips them and reports which files were created versus skipped. No existing file is overwritten.
@@ -1523,8 +1642,6 @@ If any of these files already exist, `fz -init` skips them and reports which fil
 
 ```yaml
 # .fz.yaml — ForgeZero project configuration
-# Run `fz` to build. Run `fz -h` for all options.
-
 source_dir: src
 output: myproject
 mode: auto
@@ -1541,16 +1658,15 @@ sanitize: true
 *.elf
 .fz_objs/
 .fz_cache/
+vendor/
 *.swp
 *.swo
 *~
 ```
 
-After running `fz -init`, create a `src/` directory and start writing code — `fz` will find and compile everything automatically.
-
 ---
 
-## 17. LSP & IDE Integration
+## 19. LSP & IDE Integration
 
 Added in **v1.9.0**. The `-compile-commands` flag generates `compile_commands.json` in the project root.
 
@@ -1558,8 +1674,6 @@ Added in **v1.9.0**. The `-compile-commands` flag generates `compile_commands.js
 fz -compile-commands
 fz -dir ./src -compile-commands
 ```
-
-`compile_commands.json` is the **Compilation Database** format understood by every major language server: clangd, ccls, and others. Generating it once gives any LSP-aware editor full knowledge of the project's include paths, compiler flags, and file graph.
 
 **Editor setup:**
 
@@ -1573,15 +1687,11 @@ fz -dir ./src -compile-commands
 
 **Combine with a regular build:**
 
-`-compile-commands` can be combined with any build invocation. The compilation database is generated alongside the normal build output:
-
 ```bash
 fz -dir ./src -compile-commands
 ```
 
 **Cross-compilation and LSP:**
-
-When `-target` is set, the generated `compile_commands.json` includes the correct cross-compiler and target flags. This lets clangd provide accurate diagnostics for the target architecture, not the host:
 
 ```bash
 fz -dir ./src -target arm-linux-gnueabihf -compile-commands
@@ -1589,9 +1699,9 @@ fz -dir ./src -target arm-linux-gnueabihf -compile-commands
 
 ---
 
-## 18. Self-Update
+## 20. Self-Update
 
-Added in **v1.9.0**, replacing the basic update mechanism from earlier versions.
+Added in **v1.9.0**.
 
 ```bash
 fz -update
@@ -1600,36 +1710,30 @@ fz -update
 **What happens:**
 
 1. `fz` fetches the latest release binary from the ForgeZero GitHub releases page.
-2. The current binary at `/usr/local/bin/fz` (or wherever `fz` is installed) is copied to `/usr/local/bin/fz.old`.
+2. The current binary is copied to `/usr/local/bin/fz.old`.
 3. The new binary replaces the current one.
 4. `fz` reports the version it upgraded from and to.
 
 **Rolling back:**
 
-If the new version has issues, restore the previous binary:
-
 ```bash
 sudo cp /usr/local/bin/fz.old /usr/local/bin/fz
 ```
 
-**Notes:**
-
-- The update command requires write permission to the directory where `fz` is installed. Run with `sudo` if needed: `sudo fz -update`.
-- Only one backup (`fz.old`) is maintained. Running `-update` twice replaces the backup with the intermediate version, not the original.
-- If the download fails (no network, rate-limited), the current binary is left untouched and `fz.old` is not created.
+Run with `sudo fz -update` if the binary is installed in a system directory.
 
 ---
 
-## 19. Examples
+## 21. Examples
 
 ### Minimal builds
 
 ```bash
-fz -asm hello.asm       # NASM
-fz -asm hello.s         # GAS
-fz -asm hello.fasm      # FASM
-fz -cc main.c           # C
-fz -cc main.cpp         # C++
+fz -asm hello.asm
+fz -asm hello.s
+fz -asm hello.fasm
+fz -cc main.c
+fz -cc main.cpp
 ```
 
 ---
@@ -1650,11 +1754,6 @@ fz
 
 ```bash
 fz -asm hello.asm -debug -verbose
-```
-
-Passes `-g` to NASM and prints every invoked command. Attach GDB afterward:
-
-```bash
 gdb ./hello
 ```
 
@@ -1666,8 +1765,6 @@ gdb ./hello
 fz -asm boot.asm -mode raw -format bin -out boot.bin
 ```
 
-Calls `ld` directly and emits a flat binary. No C runtime, no ELF overhead.
-
 ---
 
 ### C with strict sanitizers
@@ -1675,8 +1772,6 @@ Calls `ld` directly and emits a flat binary. No C runtime, no ELF overhead.
 ```bash
 fz -cc main.c -strict
 ```
-
-Compiles with maximum warning flags and all sanitizer checks. Prefers `clang` for `use-after-return` detection.
 
 ---
 
@@ -1686,8 +1781,6 @@ Compiles with maximum warning flags and all sanitizer checks. Prefers `clang` fo
 fz -dir ./src
 ```
 
-All `.asm`, `.s`, `.S`, `.fasm`, `.c`, `.cpp`, `.cc`, and `.cxx` files under `./src/` are compiled and linked into a single binary.
-
 ---
 
 ### Parallel build
@@ -1695,8 +1788,6 @@ All `.asm`, `.s`, `.S`, `.fasm`, `.c`, `.cpp`, `.cc`, and `.cxx` files under `./
 ```bash
 fz -dir ./src -j 0
 ```
-
-Compiles all source files concurrently using all available CPU cores.
 
 ---
 
@@ -1717,6 +1808,41 @@ ls libmylib.a
 
 ---
 
+### Build a shared library
+
+```bash
+fz -cc mylib.c -shared -cc-flag "-O2 -fPIC" -o libmylib.so
+```
+
+---
+
+### Package manager
+
+```bash
+# Add a dependency from GitHub
+fz pm add github.com/me/my-lib
+
+# Add a specific version
+fz pm add github.com/me/my-lib@v1.2.3
+
+# Install from the official catalog (with hash verification)
+fz pm install esp-idf
+
+# Search the catalog
+fz pm search crypto
+
+# List installed packages
+fz pm list
+
+# Update all packages
+fz pm update
+
+# Remove a package
+fz pm remove my-lib
+```
+
+---
+
 ### Generate LSP compilation database
 
 ```bash
@@ -1726,36 +1852,12 @@ cat compile_commands.json
 
 ---
 
-### Build from multiple directories (v1.5.0)
+### Build from multiple directories
 
 ```bash
-cat .fz.yaml
-# source_dirs: [src, lib]
-# exclude: ["test_*", "draft/"]
-# output: release
-# mode: auto
-
+# .fz.yaml: source_dirs: [src, lib], output: release
 fz
 ```
-
----
-
-### Build with explicit file list (v1.5.0)
-
-```yaml
-# .fz.yaml
-source_files:
-  - boot/start.asm
-  - kernel/main.c
-output: kernel.elf
-mode: raw
-```
-
-```bash
-fz
-```
-
-Only those two files are compiled, regardless of what else exists in the project.
 
 ---
 
@@ -1770,36 +1872,6 @@ output: calc
 
 ```bash
 fz
-```
-
-Equivalent to: `gcc calc.o -lm -o calc`
-
----
-
-### Custom compilation flags
-
-```yaml
-# .fz.yaml
-source_files: [main.c]
-flags:
-  cc: ["-O3", "-march=native"]
-  ld: ["-Wl,--gc-sections"]
-```
-
-```bash
-fz
-```
-
----
-
-### Using .fzignore
-
-```bash
-cat .fzignore
-# temp/
-# *.bak
-
-fz -dir .   # temp/ and *.bak files are silently skipped
 ```
 
 ---
@@ -1818,16 +1890,6 @@ fz -dir ./src -json | tee build_report.json
 fz -dir ./kernel -watch
 ```
 
-Rebuilds automatically on every saved change. Debounced at 500 ms.
-
----
-
-### Custom output and object file names
-
-```bash
-fz -asm code.s -out-obj build/code.o -out build/myprog
-```
-
 ---
 
 ### Disable sanitizers for release
@@ -1843,28 +1905,6 @@ fz -cc main.c -sanitize=false -out main_release
 ```bash
 fz -dir ./src -keep-obj -verbose
 ls .fz_objs/
-```
-
----
-
-### Using a configuration file
-
-```bash
-# Automatically detected fz.yaml in current directory
-fz
-
-# Explicit config path
-fz -config ./configs/release.yaml
-```
-
----
-
-### Update fz with rollback
-
-```bash
-sudo fz -update
-# If something breaks:
-sudo cp /usr/local/bin/fz.old /usr/local/bin/fz
 ```
 
 ---
@@ -1889,7 +1929,17 @@ fz -dir . -clean
 
 ---
 
-## 20. Exit Codes
+### Update fz with rollback
+
+```bash
+sudo fz -update
+# If something breaks:
+sudo cp /usr/local/bin/fz.old /usr/local/bin/fz
+```
+
+---
+
+## 22. Exit Codes
 
 | Code | Meaning |
 |------|---------|
@@ -1899,7 +1949,7 @@ fz -dir . -clean
 
 ---
 
-## 21. Troubleshooting
+## 23. Troubleshooting
 
 ### `fz: command not found`
 
@@ -1908,8 +1958,6 @@ Ensure Go's binary directory is in your `PATH`:
 ```bash
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
-
-Add to `~/.bashrc` or `~/.zshrc` to persist across sessions.
 
 ---
 
@@ -1927,7 +1975,7 @@ pacman -S mingw-w64-x86_64-nasm  # Windows MSYS2
 
 ### `fasm: command not found`
 
-FASM is not in standard repositories. Download from [flatassembler.net](https://flatassembler.net):
+Download from [flatassembler.net](https://flatassembler.net):
 
 ```bash
 wget https://flatassembler.net/fasm-1.73.32.tgz
@@ -1940,8 +1988,6 @@ chmod +x /usr/local/bin/fasm
 
 ### `g++: command not found`
 
-Install the C++ compiler:
-
 ```bash
 sudo apt install g++           # Debian / Ubuntu
 sudo dnf install gcc-c++       # Fedora
@@ -1952,12 +1998,6 @@ brew install gcc               # macOS
 ---
 
 ### Cross-compiler not found
-
-When using `-target <triple>`, `fz` looks for `<triple>-gcc` on your `PATH`. If it is not found:
-
-```
-fz: argument error: cross-compiler not found: arm-linux-gnueabihf-gcc
-```
 
 Install the appropriate cross-compilation toolchain:
 
@@ -1971,21 +2011,16 @@ sudo pacman -S arm-linux-gnueabihf-gcc       # Arch
 
 ### `undefined reference to _start`
 
-Your source is missing an entry point. Define `_start` explicitly:
+Define `_start` explicitly:
 
 ```asm
 ; NASM
 global _start
 _start:
     ; ...
-
-# GAS
-.global _start
-_start:
-    # ...
 ```
 
-Or, if you want a `main` function with C runtime initialization:
+Or use the C runtime:
 
 ```bash
 fz -asm program.asm -mode c
@@ -1995,7 +2030,7 @@ fz -asm program.asm -mode c
 
 ### Binary crashes immediately (segfault on startup)
 
-Likely cause: `-mode raw` was used, but the code references libc symbols. Switch to:
+Likely cause: `-mode raw` was used but the code references libc symbols. Switch to:
 
 ```bash
 fz -asm program.asm -mode c
@@ -2005,9 +2040,7 @@ fz -asm program.asm -mode c
 
 ### Pre-link duplicate symbol error
 
-`fz` detected that two or more object files define the same global symbol. Check your sources for conflicting `global` declarations (NASM) or `.global` directives (GAS). Rename one of them.
-
-To skip the check when using weak symbols intentionally:
+Check your sources for conflicting `global` declarations. To skip the check when using weak symbols intentionally:
 
 ```bash
 fz -dir ./src -no-symbol-check
@@ -2017,7 +2050,7 @@ fz -dir ./src -no-symbol-check
 
 ### Sanitizer error at runtime
 
-AddressSanitizer or UBSan detected a bug. The output includes the exact source file and line number. Fix the issue, then rerun. To temporarily disable sanitizers:
+Fix the reported memory/UB issue, then rerun. To temporarily disable:
 
 ```bash
 fz -cc main.c -sanitize=false
@@ -2027,8 +2060,6 @@ fz -cc main.c -sanitize=false
 
 ### Build hangs / times out
 
-The default per-command timeout is 60 seconds. Increase for large projects:
-
 ```bash
 fz -asm big_program.asm -timeout 300
 ```
@@ -2037,14 +2068,12 @@ fz -asm big_program.asm -timeout 300
 
 ### Cache returns stale results
 
-If you suspect the cache is wrong (e.g. after changing assembler flags that `fz` does not track in the cache key), clear it and do a clean rebuild:
-
 ```bash
 fz -dir . -clean
 fz -dir ./src
 ```
 
-Or do a single one-off build without the cache:
+Or for a one-off build:
 
 ```bash
 fz -dir ./src -no-cache
@@ -2052,9 +2081,26 @@ fz -dir ./src -no-cache
 
 ---
 
-### `source_files` path not found
+### `fz pm add` fails / git not found
 
-When using `source_files` in the config, all paths are verified before compilation begins. If a file is missing:
+`fz pm` requires `git` on your `PATH`:
+
+```bash
+sudo apt install git     # Debian / Ubuntu
+sudo dnf install git     # Fedora
+sudo pacman -S git       # Arch
+brew install git         # macOS
+```
+
+---
+
+### `fz pm install` hash mismatch
+
+The downloaded package content does not match the BLAKE3 hash in the catalog manifest. This may indicate a corrupted download or a tampered package. Do not use the package. Report the issue at [github.com/forgezero-cli/catalog](https://github.com/forgezero-cli/catalog).
+
+---
+
+### `source_files` path not found
 
 ```
 fz: argument error: source file not found: kernel/main.c
@@ -2066,7 +2112,7 @@ Check that the path is relative to the directory where you run `fz`, not relativ
 
 ### `libs` not found at link time
 
-If a library listed in `libs` is not in the system's standard library search path, the linker will report `cannot find -l<name>`. Add the directory containing the library via `flags.ld`:
+Add the directory containing the library via `flags.ld`:
 
 ```yaml
 libs:
@@ -2078,17 +2124,9 @@ flags:
 
 ---
 
-### `fz -init` reports files already exist
-
-`fz -init` never overwrites existing files. If `.fz.yaml`, `.fzignore`, or `README.md` already exist in the current directory, they are left unchanged and a message is printed for each skipped file. Delete or rename the existing files before running `fz -init` if you want fresh scaffolding.
-
----
-
 ### `compile_commands.json` not picked up by editor
 
-Ensure the file is in the **project root** — the directory you open in your editor, not a subdirectory. Most language servers (clangd, ccls) search upward from the currently edited file and stop at the first `compile_commands.json` they find.
-
-Regenerate after adding new source files or changing compiler flags:
+Ensure the file is in the **project root**. Regenerate after adding new source files:
 
 ```bash
 fz -compile-commands
@@ -2098,8 +2136,6 @@ fz -compile-commands
 
 ### `fz -update` fails with permission denied
 
-The update command writes to the directory where `fz` is currently installed (typically `/usr/local/bin/`). Run with elevated privileges:
-
 ```bash
 sudo fz -update
 ```
@@ -2108,27 +2144,21 @@ sudo fz -update
 
 ### Watch mode does not detect changes on WSL2
 
-WSL2 has known issues with `inotify`-based watching when files are edited from Windows applications (e.g. VS Code on the Windows side). Edit files from within the WSL2 terminal to get reliable events. This is a WSL2 kernel limitation, not a ForgeZero bug.
+Edit files from within the WSL2 terminal to get reliable events. This is a WSL2 kernel limitation with `inotify` when files are edited from Windows applications.
 
 ---
 
 ### Windows: `gcc` not found
 
-Make sure the MSYS2 `mingw64\bin` directory is added to your Windows `PATH`:
+Ensure MSYS2 `mingw64\bin` is in your Windows `PATH`:
 
 ```
 C:\msys64\mingw64\bin
 ```
 
-Verify in PowerShell:
-
-```powershell
-gcc --version
-```
-
 ---
 
-## 22. Roadmap
+## 24. Roadmap
 
 | Feature | Status |
 |---------|--------|
@@ -2156,16 +2186,21 @@ gcc --version
 | Smart self-update with rollback (`fz -update`) | ✅ Done (v1.9.0) |
 | Linker test coverage 60%+ | ✅ Done (v1.9.0) |
 | Shell builds single files + shell tests | ✅ Done (v1.9.0) |
+| BLAKE3 hashing (7× faster cache) | ✅ Done (v2.0.0) |
+| Package manager (`fz pm`) | ✅ Done (v2.0.0) |
+| Official package catalog | ✅ Done (v2.0.0) |
+| Shared library support (`-shared`) | ✅ Done (v2.0.0) |
+| `-cc-flag` / `-ld-flag` CLI pass-through flags | ✅ Done (v2.0.0) |
+| High test coverage (utils 84%, linker 60%+) | ✅ Done (v2.0.0) |
 | Colored terminal output (green success / red error) | Planned |
 | GDB integration and improved debug workflow | Planned |
 | Man page (`man fz`) | Planned |
 | Windows native support without WSL2 | In progress |
 | macOS full support and testing | In progress |
-| `-asm-flag` and `-ld-flag` CLI pass-through flags | Planned |
 
 ---
 
-## 23. Contributing
+## 25. Contributing
 
 Contributions are welcome: bug reports, feature requests, documentation improvements, and code patches.
 
@@ -2181,18 +2216,18 @@ Contributions are welcome: bug reports, feature requests, documentation improvem
 
 Commit messages should be concise and use the imperative mood: *"Add JSON output mode"* not *"Added JSON output mode"*.
 
-Repository: [github.com/alexvoste/ForgeZero](https://github.com/alexvoste/ForgeZero)
+Repository: [github.com/forgezero-cli/ForgeZero](https://github.com/forgezero-cli/ForgeZero)
 
 ---
 
-## 24. License
+## 26. License
 
 ForgeZero is released under the **MIT License**.
 
 ```
 MIT License
 
-Copyright (c) 2026 AlexVoste
+Copyright (c) AlexVoste
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
