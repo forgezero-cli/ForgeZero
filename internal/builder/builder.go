@@ -188,7 +188,9 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 						return
 					}
 					if !noCache {
-						storeCache(p.src, p.obj, cacheDir, debug, verbose, mode)
+						if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil && verbose {
+							fmt.Printf("warning: cache store failed: %v\n", err)
+						}
 					}
 				}
 			case <-stopChan:
