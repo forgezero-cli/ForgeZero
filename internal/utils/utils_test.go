@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -159,5 +160,90 @@ func TestEnsureDirErrors(t *testing.T) {
 	err := EnsureDir(filepath.Join(file, "sub", "file"))
 	if err == nil {
 		t.Error("expected error because parent is a file")
+	}
+}
+
+func TestHashDir(t *testing.T) {
+	dir := t.TempDir()
+	// Create files in subdirectories
+	sub1 := filepath.Join(dir, "a")
+	sub2 := filepath.Join(dir, "b")
+	os.MkdirAll(sub1, 0o755)
+	os.MkdirAll(sub2, 0o755)
+	file1 := filepath.Join(sub1, "f1.txt")
+	file2 := filepath.Join(sub2, "f2.txt")
+	if err := os.WriteFile(file1, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file2, []byte("world"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hash1, err := HashDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash2, err := HashDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hash1 != hash2 {
+		t.Error("hashes differ for same directory")
+	}
+	if err := os.WriteFile(file1, []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hash3, err := HashDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hash1 == hash3 {
+		t.Error("hash didn't change after file modification")
+	}
+}
+
+func TestHashDirEmpty(t *testing.T) {
+	dir := t.TempDir()
+	hash, err := HashDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hash == "" {
+		t.Error("hash should not be empty")
+	}
+	hash2, err := HashDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hash != hash2 {
+		t.Error("hashes differ for same empty dir")
+	}
+}
+
+func TestCheckFileExistsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	err := CheckFileExists(dir)
+	if err == nil {
+		t.Error("expected error for directory")
+	}
+	if !strings.Contains(err.Error(), "is a directory") {
+		t.Errorf("wrong error: %v", err)
+	}
+}
+
+func TestEnsureDirAlreadyExists(t *testing.T) {
+	dir := t.TempDir()
+	if err := EnsureDir(filepath.Join(dir, "somefile")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunCommandSilentWithStderr(t *testing.T) {
+	ctx := context.Background()
+	output, err := RunCommandSilent(ctx, false, "sh", "-c", "echo error >&2; exit 1")
+	if err == nil {
+		t.Error("expected error")
+	}
+	if output == "" {
+		t.Error("expected stderr output")
 	}
 }
