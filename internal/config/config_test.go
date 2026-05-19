@@ -23,7 +23,7 @@ flags:
   asm: ["-felf64"]
   ld: ["-T", "linker.ld"]
 `
-	err := os.WriteFile(cfgPath, []byte(content), 0644)
+	err := os.WriteFile(cfgPath, []byte(content), 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,13 +102,23 @@ func TestMerge(t *testing.T) {
 func TestFindConfigs(t *testing.T) {
 	dir := t.TempDir()
 	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(dir)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("failed to change to test directory: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("failed to restore working directory: %v", err)
+		}
+	})
+
 	system, user, local := FindConfigs()
 	if system != "" || user != "" || local != "" {
 		t.Errorf("found unexpected configs: system=%s user=%s local=%s", system, user, local)
 	}
-	os.WriteFile(".fz.yaml", []byte{}, 0644)
+	if err := os.WriteFile(".fz.yaml", []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	_, _, local = FindConfigs()
 	if local != ".fz.yaml" {
 		t.Errorf("expected .fz.yaml, got %s", local)
@@ -118,8 +128,16 @@ func TestFindConfigs(t *testing.T) {
 func TestLoadMerged(t *testing.T) {
 	dir := t.TempDir()
 	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(dir)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("failed to change to test directory: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("failed to restore working directory: %v", err)
+		}
+	})
+
 	cfg, err := LoadMerged("")
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +145,9 @@ func TestLoadMerged(t *testing.T) {
 	if cfg.SourceDir != "" {
 		t.Error("expected empty config")
 	}
-	os.WriteFile(".fz.yaml", []byte("source_dir: ./src"), 0644)
+	if err := os.WriteFile(".fz.yaml", []byte("source_dir: ./src"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cfg, err = LoadMerged("")
 	if err != nil {
 		t.Fatal(err)
@@ -140,12 +160,22 @@ func TestLoadMerged(t *testing.T) {
 func TestDefaultConfigPath(t *testing.T) {
 	dir := t.TempDir()
 	oldWd, _ := os.Getwd()
-	defer os.Chdir(oldWd)
-	os.Chdir(dir)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("failed to change to test directory: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Fatalf("failed to restore working directory: %v", err)
+		}
+	})
+
 	if path := DefaultConfigPath(); path != "" {
 		t.Errorf("expected empty, got %s", path)
 	}
-	os.WriteFile(".fz.yaml", []byte{}, 0644)
+	if err := os.WriteFile(".fz.yaml", []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if path := DefaultConfigPath(); path != ".fz.yaml" {
 		t.Errorf("expected .fz.yaml, got %s", path)
 	}
