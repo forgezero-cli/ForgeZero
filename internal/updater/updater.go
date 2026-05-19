@@ -72,18 +72,18 @@ func UpdateSelf(currentVersion string) error {
 		return err
 	}
 	backupPath := exePath + ".old"
-	os.Rename(exePath, backupPath)
+	_ = os.Rename(exePath, backupPath)
 	out, err := os.Create(exePath)
 	if err != nil {
-		os.Rename(backupPath, exePath)
+		_ = os.Rename(backupPath, exePath)
 		return err
 	}
 	defer out.Close()
 	if _, err := io.Copy(out, resp.Body); err != nil {
-		os.Rename(backupPath, exePath)
+		_ = os.Rename(backupPath, exePath)
 		return err
 	}
-	os.Chmod(exePath, 0o755)
+	_ = os.Chmod(exePath, 0o755)
 	fmt.Printf("Update successful. Backup saved as %s\n", backupPath)
 	return nil
 }
