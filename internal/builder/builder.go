@@ -2,7 +2,6 @@ package builder
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -16,6 +15,7 @@ import (
 	"fz/internal/config"
 	"fz/internal/linker"
 	"fz/internal/utils"
+	"github.com/zeebo/blake3"
 )
 
 type BuildResult struct {
@@ -188,9 +188,7 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 						return
 					}
 					if !noCache {
-						if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil && verbose {
-							fmt.Printf("warning: cache store failed: %v\n", err)
-						}
+						storeCache(p.src, p.obj, cacheDir, debug, verbose, mode)
 					}
 				}
 			case <-stopChan:
@@ -244,7 +242,7 @@ outer:
 }
 
 func checkCache(src, cacheDir string, debug, verbose bool, mode string) (string, error) {
-	h, err := hashFile(src)
+	h, err := utils.HashFile(src)
 	if err != nil {
 		return "", err
 	}
@@ -261,7 +259,7 @@ func checkCache(src, cacheDir string, debug, verbose bool, mode string) (string,
 }
 
 func storeCache(src, obj, cacheDir string, debug, verbose bool, mode string) error {
-	h, err := hashFile(src)
+	h, err := utils.HashFile(src)
 	if err != nil {
 		return err
 	}
@@ -276,11 +274,11 @@ func hashFile(path string) (string, error) {
 		return "", err
 	}
 	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	hasher := blake3.New()
+	if _, err := io.Copy(hasher, f); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 func copyFile(src, dst string) error {
