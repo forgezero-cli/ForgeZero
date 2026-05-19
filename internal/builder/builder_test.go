@@ -89,9 +89,7 @@ func TestUniqueObjectNames(t *testing.T) {
 	writeASM(t, dir, "sub/hello.asm", "")
 	outBin := filepath.Join(t.TempDir(), "app")
 	t.Logf("Output binary: %s", outBin)
-	_, err := BuildDir(context.Background(), []string{dir}, outBin, false, true, "auto", true, true, true, true, false, nil, nil, nil, nil, nil, 1, "executable")
-	if err == nil {
-	}
+	_, _ = BuildDir(context.Background(), []string{dir}, outBin, false, true, "auto", true, true, true, true, false, nil, nil, nil, nil, nil, 1, "executable")
 	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
 	t.Logf("Object dir: %s", objDir)
 	entries, err := os.ReadDir(objDir)
@@ -122,8 +120,12 @@ func TestCleanDir(t *testing.T) {
 	dir := t.TempDir()
 	objDir := filepath.Join(dir, ".fz_objs")
 	cacheDir := filepath.Join(dir, ".fz_cache")
-	os.MkdirAll(objDir, 0o755)
-	os.MkdirAll(cacheDir, 0o755)
+	if err := os.MkdirAll(objDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) failed: %v", objDir, err)
+	}
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatalf("failed to create cache directory: %v", err)
+	}
 
 	base := filepath.Base(dir)
 	bin := filepath.Join(dir, base+".out")
@@ -134,8 +136,11 @@ func TestCleanDir(t *testing.T) {
 	f.Close()
 
 	objFile := filepath.Join(dir, "test.o")
-	os.Create(objFile)
-
+	f, err = os.Create(objFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
 	if err := CleanDir(dir, false); err != nil {
 		t.Fatal(err)
 	}
