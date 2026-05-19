@@ -1002,3 +1002,189 @@ func TestTryAutoLinkMultipleNoGccNoLd(t *testing.T) {
 		t.Errorf("wrong error: %v", err)
 	}
 }
+
+func TestLinkMultipleWithGccStrictSanitize(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	var capturedArgs []string
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			capturedArgs = args
+			return "", nil
+		},
+	}
+	objFiles := []string{"a.o", "b.o"}
+	libs := []string{"m"}
+	err := linkMultipleWithGcc(context.Background(), objFiles, "bin", false, true, true, true, libs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(capturedArgs, "-fsanitize=address") || !contains(capturedArgs, "-fsanitize=undefined") {
+		t.Error("sanitizer flags missing")
+	}
+	if !contains(capturedArgs, "-fsanitize-address-use-after-scope") {
+		t.Error("strict flag missing")
+	}
+	for _, lib := range libs {
+		if !contains(capturedArgs, "-l"+lib) {
+			t.Errorf("missing -l%s", lib)
+		}
+	}
+}
+
+func TestLinkMultipleWithClangStrict(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	var capturedArgs []string
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			capturedArgs = args
+			return "", nil
+		},
+	}
+	objFiles := []string{"a.o"}
+	libs := []string{"c"}
+	err := linkMultipleWithClang(context.Background(), objFiles, "bin", false, true, true, libs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(capturedArgs, "-fsanitize=address") || !contains(capturedArgs, "-fsanitize=undefined") {
+		t.Error("sanitizer flags missing")
+	}
+	if !contains(capturedArgs, "-fsanitize-address-use-after-return=always") {
+		t.Error("strict clang flag missing")
+	}
+	if !contains(capturedArgs, "-fsanitize-address-use-after-scope") {
+		t.Error("strict clang flag missing")
+	}
+	for _, lib := range libs {
+		if !contains(capturedArgs, "-l"+lib) {
+			t.Errorf("missing -l%s", lib)
+		}
+	}
+}
+
+func TestTryAutoLinkNoTools(t *testing.T) {
+	oldCheck := utils.CheckToolFunc
+	defer func() { utils.CheckToolFunc = oldCheck }()
+	utils.CheckToolFunc = func(name string) error {
+		return fmt.Errorf("tool missing")
+	}
+	err := tryAutoLink(context.Background(), "obj.o", "bin", false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "no suitable linker") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestTryAutoLinkMultipleNoTools(t *testing.T) {
+	oldCheck := utils.CheckToolFunc
+	defer func() { utils.CheckToolFunc = oldCheck }()
+	utils.CheckToolFunc = func(name string) error {
+		return fmt.Errorf("tool missing")
+	}
+	objFiles := []string{"a.o"}
+	err := tryAutoLinkMultiple(context.Background(), objFiles, "bin", false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "no suitable linker") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestLinkWithGccNoFallbackErrorVerbose(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("gcc error")
+		},
+	}
+	err := linkWithGcc(context.Background(), "obj.o", "bin", true, false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "gcc error") {
+		t.Errorf("error should contain command output: %v", err)
+	}
+}
+
+func TestLinkWithClangFallbackVerbose(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first clang fail")
+			}
+			if callCount == 2 && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	err := linkWithClang(context.Background(), "obj.o", "bin", true, true, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestLinkMultipleWithGccFallbackVerbose(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first fail")
+			}
+			if callCount == 2 && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	objFiles := []string{"a.o"}
+	err := linkMultipleWithGcc(context.Background(), objFiles, "bin", true, true, false, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
+
+func TestLinkMultipleWithClangFallbackVerbose(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	callCount := 0
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			callCount++
+			if callCount == 1 && !contains(args, "-no-pie") {
+				return "", fmt.Errorf("first fail")
+			}
+			if callCount == 2 && contains(args, "-no-pie") {
+				return "", nil
+			}
+			return "", nil
+		},
+	}
+	objFiles := []string{"a.o"}
+	err := linkMultipleWithClang(context.Background(), objFiles, "bin", true, true, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls, got %d", callCount)
+	}
+}
