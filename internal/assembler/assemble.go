@@ -14,6 +14,8 @@ var (
 	Target       = "x86_64-linux-gnu"
 )
 
+var CcFlags string
+
 func formatForTarget() string {
 	switch {
 	case strings.Contains(Target, "x86_64"):
@@ -164,6 +166,11 @@ func assembleC(ctx context.Context, src, obj string, debug, verbose bool) error 
 	if verbose {
 		fmt.Printf("Running: %s %s\n", compiler, strings.Join(args, " "))
 	}
+
+	if CcFlags != "" {
+		args = append(args, strings.Fields(CcFlags)...)
+	}
+
 	output, err := utils.RunCommandSilent(ctx, verbose, compiler, args...)
 	if err != nil {
 		if !verbose {
