@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "packages": [
+    {
+      "name": "esp-idf",
+      "description": "ESP-IDF framework for ESP32",
+      "repo": "https://github.com/espressif/esp-idf",
+      "tag": "v5.1",
+      "category": "iot",
+      "source_dir": "components"
+    },
+    {
+      "name": "FreeRTOS",
+      "description": "Real-time operating system for embedded devices",
+      "repo": "https://github.com/FreeRTOS/FreeRTOS",
+      "tag": "V10.5.1",
+      "category": "kernel",
+      "source_dir": "FreeRTOS/Source"
+    }
+  ]
+}
