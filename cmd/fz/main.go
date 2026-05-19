@@ -35,7 +35,7 @@ type BuildReport struct {
 	Error       string   `json:"error,omitempty"`
 }
 
-var version = "1.9.2"
+var version = "2.0.0 NEXUS"
 
 func printHelp() {
 	fmt.Fprintf(os.Stderr, `
@@ -88,6 +88,16 @@ Examples:
   fz -target arm-linux-gnueabihf -cc test.c -out test_arm
 
 Supported extensions: .asm, .s, .S, .fasm, .c, .cpp, .cc, .cxx
+`)
+	fmt.Fprintf(os.Stderr, `
+Package Manager (fz pm):
+  add <repo> [version]    Clone and add package to project
+  remove <name>           Remove installed package
+  list                    Show installed packages
+  update                  Update all installed packages
+  catalog                 List available packages from catalog
+  search <keyword>        Search catalog
+  install <name>          Install package from catalog (with hash verification)
 `)
 }
 
