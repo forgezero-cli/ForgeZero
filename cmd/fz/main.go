@@ -35,7 +35,7 @@ type BuildReport struct {
 	Error       string   `json:"error,omitempty"`
 }
 
-var version = "2.0.0 NEXUS"
+var version = "2.1.0 NEXUS"
 
 func printHelp() {
 	fmt.Fprintf(os.Stderr, `
