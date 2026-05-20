@@ -10,8 +10,6 @@
         <h3 style="margin:0 0 8px 0;">ForgeZero — zero-overhead build tool for assembly & C</h3>
         <p style="margin:0; color:#555;">One command. Any assembler. Any platform.</p>
         <br/>
-        <img src="https://github.com/alexvoste/ForgeZero/actions/workflows/go.yml/badge.svg" alt="Build Status"/>
-        &nbsp;
         <img src="https://img.shields.io/github/go-mod/go-version/alexvoste/ForgeZero" alt="Go Version"/>
         &nbsp;
         <img src="https://img.shields.io/github/license/alexvoste/ForgeZero" alt="License"/>
