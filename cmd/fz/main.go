@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"fz/internal/assembler"
@@ -273,7 +274,6 @@ func main() {
 	assembler.CcFlags = ccFlags
 	linker.LdFlags = ldFlags
 	linker.Shared = shared
-
 	assembler.Target = target
 	linker.Target = target
 	if libMode {
@@ -370,6 +370,19 @@ func main() {
 
 	var cfg *config.Config
 	var err error
+
+	if cfg != nil && len(cfg.Flags.Asm) > 0 {
+		assembler.AsmFlags = cfg.Flags.Asm
+	}
+
+	if cfg != nil && cfg.Flags.Cc != nil {
+		assembler.CcFlags = strings.Join(cfg.Flags.Cc, " ")
+	}
+
+	if len(cfg.Flags.Ld) > 0 {
+		linker.LdFlags = strings.Join(cfg.Flags.Ld, " ")
+	}
+
 	if configPath != "" {
 		cfg, err = config.Load(configPath)
 	} else {
