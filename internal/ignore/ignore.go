@@ -31,7 +31,6 @@ func LoadIgnoreFile(path string) (*IgnoreMatcher, error) {
 
 func (m *IgnoreMatcher) Match(path string) bool {
 	for _, pattern := range m.patterns {
-		// Directory pattern (ends with /)
 		if strings.HasSuffix(pattern, "/") {
 			dir := strings.TrimSuffix(pattern, "/")
 			if strings.HasPrefix(path, dir+"/") || path == dir || strings.Contains(path, "/"+dir+"/") {
@@ -39,7 +38,6 @@ func (m *IgnoreMatcher) Match(path string) bool {
 			}
 			continue
 		}
-		// Wildcard matching
 		if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
 			return true
 		}
