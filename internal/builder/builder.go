@@ -2,12 +2,11 @@ package builder
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -15,7 +14,6 @@ import (
 	"fz/internal/config"
 	"fz/internal/linker"
 	"fz/internal/utils"
-	"github.com/zeebo/blake3"
 )
 
 type BuildResult struct {
@@ -38,6 +36,19 @@ func matchExclude(path string, excludes []string) bool {
 }
 
 func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int, buildType string) (*BuildResult, error) {
+	if len(dirs) == 0 {
+		dirs = []string{"."}
+	}
+	rootDir, err := filepath.Abs(dirs[0])
+	if err != nil {
+		return nil, err
+	}
+	rootDir = filepath.Clean(rootDir)
+	for _, dir := range dirs {
+		if err := utils.EnsureInsideRoot(rootDir, dir); err != nil {
+			return nil, err
+		}
+	}
 	if outBin == "" {
 		if len(dirs) == 1 {
 			base := filepath.Base(dirs[0])
@@ -62,7 +73,7 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 
 	var srcFiles []string
 	if len(sourceFiles) > 0 {
-		srcFiles = sourceFiles
+		srcFiles = append(srcFiles, sourceFiles...)
 	} else {
 		for _, dir := range dirs {
 			err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -92,6 +103,7 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 	if len(srcFiles) == 0 {
 		return nil, fmt.Errorf("no supported files found")
 	}
+	sort.Strings(srcFiles)
 
 	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
 	cacheDir := filepath.Join(filepath.Dir(outBin), ".fz_cache")
@@ -116,16 +128,22 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 	pairs := make([]pair, len(srcFiles))
 	objFilesSet := make(map[string]bool)
 
-	rootDir := ""
+	srcRoot := ""
 	if len(dirs) > 0 {
-		rootDir = dirs[0]
+		srcRoot = dirs[0]
 	}
 	for i, src := range srcFiles {
+		srcAbs, err := filepath.Abs(src)
+		if err != nil {
+			return nil, err
+		}
+		if err := utils.EnsureInsideRoot(srcRoot, srcAbs); err != nil {
+			return nil, err
+		}
 		var rel string
-		if rootDir != "" && strings.HasPrefix(src, rootDir+string(filepath.Separator)) {
-			rel = strings.TrimPrefix(src, rootDir+string(filepath.Separator))
-		} else {
-			rel = filepath.Base(src)
+		rel, err = filepath.Rel(rootDir, srcAbs)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			rel = filepath.Base(srcAbs)
 		}
 		rel = strings.ReplaceAll(rel, string(filepath.Separator), "_")
 		ext := filepath.Ext(rel)
@@ -141,9 +159,10 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 	}
 
 	var objFiles []string
-	for obj := range objFilesSet {
-		objFiles = append(objFiles, obj)
+	for _, p := range pairs {
+		objFiles = append(objFiles, p.obj)
 	}
+	sort.Strings(objFiles)
 
 	type job struct {
 		idx int
@@ -171,7 +190,7 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 						if verbose {
 							fmt.Printf("Cache hit for %s\n", p.src)
 						}
-						if err := copyFile(cachedObj, p.obj); err == nil {
+						if err := utils.CopyFile(cachedObj, p.obj); err == nil {
 							needAssemble = false
 						}
 					}
@@ -265,35 +284,7 @@ func storeCache(src, obj, cacheDir string, debug, verbose bool, mode string) err
 	}
 	key := fmt.Sprintf("%s_%v_%s", h, debug, mode)
 	cacheObj := filepath.Join(cacheDir, key+".o")
-	return copyFile(obj, cacheObj)
-}
-
-func hashFile(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	hasher := blake3.New()
-	if _, err := io.Copy(hasher, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hasher.Sum(nil)), nil
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
+	return utils.CopyFile(obj, cacheObj)
 }
 
 func createArchive(objFiles []string, outBin string, verbose bool) error {
