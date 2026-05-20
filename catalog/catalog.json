@@ -16,6 +16,15 @@
       "tag": "V10.5.1",
       "category": "kernel",
       "source_dir": "FreeRTOS/Source"
+    },
+    {
+      "name": "klib",
+      "description": "Standalone lightweight C library with common algorithms and data structures",
+      "repo": "github.com/attractivechaos/klib",
+      "tag": "v0.1",
+      "category": "utils",
+      "source_dir": "",
+      "hash": "blake3:..."
     }
   ]
 }
