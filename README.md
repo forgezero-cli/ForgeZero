@@ -22,9 +22,9 @@
   </table>
 </div>
 
-> **Version:** 2.1.0 NEXUS &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
+> **Version:** 3.0.0 GLORIA &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
 
-ForgeZero is a high-performance, zero-overhead build tool for assembly and C developers. It wraps NASM, GAS, FASM, GCC, Clang, and LD into a single unified command-line interface — no Makefiles, no build scripts, no configuration required to get started.
+ForgeZero is a high-performance, zero-overhead build tool for assembly and C developers. It wraps NASM, GAS, FASM, GCC, Clang, Zig, and LD into a single unified command-line interface — no Makefiles, no build scripts, no configuration required to get started.
 
 > Inspired by the simplicity of **Suckless** and the efficiency of **TinyCC**
 
@@ -80,15 +80,23 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly and C dev
     - 17.1 [NASM (.asm)](#171-nasm-asm)
     - 17.2 [GAS (.s / .S)](#172-gas-s--s)
     - 17.3 [FASM (.fasm)](#173-fasm-fasm)
-18. [Project Initialization](#18-project-initialization)
-19. [LSP & IDE Integration](#19-lsp--ide-integration)
-20. [Self-Update](#20-self-update)
-21. [Examples](#21-examples)
-22. [Exit Codes](#22-exit-codes)
-23. [Troubleshooting](#23-troubleshooting)
-24. [Roadmap](#24-roadmap)
-25. [Contributing](#25-contributing)
-26. [License](#26-license)
+18. [Zig Toolchain Backend](#18-zig-toolchain-backend)
+19. [Supply Chain Security](#19-supply-chain-security)
+    - 19.1 [SBOM Generation (fz sbom)](#191-sbom-generation-fz-sbom)
+    - 19.2 [SAST Audit Scanner (fz audit)](#192-sast-audit-scanner-fz-audit)
+20. [Reproducible Builds](#20-reproducible-builds)
+21. [Source Tree Integrity (fz verify)](#21-source-tree-integrity-fz-verify)
+22. [Build Profiler (fz bench)](#22-build-profiler-fz-bench)
+23. [WebAssembly (WASM)](#23-webassembly-wasm)
+24. [Project Initialization](#24-project-initialization)
+25. [LSP & IDE Integration](#25-lsp--ide-integration)
+26. [Self-Update](#26-self-update)
+27. [Examples](#27-examples)
+28. [Exit Codes](#28-exit-codes)
+29. [Troubleshooting](#29-troubleshooting)
+30. [Roadmap](#30-roadmap)
+31. [Contributing](#31-contributing)
+32. [License](#32-license)
 
 ---
 
@@ -104,10 +112,29 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 - Optionally watches the filesystem and rebuilds on every save.
 - Emits structured JSON build reports for CI/CD integration.
 - Generates `compile_commands.json` for full LSP and IDE integration.
-- Supports cross-compilation to ARM, RISC-V, and other targets via `-target`.
+- Supports cross-compilation to ARM, RISC-V, WASM, and other targets via `-target`.
 - Builds static libraries (`.a`) and shared libraries (`.so` / `.dylib`) in addition to executables.
 - Compiles C++ (`.cpp`, `.cc`, `.cxx`) with the same strict standards as C.
 - Manages external C/ASM dependencies via the built-in package manager (`fz pm`).
+- Generates CycloneDX SBOMs with BLAKE3 hashes for supply chain transparency.
+- Runs a built-in SAST scanner to detect secrets, license violations, and dangerous patterns.
+- Guarantees byte-identical reproducible builds across machines.
+- Verifies source tree integrity via BLAKE3 manifests.
+- Profiles every build phase with nanosecond precision (`fz bench`).
+- Compiles to WebAssembly via `wasm32-emscripten` and `wasm32-wasi`.
+
+**What's new in v3.0.0 GLORIA:**
+
+- **Zig toolchain backend** — `zig cc` / `zig c++` as primary or alternative backend for C/C++. Zero external dependencies for cross-compilation: Zig ships all headers, libc, and sysroots internally.
+- **SBOM (CycloneDX + BLAKE3)** — `fz sbom` generates a Software Bill of Materials in CycloneDX format with BLAKE3 hashes for every component in the build.
+- **SAST audit (`fz audit`)** — built-in security scanner: hardcoded secrets, license compliance (MPL/GPL detection), and dangerous C patterns (unbounded `gets`, format string bugs, unchecked `malloc`, etc.).
+- **Reproducible builds (`--reproducible`)** — automatic suppression of build IDs, timestamps, and non-deterministic path references; object files sorted before linking for byte-identical output across machines.
+- **Source tree verification (`fz verify`)** — generates and checks BLAKE3 manifests of the entire source tree to detect unauthorized modifications.
+- **Symlink boundary protection** — the recursive scanner now validates that every symlink resolves to a path inside the project root, blocking symlink race attacks.
+- **`fz bench`** — nanosecond-precision build profiler showing time per file, linker, and audit phase. Supports multi-run averaging and JSON output.
+- **Multithreading safety** — all race conditions in the parallel build and logging pipeline eliminated; verified with `go test -race`.
+- **FASM improvements** — automatic `format ELF64` injection and correct `-dDEBUG=1` / debug symbol pass-through for FASM files.
+- **WebAssembly** — `wasm32-emscripten` and `wasm32-wasi` targets; Zig backend is the recommended zero-dependency path for WASI.
 
 **What's new in v2.0.0 NEXUS:**
 
@@ -198,6 +225,8 @@ When using `-target <triple>`, `fz` looks for prefixed toolchain binaries on you
 
 Install cross-compilers via your package manager (e.g. `sudo apt install gcc-arm-linux-gnueabihf`).
 
+When using `-zig`, no prefixed toolchain is required — Zig resolves the target internally. See [Section 18](#18-zig-toolchain-backend).
+
 ### Optional tools (used internally)
 
 | Tool       | Purpose |
@@ -206,6 +235,8 @@ Install cross-compilers via your package manager (e.g. `sudo apt install gcc-arm
 | `objdump`  | Fallback for symbol check |
 | `readelf`  | Second fallback for symbol check |
 | `git`      | Required for `fz pm add` (package manager) |
+| `zig`      | Required for `-zig` backend (v3.0.0+) |
+| `emcc`     | Required for `wasm32-emscripten` target (v3.0.0+) |
 
 ### Go version (build from source only)
 
@@ -236,6 +267,17 @@ sudo apt install -y clang
 sudo apt install -y gcc-arm-linux-gnueabihf
 sudo apt install -y gcc-aarch64-linux-gnu
 sudo apt install -y gcc-riscv64-linux-gnu
+```
+
+**Install Zig (optional, for `-zig` backend):**
+
+```bash
+wget https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+tar -xf zig-linux-x86_64-0.13.0.tar.xz
+sudo mv zig-linux-x86_64-0.13.0 /opt/zig
+echo 'export PATH="$PATH:/opt/zig"' >> ~/.bashrc
+source ~/.bashrc
+zig version
 ```
 
 **Install FASM (optional, for `.fasm` files):**
@@ -281,6 +323,16 @@ sudo dnf install -y epel-release
 sudo dnf install -y nasm gcc binutils clang git
 ```
 
+**Install Zig (optional):**
+
+```bash
+# Download from ziglang.org — no dnf package in older releases
+wget https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+tar -xf zig-linux-x86_64-0.13.0.tar.xz
+sudo mv zig-linux-x86_64-0.13.0 /opt/zig
+echo 'export PATH="$PATH:/opt/zig"' >> ~/.bashrc
+```
+
 **Install ForgeZero:**
 
 ```bash
@@ -294,7 +346,7 @@ go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 **Install system dependencies:**
 
 ```bash
-sudo pacman -S --noconfirm nasm gcc binutils clang git
+sudo pacman -S --noconfirm nasm gcc binutils clang git zig
 
 # FASM is available in the AUR
 yay -S fasm
@@ -337,7 +389,7 @@ macOS support is in progress. The following setup works for most use cases today
 **Install dependencies:**
 
 ```bash
-brew install nasm gcc go git
+brew install nasm gcc go git zig
 ```
 
 > **Note:** macOS ships `clang` as the system compiler under the `gcc` alias via Xcode Command Line Tools. For full GCC, `brew install gcc` installs it as `gcc-14` (or similar). ForgeZero uses whatever `gcc` resolves to on your `PATH`.
@@ -519,6 +571,12 @@ fz -init
 fz -cc main.c -target arm-linux-gnueabihf
 ```
 
+**Build with Zig backend (no extra toolchain needed):**
+
+```bash
+fz -cc main.c -zig -target aarch64-linux-musl
+```
+
 **Generate LSP compilation database:**
 
 ```bash
@@ -541,6 +599,42 @@ fz -cc mylib.c -shared -o libmylib.so
 
 ```bash
 fz pm add github.com/me/my-lib
+```
+
+**Generate a Software Bill of Materials:**
+
+```bash
+fz sbom
+```
+
+**Run the security audit:**
+
+```bash
+fz audit
+```
+
+**Reproducible build:**
+
+```bash
+fz -dir ./src --reproducible
+```
+
+**Verify source tree integrity:**
+
+```bash
+fz verify
+```
+
+**Profile the build:**
+
+```bash
+fz bench
+```
+
+**Build for WebAssembly (WASI, via Zig):**
+
+```bash
+fz -cc main.c -zig -target wasm32-wasi -out main.wasm
 ```
 
 **Build multiple directories (v1.5.0):**
@@ -567,9 +661,9 @@ fz
 | `.asm`             | Assembly   | NASM             | x86/x86-64, Intel syntax, ELF64 |
 | `.s`               | Assembly   | GAS via `gcc -c` | AT&T syntax |
 | `.S`               | Assembly   | GAS via `gcc -c` | AT&T syntax + C preprocessor |
-| `.fasm`            | Assembly   | FASM             | Requires separate install |
-| `.c`               | C          | GCC or Clang     | Strict flags + sanitizers by default |
-| `.cpp` / `.cc` / `.cxx` | C++   | G++ or Clang++   | Same strict flags as C (v1.7.0+) |
+| `.fasm`            | Assembly   | FASM             | Requires separate install; auto `format ELF64` injection in v3.0.0 |
+| `.c`               | C          | GCC, Clang, or `zig cc` | Strict flags + sanitizers by default |
+| `.cpp` / `.cc` / `.cxx` | C++   | G++, Clang++, or `zig c++` | Same strict flags as C (v1.7.0+) |
 
 All other file extensions are silently ignored during directory and recursive scanning.
 
@@ -652,7 +746,7 @@ Each level overrides values from the previous one. This lets you set organizatio
 fz [options]
 ```
 
-At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, or a valid config file must be present.
+At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, `sbom`, `audit`, `verify`, `bench`, or a valid config file must be present.
 
 ### Full Flag Reference
 
@@ -665,7 +759,9 @@ At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, or a valid confi
 | `-out-obj` | `<name>` | `<basename>.o` | Object file name (single-file mode only). |
 | `-mode` | `auto\|c\|raw` | `auto` | Linking mode. See [Linking Modes](#8-linking-modes). |
 | `-format` | `elf32\|elf64\|bin` | `elf64` | Output format for assembled binaries. |
-| `-target` | `<triple>` | — | Cross-compilation target triple (e.g. `arm-linux-gnueabihf`). |
+| `-target` | `<triple>` | — | Cross-compilation target triple (e.g. `arm-linux-gnueabihf`, `wasm32-wasi`). |
+| `-zig` | — | off | Use Zig (`zig cc` / `zig c++`) as the compiler backend. See [Section 18](#18-zig-toolchain-backend). |
+| `--reproducible` | — | off | Enable deterministic builds: suppress build IDs, timestamps, path references; sort objects. |
 | `-type` | `executable\|static` | `executable` | Output type: linked binary or static library (`.a`). |
 | `-lib` | `<name>` | — | Output library name when `-type static` is used (without `lib` prefix or `.a` suffix). |
 | `-shared` | — | off | Build a shared library (`.so` / `.dylib` / `.dll`). |
@@ -690,6 +786,7 @@ At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, or a valid confi
 | `-update` | — | off | Download and install the latest `fz` binary; backs up current binary to `fz.old`. |
 | `-config` | `<file>` | auto-detect | Path to a YAML configuration file. |
 | `-timeout` | `<sec>` | `60` | Timeout in seconds for each sub-command. |
+| `-manifest` | `<file>` | `.fz.manifest` | Path to the BLAKE3 source manifest used by `fz verify`. |
 | `-h`, `--help` | — | — | Print help and exit. |
 | `-v`, `--version` | — | — | Print version and exit. |
 
@@ -704,6 +801,30 @@ At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, or a valid confi
 | `fz pm catalog` | Browse the official ForgeZero package catalog. |
 | `fz pm search <query>` | Search the catalog by name or keyword. |
 | `fz pm install <name>` | Install a package from the catalog with BLAKE3 hash verification. |
+
+### Security & Integrity Sub-commands
+
+| Command | Description |
+|---------|-------------|
+| `fz sbom` | Generate a CycloneDX SBOM with BLAKE3 hashes for all build components. |
+| `fz sbom -o <path>` | Write the SBOM to a specific output file (default: `sbom.cdx.json`). |
+| `fz sbom -dir <dir>` | Generate SBOM scoped to a specific source directory. |
+| `fz sbom -json` | Emit the SBOM as JSON (always true; flag reserved for future format options). |
+| `fz audit` | Run the built-in SAST scanner: secrets, license compliance, and dangerous patterns. |
+| `fz audit -dir <dir>` | Audit a specific directory. |
+| `fz audit -json` | Emit the audit report as a JSON object to stdout. |
+| `fz verify` | Verify the current source tree against the stored BLAKE3 manifest. |
+| `fz verify --generate` | Generate a new BLAKE3 manifest of the current source tree. |
+| `fz verify --strict` | Also report UNTRACKED files (files on disk not in the manifest). |
+| `fz verify -manifest <f>` | Use a specific manifest file instead of the default `.fz.manifest`. |
+
+### Performance Sub-commands
+
+| Command | Description |
+|---------|-------------|
+| `fz bench` | Profile the build: measure and report nanosecond-precision timing for every phase. |
+| `fz bench -n <N>` | Run the build N times and report average and standard deviation per phase. |
+| `fz bench -json` | Emit the benchmark report as a JSON object. |
 
 ---
 
@@ -802,11 +923,13 @@ When `-strict` is active, `fz` prefers `clang` because it supports `-fsanitize-a
 fz -cc main.c -sanitize=false
 ```
 
+> **Note:** Sanitizers are automatically disabled for WebAssembly targets (`wasm32-*`). See [Section 23](#23-webassembly-wasm).
+
 ---
 
 ## 10. C++ Compilation
 
-Added in **v1.7.0**. ForgeZero compiles `.cpp`, `.cc`, and `.cxx` files using `g++` or `clang++`. The same strict warning flags applied to C are applied identically to C++:
+Added in **v1.7.0**. ForgeZero compiles `.cpp`, `.cc`, and `.cxx` files using `g++` or `clang++` (or `zig c++` when `-zig` is active). The same strict warning flags applied to C are applied identically to C++:
 
 ```
 -Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion
@@ -830,7 +953,7 @@ fz -cc main.cxx
 fz -dir ./src
 ```
 
-`fz` dispatches `.c` files to `gcc`/`clang` and `.cpp`/`.cc`/`.cxx` files to `g++`/`clang++` automatically. All objects are linked together in a single step.
+`fz` dispatches `.c` files to `gcc`/`clang`/`zig cc` and `.cpp`/`.cc`/`.cxx` files to `g++`/`clang++`/`zig c++` automatically. All objects are linked together in a single step.
 
 **Disable sanitizers for release:**
 
@@ -842,7 +965,7 @@ fz -cc main.cpp -sanitize=false
 
 ## 11. Cross-Compilation
 
-Added in **v1.9.0**. The `-target` flag enables cross-compilation to any architecture supported by the GNU toolchain installed on your system.
+Added in **v1.9.0**. The `-target` flag enables cross-compilation to any architecture supported by the GNU toolchain installed on your system. In **v3.0.0**, combining `-target` with `-zig` removes the need to install prefixed toolchain packages entirely.
 
 ### Basic Usage
 
@@ -851,20 +974,26 @@ fz -cc main.c -target arm-linux-gnueabihf
 fz -cc main.c -target aarch64-linux-gnu
 fz -cc main.c -target riscv64-linux-gnu
 fz -dir ./src -target arm-linux-gnueabihf -out firmware
+
+# With Zig backend — no cross-compiler package required
+fz -cc main.c -zig -target aarch64-linux-musl
+fz -cc main.c -zig -target riscv64-linux-musl
 ```
 
 ### How It Works
 
-When `-target <triple>` is set, `fz` constructs the expected prefixed compiler and linker names by prepending the triple to the tool name:
+When `-target <triple>` is set **without** `-zig`, `fz` constructs the expected prefixed compiler and linker names by prepending the triple to the tool name:
 
 - Compiler: `<triple>-gcc` (e.g. `arm-linux-gnueabihf-gcc`)
 - C++ compiler: `<triple>-g++`
 - Linker: `<triple>-gcc` or `<triple>-ld` depending on the linking mode
 - Archiver: `<triple>-ar` (when `-type static`)
 
-`fz` verifies that the prefixed compiler is available on `PATH` before starting the build. If the cross-compiler is not found, the build exits with code `2` and a clear error message naming the missing tool.
+When `-target <triple>` is set **with** `-zig`, `fz` passes the triple directly to `zig cc` via its own `-target` flag. No prefixed binary is looked up on `PATH`.
 
-### Installing Cross-Compilers
+`fz` verifies that the required compiler is available on `PATH` before starting the build. If the cross-compiler is not found, the build exits with code `2` and a clear error message naming the missing tool.
+
+### Installing Cross-Compilers (without Zig)
 
 **Debian / Ubuntu:**
 
@@ -917,6 +1046,7 @@ fz
 - All standard `fz` features work with cross-compilation: build cache, parallel builds, sanitizer flags (if the cross-compiler supports them), static libraries, and JSON output.
 - Sanitizers may not be available for all cross-compilation targets. If the cross-compiler reports an unsupported sanitizer flag, use `-sanitize=false`.
 - `-strict` mode selects `<triple>-clang` if available; otherwise falls back to `<triple>-gcc`.
+- For WebAssembly cross-compilation targets (`wasm32-*`), see [Section 23](#23-webassembly-wasm).
 
 ---
 
@@ -972,6 +1102,7 @@ flags:
 
 - `-type static` is incompatible with `-mode raw`. Use `-mode c` or `-mode auto` when producing a static library.
 - Cross-compilation works: `fz -dir ./src -type static -lib mylib -target arm-linux-gnueabihf` uses `arm-linux-gnueabihf-ar`.
+- With the Zig backend: `fz -dir ./src -type static -lib mylib -zig -target aarch64-linux-musl`.
 
 ---
 
@@ -1237,6 +1368,8 @@ When `-j 0` is specified, `fz` queries the system for the number of logical CPU 
 
 Parallel compilation does not affect the linking step — all objects must be compiled before linking begins. Build cache hits are served from disk without spawning a compiler process, so cached files do not consume a worker slot.
 
+As of **v3.0.0 GLORIA**, the parallel build and logging pipeline is fully race-condition-free, verified with `go test -race` across the complete test suite.
+
 ---
 
 ### 15.7 Interactive Shell
@@ -1298,6 +1431,8 @@ CLI flags always override config file values.
 | `mode` | string | `auto` | Linking mode: `auto`, `c`, or `raw` |
 | `format` | string | `elf64` | Output format: `elf32`, `elf64`, or `bin` |
 | `target` | string | — | Cross-compilation target triple |
+| `backend` | string | `auto` | Compiler backend: `auto`, `gcc`, `clang`, or `zig` |
+| `reproducible` | bool | `false` | Enable reproducible (deterministic) build mode |
 | `type` | string | `executable` | Output type: `executable` or `static` |
 | `lib` | string | — | Library name for `-type static` (without `lib` prefix / `.a` suffix) |
 | `jobs` | int | `1` | Parallel compilation jobs (`0` = auto) |
@@ -1376,8 +1511,9 @@ include:
 
 1. Check `exclude` patterns — skip if matched.
 2. Check `.fzignore` file — skip if matched.
-3. Check `include` patterns — skip if none match (when `include` is set).
-4. Check supported extensions — skip all others.
+3. Check symlink boundary — skip and warn if the resolved path is outside the project root.
+4. Check `include` patterns — skip if none match (when `include` is set).
+5. Check supported extensions — skip all others.
 
 ---
 
@@ -1468,6 +1604,8 @@ output: forgeos.elf
 format: elf64
 
 # target: arm-linux-gnueabihf
+# backend: zig          # use Zig toolchain
+# reproducible: true    # deterministic byte-identical output
 
 # type: static
 # lib: forgeos
@@ -1590,9 +1728,10 @@ fz -asm hello.s
 
 FASM (Flat Assembler) is a self-hosting assembler with a powerful macro system. It must be downloaded separately from [flatassembler.net](https://flatassembler.net).
 
+As of **v3.0.0 GLORIA**, ForgeZero automatically injects `format ELF64 executable` when no `format` directive is found at the top of the file, and correctly passes `-dDEBUG=1` and debug symbol flags when `-debug` is active. See [Section 17.3 details](#173-fasm-fasm) and [Section 18.6](#186-fasm-improvements-v300) for the full breakdown.
+
 ```asm
-; hello.fasm
-format ELF64 executable
+; hello.fasm — format directive can be omitted for ELF64 targets (v3.0.0+)
 entry _start
 
 segment readable writeable
@@ -1619,7 +1758,549 @@ fz -asm hello.fasm
 
 ---
 
-## 18. Project Initialization
+## 18. Zig Toolchain Backend
+
+> **New in v3.0.0 GLORIA**
+
+ForgeZero now supports Zig as a first-class compiler backend for C and C++ compilation. When the `-zig` flag is set, `zig cc` replaces `gcc`/`clang` and `zig c++` replaces `g++`/`clang++` throughout the entire build pipeline — compilation, linking, and archiving.
+
+### 18.1 Why Zig?
+
+The Zig compiler ships as a single self-contained binary that includes:
+
+- A full copy of musl libc, glibc stubs, and WASI sysroot for every supported target.
+- All necessary C and C++ runtime headers.
+- A Clang-based C/C++ frontend (`zig cc` is `clang` under the hood).
+- Built-in cross-compilation support for every target triple that Zig supports — no sysroot packages to install.
+
+This makes ForgeZero genuinely zero-dependency for cross-compilation when the Zig backend is active.
+
+### 18.2 Activating the Zig Backend
+
+```bash
+# Single file
+fz -cc main.c -zig
+
+# Full directory
+fz -dir ./src -zig
+
+# With cross-compilation (no extra package needed)
+fz -cc main.c -zig -target aarch64-linux-musl
+fz -cc main.c -zig -target riscv64-linux-musl
+fz -cc main.c -zig -target x86_64-windows-gnu
+
+# Static library via Zig
+fz -dir ./src -type static -lib mylib -zig -target aarch64-linux-musl
+```
+
+In `.fz.yaml`:
+
+```yaml
+source_dirs:
+  - src
+output: myapp
+backend: zig
+target: aarch64-linux-musl
+sanitize: false
+```
+
+### 18.3 Toolchain Selection Logic
+
+| Flags active | C compiler | C++ compiler |
+|---|---|---|
+| (default) | `gcc` or `clang` | `g++` or `clang++` |
+| `-zig` | `zig cc` | `zig c++` |
+| `-zig -target <T>` | `zig cc -target T` | `zig c++ -target T` |
+| `-zig -strict` | `zig cc` (Clang-based, full sanitizers) | `zig c++` |
+
+When `-zig` and `-target` are both set, the target triple is passed directly to Zig's own `-target` flag. ForgeZero does **not** search `PATH` for a prefixed compiler binary.
+
+### 18.4 Cross-Compilation Without Extra Packages
+
+```bash
+# ARM64 musl — no gcc-aarch64-linux-gnu needed
+fz -cc main.c -zig -target aarch64-linux-musl
+
+# RISC-V bare-metal
+fz -cc kernel.c -zig -target riscv64-linux-musl -mode raw
+
+# Windows executable from Linux
+fz -cc win_app.c -zig -target x86_64-windows-gnu
+```
+
+### 18.5 Installing Zig
+
+```bash
+# Debian / Ubuntu
+wget https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+tar -xf zig-linux-x86_64-0.13.0.tar.xz
+sudo mv zig-linux-x86_64-0.13.0 /opt/zig
+echo 'export PATH="$PATH:/opt/zig"' >> ~/.bashrc
+source ~/.bashrc
+
+# Arch Linux
+sudo pacman -S zig
+
+# macOS
+brew install zig
+
+# Verify
+zig version
+```
+
+### 18.6 FASM Improvements (v3.0.0)
+
+The FASM backend received two improvements in v3.0.0 GLORIA, independent of the Zig backend:
+
+**Automatic `format ELF64` injection.** When ForgeZero compiles a `.fasm` file and the file does not begin with a `format` directive, it automatically prepends `format ELF64 executable` in a temporary preprocessed copy before passing the file to FASM. The original source file is never modified. If a `format` directive is already present, it is left unchanged.
+
+**Debug flag pass-through.** When `-debug` is passed to `fz`, ForgeZero now correctly injects `-dDEBUG=1` into the FASM command line, making the `DEBUG` symbol available for conditional assembly. DWARF debug information is also emitted in the ELF64 output when `-debug` is active, enabling source-level debugging with `gdb`.
+
+```asm
+; Conditional debug code in FASM using the injected DEBUG symbol
+if defined DEBUG
+    ; print register state, extra checks, etc.
+end if
+```
+
+```bash
+# Debug build of a FASM file with full symbol output
+fz -asm boot.fasm -debug
+gdb ./boot
+(gdb) break _start
+(gdb) run
+```
+
+---
+
+## 19. Supply Chain Security
+
+> **New in v3.0.0 GLORIA**
+
+### 19.1 SBOM Generation (fz sbom)
+
+`fz sbom` generates a Software Bill of Materials (SBOM) for the current project in the **CycloneDX** standard format. Every component — source files, vendored packages, and detected system libraries — is listed with its BLAKE3 hash, version (where available), and SPDX license identifier.
+
+#### Running fz sbom
+
+```bash
+# Generate SBOM for the current project (output: sbom.cdx.json)
+fz sbom
+
+# Specify a custom output path
+fz sbom -o /tmp/myproject-sbom.cdx.json
+
+# Scoped to a specific source directory
+fz sbom -dir ./src -o release-sbom.cdx.json
+```
+
+#### What CycloneDX Is
+
+CycloneDX is an open SBOM standard maintained by OWASP and widely adopted for supply-chain compliance (NIST SSDF, US Executive Order 14028). The file produced by `fz sbom` is valid CycloneDX JSON and can be imported directly into Dependency-Track, Grype, Syft, or any other compatible platform.
+
+#### What the SBOM Contains
+
+Each component entry includes:
+
+- **name** — file path relative to the project root, or package name for vendored dependencies.
+- **version** — Git commit SHA for vendored packages; absent for local source files.
+- **hashes** — BLAKE3 hash of the file contents at generation time.
+- **type** — one of `source-file`, `vendored-package`, or `system-library`.
+- **licenses** — SPDX identifier detected from file headers, `LICENSE` files, or `.fz.yaml` metadata.
+
+#### Vendored Package Integrity
+
+Any package installed via `fz pm add` or `fz pm install` is included in the SBOM with its Git commit SHA as the version and its BLAKE3 hash as the integrity value. If the on-disk content of a vendored package has changed since installation, the SBOM flags the component as `modified`.
+
+#### BLAKE3 Hashing
+
+All hashes in the SBOM are computed using BLAKE3, consistent with the rest of ForgeZero's internal hashing infrastructure. Generating an SBOM for a large project takes milliseconds.
+
+---
+
+### 19.2 SAST Audit Scanner (fz audit)
+
+`fz audit` is a built-in static analysis scanner that inspects the current project for security issues without requiring any external tools. It performs three classes of checks.
+
+#### Running fz audit
+
+```bash
+# Full audit on the current project
+fz audit
+
+# Audit a specific directory
+fz audit -dir ./src
+
+# JSON output for CI/CD
+fz audit -json
+```
+
+#### Check 1 — Hardcoded Secrets
+
+`fz audit` scans all source files for patterns consistent with credentials committed directly into code. The scanner uses a curated set of entropy-weighted regular expressions.
+
+Patterns detected include:
+
+- Provider-specific API keys: `AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, `SLACK_TOKEN`, and over forty other formats.
+- Generic high-entropy strings assigned to variables named `key`, `secret`, `password`, `token`, or `credential`.
+- Private key PEM blocks (`-----BEGIN ... PRIVATE KEY-----`).
+- Connection strings containing plaintext passwords (e.g. `postgres://user:password@host`).
+
+Each finding includes the file path, line number, matched pattern type, and severity (`HIGH` or `CRITICAL`). The scanner never prints the actual secret value in its output to prevent leaking it into CI logs.
+
+#### Check 2 — License Compliance
+
+`fz audit` inspects every file in `vendor/` and any source file containing SPDX identifiers or common license headers. It flags licenses that may introduce restrictions incompatible with your project.
+
+| License | Concern | Severity |
+|---|---|---|
+| MPL-2.0 | Modified files must be released under MPL | WARNING |
+| GPL-2.0 / GPL-3.0 | Strong copyleft; may require entire project to be GPL | HIGH |
+| AGPL-3.0 | Network copyleft; applies to server-side deployments | HIGH |
+| LGPL variants | Weak copyleft; generally safe for dynamic linking | INFO |
+| Proprietary / non-OSI in `vendor/` | May prohibit redistribution | CRITICAL |
+
+The check reads SPDX identifiers from file headers (`// SPDX-License-Identifier: ...`), `LICENSE` files, and `.fz.yaml` package metadata. No external scanner or network request is involved.
+
+#### Check 3 — Dangerous Patterns
+
+`fz audit` detects dangerous constructs in C source code and build configuration files.
+
+In C source files:
+
+- `gets()`, `sprintf()`, `strcpy()` without bounds — use `fgets()`, `snprintf()`, `strncpy()` instead.
+- `alloca()` inside loops — potential stack overflow.
+- Format string vulnerabilities: `printf(user_input)` without a format specifier.
+- Unchecked return values from `malloc()`, `realloc()`, and file I/O functions.
+
+In configuration files and shell scripts:
+
+- Inline credential assignments (`export PASSWORD=...`).
+- Insecure file permission settings (`chmod 777`).
+- `curl | sh` or `wget | bash` patterns.
+
+#### Audit Output Format
+
+By default `fz audit` prints a colour-coded summary grouped by severity. Pass `-json` for a machine-readable report:
+
+```json
+{
+  "status": "findings",
+  "total": 3,
+  "findings": [
+    {
+      "type": "hardcoded_secret",
+      "severity": "CRITICAL",
+      "file": "src/config.c",
+      "line": 42,
+      "pattern": "AWS_SECRET_ACCESS_KEY assignment",
+      "description": "High-entropy string assigned to variable named 'secret'"
+    }
+  ]
+}
+```
+
+Exit code is `0` when no findings are present, `1` when any finding of severity WARNING or above is detected.
+
+---
+
+## 20. Reproducible Builds
+
+> **New in v3.0.0 GLORIA**
+
+ForgeZero v3.0.0 GLORIA guarantees that two separate builds of the same source tree on two different machines produce **byte-for-byte identical** output binaries when `--reproducible` is active.
+
+### 20.1 Why Reproducible Builds Matter
+
+Non-deterministic builds make it impossible to independently verify that a distributed binary was compiled from a specific source revision. They also make it harder to detect supply-chain attacks, because a compromised build system injects differences into the binary that only show up when two independently built copies are compared.
+
+### 20.2 Sources of Non-Determinism Eliminated
+
+**Build IDs.** GCC and Clang embed a randomly generated build ID in an ELF `.note.gnu.build-id` section. ForgeZero suppresses it with `-Wl,--build-id=none`.
+
+**Timestamps.** The `__DATE__` and `__TIME__` preprocessor macros embed the current wall-clock time. ForgeZero sets `SOURCE_DATE_EPOCH` to the timestamp of the most recent Git commit in the project (or zero if not a Git repository) and overrides both macros with deterministic values.
+
+**Path mapping.** DWARF debug information embeds absolute source file paths. ForgeZero passes `-fdebug-prefix-map=/absolute/project/path=.` to the compiler and assembler, replacing all absolute paths with project-relative ones.
+
+**Object sort order.** The order in which the OS returns directory entries is non-deterministic. ForgeZero sorts all object file paths lexicographically before invoking the linker.
+
+### 20.3 Enabling Reproducible Builds
+
+```bash
+# Command-line
+fz -dir ./src --reproducible
+
+# .fz.yaml
+reproducible: true
+```
+
+ForgeZero prints a summary of measures applied at the end of the build:
+
+```
+[fz] Reproducible build mode enabled.
+[fz]   Build ID:        suppressed (-Wl,--build-id=none)
+[fz]   Timestamps:      SOURCE_DATE_EPOCH=1716220800 (2024-05-20T12:00:00Z)
+[fz]   Path mapping:    -fdebug-prefix-map applied
+[fz]   Object ordering: lexicographic sort applied
+[fz] Build complete: myapp (sha256: e3b0c44298fc1c149afb...)
+```
+
+### 20.4 Verifying Reproducibility
+
+```bash
+# Build on machine A
+fz -dir ./src --reproducible -out release_a
+sha256sum release_a
+
+# Build on machine B (same source, same commit)
+fz -dir ./src --reproducible -out release_b
+sha256sum release_b
+
+# Both hashes must match
+```
+
+---
+
+## 21. Source Tree Integrity (fz verify)
+
+> **New in v3.0.0 GLORIA**
+
+### 21.1 fz verify — Overview
+
+`fz verify` generates and checks a BLAKE3 manifest of every source file in the project. It provides a tamper-evident record of the source tree at a known-good state and detects unauthorized changes to any file.
+
+### 21.2 Generating a Manifest
+
+```bash
+# Generate a manifest of the current source tree (output: .fz.manifest)
+fz verify --generate
+
+# Specify a custom manifest path
+fz verify --generate -manifest ./release.manifest
+```
+
+The manifest is a plain text file, one line per source file:
+
+```
+<BLAKE3-hex-hash>  <relative-file-path>
+
+# Example:
+3a4e9f1b2c...  src/main.c
+7b2d0f4e8a...  src/utils.c
+c1f9e23d01...  include/api.h
+```
+
+### 21.3 Verifying Against a Manifest
+
+```bash
+# Check the current tree against the default manifest (.fz.manifest)
+fz verify
+
+# Check against a specific manifest
+fz verify -manifest ./release.manifest
+
+# Also report files on disk that are not in the manifest
+fz verify --strict
+```
+
+`fz verify` reports three categories of finding:
+
+- **MODIFIED** — file exists on disk but its BLAKE3 hash does not match the recorded value.
+- **MISSING** — file listed in the manifest is not present on disk.
+- **UNTRACKED** — file exists on disk but is not listed in the manifest (only with `--strict`).
+
+Exit code is `0` if no MODIFIED or MISSING files are found, `1` if any integrity violation is detected.
+
+### 21.4 CI/CD Integration
+
+```bash
+# After checkout, verify the source tree before building
+fz verify -manifest ./release.manifest
+# Exits 1 and fails the pipeline if any file has been tampered with.
+```
+
+### 21.5 Symlink Boundary Protection
+
+The recursive directory scanner introduced in v3.0.0 validates every symlink it encounters. When a symlink is found, its target is resolved to an absolute canonical path and checked against the project root. If the resolved path falls outside the project root, the symlink is skipped and a warning is emitted:
+
+```
+[fz] WARNING: Skipping symlink 'src/external_link' — resolved path
+              '/etc/passwd' is outside the project boundary.
+              This may indicate a symlink race attack. Investigate
+              before proceeding.
+```
+
+Symlinks that resolve inside the project root are followed normally. This protection is always active and cannot be disabled — it is a security invariant, not a configurable option.
+
+---
+
+## 22. Build Profiler (fz bench)
+
+> **New in v3.0.0 GLORIA**
+
+`fz bench` runs a full build of the project and records the elapsed wall-clock time for every stage with nanosecond precision. It provides a structured, repeatable profiling workflow integrated directly into ForgeZero.
+
+### 22.1 Basic Usage
+
+```bash
+# Profile the current project
+fz bench
+
+# Profile a specific directory
+fz bench -dir ./src
+
+# Run 5 iterations; report average and standard deviation per phase
+fz bench -n 5
+
+# JSON output for CI/CD analysis
+fz bench -json
+```
+
+### 22.2 Output Format
+
+```
+fz bench — ForgeZero Build Profiler
+Project: ./src   Files: 12   Mode: auto   Cache: cold
+
+Phase                       Start (ns)      Duration        % Total
+─────────────────────────────────────────────────────────────────────
+Cache check                        0 ns       421,330 ns      0.12%
+Compile: src/main.c          421,330 ns    18,204,772 ns      5.21%
+Compile: src/utils.c      18,626,102 ns    12,409,003 ns      3.55%
+Compile: src/parser.c     31,035,105 ns    87,304,221 ns     24.99%
+... (12 files total)
+Pre-link symbol check    298,104,552 ns     1,203,449 ns      0.34%
+Link                     299,307,001 ns    46,882,004 ns     13.42%
+Audit (fz audit)         346,189,005 ns    12,034,221 ns      3.44%
+─────────────────────────────────────────────────────────────────────
+Total                                      349,323,226 ns    100.00%
+                                           (~349 ms wall clock)
+```
+
+### 22.3 Cache-Warm vs Cache-Cold Profiling
+
+```bash
+# Cold build (no cache hits) — simulates fresh checkout
+fz bench -dir ./src -no-cache
+
+# Warm build (all files cached) — run twice; first run warms the cache
+fz bench -dir ./src
+fz bench -dir ./src
+```
+
+### 22.4 JSON Output
+
+```bash
+fz bench -json
+```
+
+```json
+{
+  "total_ns": 349323226,
+  "total_ms": 349,
+  "cache": "cold",
+  "phases": [
+    { "name": "Compile: src/main.c", "start_ns": 421330,    "duration_ns": 18204772 },
+    { "name": "Link",                "start_ns": 299307001, "duration_ns": 46882004 }
+  ]
+}
+```
+
+---
+
+## 23. WebAssembly (WASM)
+
+> **New in v3.0.0 GLORIA**
+
+ForgeZero v3.0.0 adds WebAssembly as a supported compilation target. C source files can be compiled to `.wasm` modules targeting either Emscripten (browser) or WASI (server-side / cloud-native runtimes).
+
+### 23.1 Supported Targets
+
+| Target triple | Runtime | Use case |
+|---|---|---|
+| `wasm32-emscripten` | Emscripten / Browser | Browser WebAssembly with full libc emulation |
+| `wasm32-wasi` | Wasmtime, WasmEdge, WAMR, etc. | Server-side / cloud-native WASM modules |
+
+### 23.2 Building for wasm32-emscripten
+
+The `wasm32-emscripten` target requires the Emscripten SDK (`emcc`) to be installed and activated.
+
+```bash
+# Install Emscripten (one-time setup)
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk && ./emsdk install latest && ./emsdk activate latest
+source ./emsdk_env.sh
+
+# Compile C to WebAssembly for browser use
+fz -cc main.c -target wasm32-emscripten -out main.js
+# Produces main.wasm + main.js (JavaScript glue loader)
+```
+
+Emscripten provides a full POSIX libc emulation layer. Code that uses `stdio.h`, `stdlib.h`, and similar standard headers compiles without modification.
+
+### 23.3 Building for wasm32-wasi
+
+The `wasm32-wasi` target produces standalone `.wasm` modules conforming to the WASI specification, executable by any WASI-compatible runtime without a browser or JavaScript engine.
+
+**Recommended approach — Zig backend (no extra SDK needed):**
+
+```bash
+# Zig ships the WASI sysroot; no separate SDK required
+fz -cc main.c -zig -target wasm32-wasi -out main.wasm
+
+# Run with wasmtime
+wasmtime main.wasm
+```
+
+**Alternative — Clang + WASI SDK:**
+
+```bash
+# Requires: https://github.com/WebAssembly/wasi-sdk
+fz -cc main.c -target wasm32-wasi -cc-flag "--sysroot=/opt/wasi-sdk/share/wasi-sysroot"
+```
+
+### 23.4 WASM in .fz.yaml
+
+```yaml
+# .fz.yaml for a WASI library module
+source_dirs:
+  - src
+output: mymodule.wasm
+backend: zig
+target: wasm32-wasi
+sanitize: false
+flags:
+  cc:
+    - -O2
+    - -fvisibility=hidden
+```
+
+### 23.5 Sanitizers and WASM
+
+AddressSanitizer and UndefinedBehaviorSanitizer are not supported for WebAssembly targets. ForgeZero automatically disables sanitizers when a `wasm32-*` target is detected, regardless of the `-sanitize` flag, and prints a notice:
+
+```
+[fz] NOTE: Sanitizers disabled for target wasm32-wasi
+           (ASan/UBSan are not supported for WebAssembly targets).
+           Use -sanitize=false to suppress this notice.
+```
+
+### 23.6 Installing wasmtime (optional, for running WASI modules)
+
+```bash
+# Linux / macOS
+curl https://wasmtime.dev/install.sh -sSf | bash
+
+# macOS
+brew install wasmtime
+
+# Arch Linux
+sudo pacman -S wasmtime
+```
+
+---
+
+## 24. Project Initialization
 
 Added in **v1.6.0**. The `-init` flag scaffolds a new ForgeZero project in the current directory.
 
@@ -1666,7 +2347,7 @@ vendor/
 
 ---
 
-## 19. LSP & IDE Integration
+## 25. LSP & IDE Integration
 
 Added in **v1.9.0**. The `-compile-commands` flag generates `compile_commands.json` in the project root.
 
@@ -1699,7 +2380,7 @@ fz -dir ./src -target arm-linux-gnueabihf -compile-commands
 
 ---
 
-## 20. Self-Update
+## 26. Self-Update
 
 Added in **v1.9.0**.
 
@@ -1724,7 +2405,7 @@ Run with `sudo fz -update` if the binary is installed in a system directory.
 
 ---
 
-## 21. Examples
+## 27. Examples
 
 ### Minimal builds
 
@@ -1791,10 +2472,18 @@ fz -dir ./src -j 0
 
 ---
 
-### Cross-compile for ARM
+### Cross-compile for ARM (with system toolchain)
 
 ```bash
 fz -cc main.c -target arm-linux-gnueabihf -sanitize=false
+```
+
+---
+
+### Cross-compile for ARM64 musl (Zig backend — no packages needed)
+
+```bash
+fz -cc main.c -zig -target aarch64-linux-musl -sanitize=false
 ```
 
 ---
@@ -1819,25 +2508,12 @@ fz -cc mylib.c -shared -cc-flag "-O2 -fPIC" -o libmylib.so
 ### Package manager
 
 ```bash
-# Add a dependency from GitHub
 fz pm add github.com/me/my-lib
-
-# Add a specific version
 fz pm add github.com/me/my-lib@v1.2.3
-
-# Install from the official catalog (with hash verification)
 fz pm install esp-idf
-
-# Search the catalog
 fz pm search crypto
-
-# List installed packages
 fz pm list
-
-# Update all packages
 fz pm update
-
-# Remove a package
 fz pm remove my-lib
 ```
 
@@ -1872,6 +2548,72 @@ output: calc
 
 ```bash
 fz
+```
+
+---
+
+### Generate a Software Bill of Materials
+
+```bash
+fz sbom
+cat sbom.cdx.json
+```
+
+---
+
+### Run the security audit
+
+```bash
+fz audit
+fz audit -json | tee audit_report.json
+```
+
+---
+
+### Reproducible build
+
+```bash
+fz -dir ./src --reproducible
+sha256sum ./src
+```
+
+---
+
+### Generate and verify source tree manifest
+
+```bash
+# Generate manifest at a known-good state
+fz verify --generate
+
+# Later — verify nothing has changed
+fz verify
+```
+
+---
+
+### Profile the build
+
+```bash
+fz bench -dir ./src
+fz bench -dir ./src -n 5 -json | tee bench_report.json
+```
+
+---
+
+### Build for WebAssembly (WASI, via Zig)
+
+```bash
+fz -cc main.c -zig -target wasm32-wasi -out main.wasm
+wasmtime main.wasm
+```
+
+---
+
+### Build for WebAssembly (browser, via Emscripten)
+
+```bash
+source /path/to/emsdk/emsdk_env.sh
+fz -cc main.c -target wasm32-emscripten -out main.js
 ```
 
 ---
@@ -1939,17 +2681,17 @@ sudo cp /usr/local/bin/fz.old /usr/local/bin/fz
 
 ---
 
-## 22. Exit Codes
+## 28. Exit Codes
 
 | Code | Meaning |
 |------|---------|
-| `0` | Success — binary was produced without errors. |
-| `1` | Build error — assembler, compiler, or linker failed; or a duplicate global symbol was detected. Check stderr for details. |
+| `0` | Success — binary was produced without errors; or `fz verify` / `fz audit` found no violations. |
+| `1` | Build error — assembler, compiler, or linker failed; duplicate global symbol detected; `fz verify` found MODIFIED or MISSING files; `fz audit` found findings of WARNING severity or above. |
 | `2` | Argument error — invalid or missing flags, source file not found, cross-compiler not found on PATH, or unreadable configuration file. |
 
 ---
 
-## 23. Troubleshooting
+## 29. Troubleshooting
 
 ### `fz: command not found`
 
@@ -1975,8 +2717,6 @@ pacman -S mingw-w64-x86_64-nasm  # Windows MSYS2
 
 ### `fasm: command not found`
 
-Download from [flatassembler.net](https://flatassembler.net):
-
 ```bash
 wget https://flatassembler.net/fasm-1.73.32.tgz
 tar -xzf fasm-1.73.32.tgz
@@ -1997,7 +2737,24 @@ brew install gcc               # macOS
 
 ---
 
-### Cross-compiler not found
+### `zig: command not found`
+
+```bash
+# Download from ziglang.org
+wget https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+tar -xf zig-linux-x86_64-0.13.0.tar.xz
+sudo mv zig-linux-x86_64-0.13.0 /opt/zig
+echo 'export PATH="$PATH:/opt/zig"' >> ~/.bashrc
+source ~/.bashrc
+
+# Or via package manager (Arch / macOS)
+sudo pacman -S zig
+brew install zig
+```
+
+---
+
+### Cross-compiler not found (without Zig)
 
 Install the appropriate cross-compilation toolchain:
 
@@ -2005,6 +2762,12 @@ Install the appropriate cross-compilation toolchain:
 sudo apt install gcc-arm-linux-gnueabihf     # Debian / Ubuntu
 sudo dnf install gcc-arm-linux-gnu           # Fedora
 sudo pacman -S arm-linux-gnueabihf-gcc       # Arch
+```
+
+Or switch to the Zig backend to avoid installing cross-compiler packages:
+
+```bash
+fz -cc main.c -zig -target arm-linux-gnueabihf
 ```
 
 ---
@@ -2054,6 +2817,34 @@ Fix the reported memory/UB issue, then rerun. To temporarily disable:
 
 ```bash
 fz -cc main.c -sanitize=false
+```
+
+---
+
+### Sanitizers silently disabled for WASM target
+
+This is expected behaviour. ASan and UBSan are not supported for WebAssembly targets. ForgeZero disables them automatically and prints a notice. Pass `-sanitize=false` to suppress the notice.
+
+---
+
+### `fz verify` reports MODIFIED files unexpectedly
+
+Re-generate the manifest from the current known-good state:
+
+```bash
+fz verify --generate
+```
+
+If the changes are unexpected, investigate which files were modified and by what process before accepting the new manifest.
+
+---
+
+### `fz audit` false positive on a secret pattern
+
+The SAST scanner uses heuristic entropy-based detection. If a false positive occurs, annotate the line with a suppression comment:
+
+```c
+const char *example = "not-a-real-key-just-documentation"; // fz-audit: ignore
 ```
 
 ---
@@ -2112,8 +2903,6 @@ Check that the path is relative to the directory where you run `fz`, not relativ
 
 ### `libs` not found at link time
 
-Add the directory containing the library via `flags.ld`:
-
 ```yaml
 libs:
   - mylib
@@ -2158,7 +2947,7 @@ C:\msys64\mingw64\bin
 
 ---
 
-## 24. Roadmap
+## 30. Roadmap
 
 | Feature | Status |
 |---------|--------|
@@ -2192,6 +2981,17 @@ C:\msys64\mingw64\bin
 | Shared library support (`-shared`) | ✅ Done (v2.0.0) |
 | `-cc-flag` / `-ld-flag` CLI pass-through flags | ✅ Done (v2.0.0) |
 | High test coverage (utils 84%, linker 60%+) | ✅ Done (v2.0.0) |
+| Zig toolchain backend (`-zig`) | ✅ Done (v3.0.0) |
+| SBOM generation (`fz sbom`, CycloneDX + BLAKE3) | ✅ Done (v3.0.0) |
+| SAST audit scanner (`fz audit`) | ✅ Done (v3.0.0) |
+| Reproducible builds (`--reproducible`) | ✅ Done (v3.0.0) |
+| Source tree verification (`fz verify`) | ✅ Done (v3.0.0) |
+| Symlink boundary protection | ✅ Done (v3.0.0) |
+| Build profiler (`fz bench`, nanosecond precision) | ✅ Done (v3.0.0) |
+| Race-condition-free parallel pipeline | ✅ Done (v3.0.0) |
+| FASM native ELF64 auto-injection | ✅ Done (v3.0.0) |
+| FASM debug flag pass-through (`-dDEBUG=1`) | ✅ Done (v3.0.0) |
+| WebAssembly (`wasm32-emscripten` / `wasm32-wasi`) | ✅ Done (v3.0.0) |
 | Colored terminal output (green success / red error) | Planned |
 | GDB integration and improved debug workflow | Planned |
 | Man page (`man fz`) | Planned |
@@ -2200,7 +3000,7 @@ C:\msys64\mingw64\bin
 
 ---
 
-## 25. Contributing
+## 31. Contributing
 
 Contributions are welcome: bug reports, feature requests, documentation improvements, and code patches.
 
@@ -2220,7 +3020,7 @@ Repository: [github.com/forgezero-cli/ForgeZero](https://github.com/forgezero-cl
 
 ---
 
-## 26. License
+## 32. License
 
 ForgeZero is released under the **MIT License**.
 
