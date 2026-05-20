@@ -12,11 +12,23 @@ import (
 var (
 	OutputFormat = "elf64"
 	Target       = "x86_64-linux-gnu"
+	AsmFlags     []string
 )
 
 var CcFlags string
 
-func formatForTarget() string {
+func asmCmdForTarget() string {
+	switch {
+	case strings.Contains(Target, "arm"):
+		return "arm-linux-gnueabihf-as"
+	case strings.Contains(Target, "riscv"):
+		return "riscv64-unknown-elf-as"
+	default:
+		return "nasm"
+	}
+}
+
+func formatFlagForTarget() string {
 	switch {
 	case strings.Contains(Target, "x86_64"):
 		return "-felf64"
@@ -26,17 +38,6 @@ func formatForTarget() string {
 		return "-march=armv7-a"
 	default:
 		return "-felf64"
-	}
-}
-
-func gasCmdForTarget() string {
-	switch {
-	case strings.Contains(Target, "arm"):
-		return "arm-linux-gnueabihf-as"
-	case strings.Contains(Target, "riscv"):
-		return "riscv64-unknown-elf-as"
-	default:
-		return "as"
 	}
 }
 
@@ -73,12 +74,12 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 	ext := strings.ToLower(filepath.Ext(src))
 	switch ext {
 	case ".asm":
-		if err := utils.CheckTool("nasm"); err != nil {
+		if err := utils.CheckTool(asmCmdForTarget()); err != nil {
 			return err
 		}
 		return assembleNASM(ctx, src, obj, debug, verbose)
 	case ".s", ".S":
-		if err := utils.CheckTool(gasCmdForTarget()); err != nil {
+		if err := utils.CheckTool(asmCmdForTarget()); err != nil {
 			return err
 		}
 		return assembleGAS(ctx, src, obj, debug, verbose)
@@ -86,7 +87,7 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 		if err := utils.CheckTool("fasm"); err != nil {
 			return err
 		}
-		return assembleFASM(ctx, src, obj, verbose)
+		return assembleFASM(ctx, src, obj, debug, verbose)
 	case ".c":
 		if err := utils.CheckTool(ccForTarget()); err != nil {
 			return err
@@ -103,29 +104,14 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 }
 
 func assembleNASM(ctx context.Context, src, obj string, debug, verbose bool) error {
-	format := formatForTarget()
+	cmd := asmCmdForTarget()
+	format := formatFlagForTarget()
 	args := []string{format, src, "-o", obj}
-	if debug {
+	if debug && cmd == "nasm" {
 		args = append([]string{"-g"}, args...)
 	}
-	if verbose {
-		fmt.Println("Running: nasm", strings.Join(args, " "))
-	}
-	output, err := utils.RunCommandSilent(ctx, verbose, "nasm", args...)
-	if err != nil {
-		if !verbose {
-			return fmt.Errorf("nasm failed (use -verbose for details)")
-		}
-		return fmt.Errorf("nasm failed: %w\n%s", err, output)
-	}
-	return nil
-}
-
-func assembleGAS(ctx context.Context, src, obj string, debug, verbose bool) error {
-	cmd := gasCmdForTarget()
-	args := []string{"-c", src, "-o", obj}
-	if debug {
-		args = append([]string{"-g"}, args...)
+	if len(AsmFlags) > 0 {
+		args = append(args, AsmFlags...)
 	}
 	if verbose {
 		fmt.Printf("Running: %s %s\n", cmd, strings.Join(args, " "))
@@ -140,8 +126,36 @@ func assembleGAS(ctx context.Context, src, obj string, debug, verbose bool) erro
 	return nil
 }
 
-func assembleFASM(ctx context.Context, src, obj string, verbose bool) error {
+func assembleGAS(ctx context.Context, src, obj string, debug, verbose bool) error {
+	cmd := gasCmdForTarget()
+	args := []string{"-c", src, "-o", obj}
+	if debug {
+		args = append([]string{"-g"}, args...)
+	}
+	if len(AsmFlags) > 0 {
+		args = append(args, AsmFlags...)
+	}
+	if verbose {
+		fmt.Printf("Running: %s %s\n", cmd, strings.Join(args, " "))
+	}
+	output, err := utils.RunCommandSilent(ctx, verbose, cmd, args...)
+	if err != nil {
+		if !verbose {
+			return fmt.Errorf("%s failed (use -verbose for details)", cmd)
+		}
+		return fmt.Errorf("%s failed: %w\n%s", cmd, err, output)
+	}
+	return nil
+}
+
+func assembleFASM(ctx context.Context, src, obj string, debug, verbose bool) error {
 	args := []string{src, obj}
+	if debug {
+		args = append([]string{"-dDEBUG"}, args...)
+	}
+	if len(AsmFlags) > 0 {
+		args = append(args, AsmFlags...)
+	}
 	if verbose {
 		fmt.Println("Running: fasm", strings.Join(args, " "))
 	}
@@ -149,6 +163,12 @@ func assembleFASM(ctx context.Context, src, obj string, verbose bool) error {
 	if err != nil {
 		if !verbose {
 			return fmt.Errorf("fasm failed (use -verbose for details)")
+		}
+		lines := strings.Split(output, "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "error") {
+				return fmt.Errorf("fasm error: %s", line)
+			}
 		}
 		return fmt.Errorf("fasm failed: %w\n%s", err, output)
 	}
@@ -166,11 +186,6 @@ func assembleC(ctx context.Context, src, obj string, debug, verbose bool) error 
 	if verbose {
 		fmt.Printf("Running: %s %s\n", compiler, strings.Join(args, " "))
 	}
-
-	if CcFlags != "" {
-		args = append(args, strings.Fields(CcFlags)...)
-	}
-
 	output, err := utils.RunCommandSilent(ctx, verbose, compiler, args...)
 	if err != nil {
 		if !verbose {
@@ -204,4 +219,15 @@ func assembleCpp(ctx context.Context, src, obj string, debug, verbose bool) erro
 
 func CCForTarget() string {
 	return ccForTarget()
+}
+
+func gasCmdForTarget() string {
+	switch {
+	case strings.Contains(Target, "arm"):
+		return "arm-linux-gnueabihf-as"
+	case strings.Contains(Target, "riscv"):
+		return "riscv64-unknown-elf-as"
+	default:
+		return "as"
+	}
 }
