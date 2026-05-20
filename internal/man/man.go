@@ -12,9 +12,9 @@ fz \- assemble projects with a single command
 .SH SYNOPSIS
 fz [OPTIONS] (\-asm <file> | \-cc <file> | \-dir <dir>)
 .SH DESCRIPTION
-fz is a build tool for assembly (NASM, GAS, FASM) and C projects.
+fz is a build tool for assembly (NASM, GAS, FASM), C/C++ projects, and Zig toolchain workflows.
 It automates assembling, compiling, linking, caching, and provides features like watch mode,
-JSON output, strict sanitizers, and duplicate symbol detection.
+JSON output, strict sanitizers, and deterministic builds with Zig integration.
 .SH OPTIONS
 .TP
 \fB\-\-asm\fR <file>
@@ -58,6 +58,9 @@ Disable sanitizers
 .TP
 \fB\-\-strict\fR
 Enable aggressive sanitizers (use-after-return, use-after-scope) – prefers clang
+.TP
+\fB\-\-toolchain\fR <auto|zig>
+Select toolchain for C/C++ builds and linking
 .TP
 \fB\-\-clean\fR
 Remove all build artifacts (.fz_objs, .fz_cache, binaries)
