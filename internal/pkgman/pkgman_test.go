@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParsePkgURL(t *testing.T) {
@@ -116,11 +118,12 @@ output: test
 
 func TestFindPackagePath(t *testing.T) {
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
-
-	// Create fake vendor structure
+	oldWd, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, os.Chdir(oldWd))
+	}()
+	require.NoError(t, os.Chdir(tmpDir))
 	vendor := "vendor"
 	os.MkdirAll(filepath.Join(vendor, "github.com", "user", "lib"), 0o755)
 	gitPath := filepath.Join(vendor, "github.com", "user", "lib", ".git")
@@ -145,9 +148,13 @@ func TestFindPackagePath(t *testing.T) {
 
 func TestList(t *testing.T) {
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	oldWd, err := os.Getwd()
+
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, os.Chdir(oldWd))
+	}()
+	require.NoError(t, os.Chdir(tmpDir))
 
 	// Capture stdout
 	oldStdout := os.Stdout
@@ -185,4 +192,24 @@ func TestList(t *testing.T) {
 
 func TestAddAndRemove(t *testing.T) {
 	t.Skip("integration test requires git and network; run manually if needed")
+}
+
+func TestGetCatalogURLs(t *testing.T) {
+	urls := getCatalogURLs()
+	if len(urls) == 0 {
+		t.Error("getCatalogURLs returned empty slice")
+	}
+	os.Setenv("FZ_CATALOG_URL", "https://example.com/custom.json")
+	defer os.Unsetenv("FZ_CATALOG_URL")
+	urls2 := getCatalogURLs()
+	if len(urls2) == 0 || urls2[0] != "https://example.com/custom.json" {
+		t.Error("FZ_CATALOG_URL not respected")
+	}
+}
+
+func TestFetchCatalogFromURLInvalid(t *testing.T) {
+	_, err := fetchCatalogFromURL("http://localhost:9999/nonexistent")
+	if err == nil {
+		t.Error("expected error for invalid URL")
+	}
 }
