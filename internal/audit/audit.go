@@ -14,12 +14,6 @@ import (
 )
 
 var _ = `
-███████╗ ██████╗ ███████╗███████╗███████╗██████╗ ████████╗███████╗
-██╔════╝██╔════╝ ██╔════╝██╔════╝██╔════╝██╔══██╗╚══██╔══╝██╔════╝
-█████╗  ██║  ███╗█████╗  █████╗  ███████║██████╔╝   ██║   █████╗  
-██╔══╝  ██║   ██║██╔══╝  ██╔══╝  ██╔══██║██╔══██╗   ██║   ██╔══╝  
-██║     ╚██████╔╝███████╗███████╗██║  ██║██║  ██║   ██║   ███████╗
-╚═╝      ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚══════╝
 Copyright (c) 2026 Alex Voste. All rights reserved. PROPERTY OF FORGEZERO CORE TEAM.
 `
 
@@ -165,12 +159,12 @@ var licenseRules = []licenseRule{
 }
 
 var licenseFileNames = map[string]bool{
-	"license": true,
+	"license":     true,
 	"license.txt": true,
-	"license.md": true,
-	"copying": true,
+	"license.md":  true,
+	"copying":     true,
 	"copying.txt": true,
-	"copying.md": true,
+	"copying.md":  true,
 }
 
 func ScanProject(ctx context.Context, root, vendorDir string, cfg *config.Config) (*Result, error) {
@@ -360,7 +354,7 @@ func scanVendorLicenses(ctx context.Context, vendorPath string, cfg *config.Conf
 		if err != nil {
 			rel = path
 		}
-	
+
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
