@@ -1,7 +1,0 @@
-source_files:
-  - cpar/parallel.c
-output: libparallel.so  
-mode: c
-flags:
-  cc: ["-shared", "-fPIC", "-lpthread", "-O2"]
-  ld: ["-shared"]
