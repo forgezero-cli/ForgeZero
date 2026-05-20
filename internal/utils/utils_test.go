@@ -123,8 +123,8 @@ func TestRunCommandSilent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "" {
-		t.Errorf("verbose mode returned output %q, want ''", out)
+	if out != "verbose\n" && out != "verbose\r\n" {
+		t.Errorf("verbose mode returned output %q, want 'verbose\n'", out)
 	}
 	_, err = RunCommandSilent(ctx, false, "false")
 	if err == nil {
@@ -149,7 +149,6 @@ func TestCopyFile(t *testing.T) {
 	if string(data) != string(content) {
 		t.Error("content mismatch")
 	}
-	// Non-existent source
 	if err := CopyFile("nonexistent", dst); err == nil {
 		t.Error("expected error")
 	}
@@ -169,7 +168,6 @@ func TestEnsureDirErrors(t *testing.T) {
 
 func TestHashDir(t *testing.T) {
 	dir := t.TempDir()
-	// Create files in subdirectories
 	sub1 := filepath.Join(dir, "a")
 	sub2 := filepath.Join(dir, "b")
 	os.MkdirAll(sub1, 0o755)
@@ -313,8 +311,8 @@ func TestHashDirSymlink(t *testing.T) {
 		t.Skip("symlink not supported")
 	}
 	_, err := HashDir(dir)
-	if err != nil {
-		t.Error(err)
+	if err == nil {
+		t.Fatal("expected error for symlink in hash dir")
 	}
 }
 
@@ -331,6 +329,60 @@ func TestCheckToolNotFound(t *testing.T) {
 	err := CheckTool("_this_tool_should_not_exist_xyz_")
 	if err == nil {
 		t.Error("expected error")
+	}
+}
+
+func TestHashFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+	if err := os.WriteFile(path, []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h1, err := HashFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, err := HashFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h1 != h2 {
+		t.Error("hashes differ")
+	}
+	if len(h1) != 64 {
+		t.Errorf("unexpected hash length %d", len(h1))
+	}
+}
+
+func TestHashFileEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(path, []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h, err := HashFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h) != 64 {
+		t.Errorf("unexpected empty hash length %d", len(h))
+	}
+}
+
+func TestHashDirRejectsSymlink(t *testing.T) {
+	tmpDir := t.TempDir()
+	targetDir := t.TempDir()
+	targetFile := filepath.Join(targetDir, "target.txt")
+	if err := os.WriteFile(targetFile, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	symlinkPath := filepath.Join(tmpDir, "link.txt")
+	if err := os.Symlink(targetFile, symlinkPath); err != nil {
+		t.Skip("symlink not supported")
+	}
+	_, err := HashDir(tmpDir)
+	if err == nil {
+		t.Fatal("expected error for symlink in hash dir")
 	}
 }
 
@@ -359,24 +411,32 @@ func TestSupportedExtensionAll(t *testing.T) {
 
 func TestRunCommandSilentErrorVerbose(t *testing.T) {
 	oldStderr := os.Stderr
-	rErr, wErr, _ := os.Pipe()
+	rErr, wErr, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	os.Stderr = wErr
+	defer func() {
+		os.Stderr = oldStderr
+		wErr.Close()
+		rErr.Close()
+	}()
 
 	ctx := context.Background()
-	_, err := RunCommandSilent(ctx, true, "sh", "-c", "echo error >&2 && exit 1")
-
-	wErr.Close()
-	os.Stderr = oldStderr
-
+	_, err = RunCommandSilent(ctx, true, "sh", "-c", "echo error >&2 && exit 1")
 	if err == nil {
 		t.Error("expected error")
 	}
+	if err := wErr.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	var bufErr bytes.Buffer
-	bufErr.ReadFrom(rErr)
+	if _, err := bufErr.ReadFrom(rErr); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(bufErr.String(), "error") {
 		t.Errorf("stderr output missing, got: %q", bufErr.String())
 	}
 }
 
-// ----- Test linkWithGcc with no fallback and error (already exists, but ensure verbose branch) -----

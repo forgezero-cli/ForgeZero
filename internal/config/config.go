@@ -15,23 +15,26 @@ type Flags struct {
 }
 
 type Config struct {
-	Name        string   `yaml:"name"`
-	SourceDir   string   `yaml:"source_dir"`
-	SourceDirs  []string `yaml:"source_dirs"`
-	SourceFiles []string `yaml:"source_files"`
-	SourceFile  string   `yaml:"source_file"`
-	Output      string   `yaml:"output"`
-	OutObj      string   `yaml:"out_obj"`
-	Mode        string   `yaml:"mode"`
-	Debug       bool     `yaml:"debug"`
-	Verbose     bool     `yaml:"verbose"`
-	KeepObj     bool     `yaml:"keep_obj"`
-	NoCache     bool     `yaml:"no_cache"`
-	Exclude     []string `yaml:"exclude"`
-	Include     []string `yaml:"include"`
-	Libs        []string `yaml:"libs"`
-	IgnoreFile  string   `yaml:"ignore_file"`
-	Flags       Flags    `yaml:"flags"`
+	Name          string            `yaml:"name"`
+	SourceDir     string            `yaml:"source_dir"`
+	SourceDirs    []string          `yaml:"source_dirs"`
+	SourceFiles   []string          `yaml:"source_files"`
+	SourceFile    string            `yaml:"source_file"`
+	Output        string            `yaml:"output"`
+	OutObj        string            `yaml:"out_obj"`
+	Mode          string            `yaml:"mode"`
+	Toolchain     string            `yaml:"toolchain"`
+	Debug         bool              `yaml:"debug"`
+	Verbose       bool              `yaml:"verbose"`
+	KeepObj       bool              `yaml:"keep_obj"`
+	NoCache       bool              `yaml:"no_cache"`
+	Exclude       []string          `yaml:"exclude"`
+	Include       []string          `yaml:"include"`
+	Libs          []string          `yaml:"libs"`
+	IgnoreFile    string            `yaml:"ignore_file"`
+	AuditIgnore   []string          `yaml:"audit_ignore"`
+	ToolChecksums map[string]string `yaml:"tool_checksums"`
+	Flags         Flags             `yaml:"flags"`
 }
 
 func Load(path string) (*Config, error) {
@@ -65,13 +68,19 @@ func (c *Config) Validate() error {
 	if c.Mode != "auto" && c.Mode != "c" && c.Mode != "raw" {
 		return fmt.Errorf("invalid mode: %s", c.Mode)
 	}
+	if c.Toolchain == "" {
+		c.Toolchain = "auto"
+	}
+	if c.Toolchain != "auto" && c.Toolchain != "zig" {
+		return fmt.Errorf("invalid toolchain: %s", c.Toolchain)
+	}
 	if c.IgnoreFile == "" {
 		c.IgnoreFile = ".fzignore"
 	}
 	return nil
 }
 
-func (c *Config) MergeFromFlags(srcPath, dirPath, outBin, outObj string, debug, verbose, keepObj, noCache bool, mode string) {
+func (c *Config) MergeFromFlags(srcPath, dirPath, outBin, outObj string, debug, verbose, keepObj, noCache bool, mode, toolchain string) {
 	if srcPath != "" {
 		c.SourceFile = srcPath
 		c.SourceDir = ""
@@ -104,6 +113,9 @@ func (c *Config) MergeFromFlags(srcPath, dirPath, outBin, outObj string, debug, 
 	}
 	if mode != "" && mode != "auto" {
 		c.Mode = mode
+	}
+	if toolchain != "" && toolchain != "auto" {
+		c.Toolchain = toolchain
 	}
 }
 
@@ -165,6 +177,17 @@ func (c *Config) Merge(other *Config) {
 	}
 	if other.IgnoreFile != "" {
 		c.IgnoreFile = other.IgnoreFile
+	}
+	if len(other.AuditIgnore) > 0 {
+		c.AuditIgnore = other.AuditIgnore
+	}
+	if len(other.ToolChecksums) > 0 {
+		if c.ToolChecksums == nil {
+			c.ToolChecksums = make(map[string]string)
+		}
+		for k, v := range other.ToolChecksums {
+			c.ToolChecksums[k] = v
+		}
 	}
 	if len(other.Flags.Asm) > 0 {
 		c.Flags.Asm = other.Flags.Asm

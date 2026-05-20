@@ -66,7 +66,7 @@ func TestValidate(t *testing.T) {
 
 func TestMergeFromFlags(t *testing.T) {
 	cfg := &Config{SourceDir: "orig", Mode: "auto"}
-	cfg.MergeFromFlags("file.asm", "", "newbin", "new.o", true, true, true, true, "raw")
+	cfg.MergeFromFlags("file.asm", "", "newbin", "new.o", true, true, true, true, "raw", "auto")
 	if cfg.SourceFile != "file.asm" {
 		t.Error("SourceFile not merged")
 	}
