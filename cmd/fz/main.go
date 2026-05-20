@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Alex Voste. MIT License.
+// PROPERTY OF FORGEZERO CORE TEAM.
 package main
 
 import (
@@ -12,6 +14,8 @@ import (
 	"time"
 
 	"fz/internal/assembler"
+	"fz/internal/audit"
+	"fz/internal/bench"
 	"fz/internal/builder"
 	"fz/internal/compilecommands"
 	"fz/internal/config"
@@ -20,9 +24,11 @@ import (
 	"fz/internal/linker"
 	"fz/internal/man"
 	"fz/internal/pkgman"
+	"fz/internal/sbom"
 	"fz/internal/shell"
 	"fz/internal/updater"
 	"fz/internal/utils"
+	"fz/internal/verify"
 	"fz/internal/watcher"
 )
 
@@ -36,7 +42,7 @@ type BuildReport struct {
 	Error       string   `json:"error,omitempty"`
 }
 
-var version = "2.1.0 NEXUS"
+var version = "3.0.0 Gloria @latest"
 
 func printHelp() {
 	fmt.Fprintf(os.Stderr, `
@@ -44,6 +50,8 @@ fz – assembly & C build tool
 
 Usage:
   fz [options] (-asm <file> | -cc <file> | -dir <dir> | (no args with config))
+  fz audit [options]
+  fz sbom [options]
 
 Options:
   -asm <file>            Assembler source (.asm, .s, .S, .fasm)
@@ -60,6 +68,7 @@ Options:
   -sanitize              Enable sanitizers for C (default: true)
   -no-sanitize           Disable sanitizers
   -strict                Enable aggressive sanitizers (use-after-return, use-after-scope) – prefers clang
+  -toolchain <auto|zig>  Select toolchain: auto or zig
   -clean                 Remove all build artifacts (.fz_objs, .fz_cache, binaries)
   -watch                 Watch files and auto‑rebuild
   -json                  Output build report in JSON (for CI/CD)
@@ -69,7 +78,7 @@ Options:
   -T <file>              Linker script (passed to ld)
   -Ttext <addr>          Set text segment address
   -j <n>                 Number of parallel jobs (0 = auto = CPU cores)
-  -target <triple>       Target triple (default: x86_64-linux-gnu)
+  -target <triple>       Target triple (default: x86_64-linux-gnu, experimental: wasm)
   -type <executable|static> Build type: executable (default) or static (library)
   -lib                   Shortcut for -type static
   -compile-commands      Generate compile_commands.json for LSP and exit
@@ -87,6 +96,7 @@ Examples:
   fz -dir . -clean
   fz -asm boot.asm -format bin -out boot.bin
   fz -target arm-linux-gnueabihf -cc test.c -out test_arm
+  fz sbom -out sbom.json
 
 Supported extensions: .asm, .s, .S, .fasm, .c, .cpp, .cc, .cxx
 `)
@@ -102,7 +112,336 @@ Package Manager (fz pm):
 `)
 }
 
+func auditMain(args []string) {
+	fs := flag.NewFlagSet("audit", flag.ExitOnError)
+	configPath := fs.String("config", "", "config file path")
+	jsonOutput := fs.Bool("json", false, "machine-readable output")
+	verbose := fs.Bool("verbose", false, "print verbose audit output")
+	vendorDir := fs.String("vendor", "vendor", "vendor directory to scan")
+	fs.Parse(args)
+	root, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "audit failed: %v\n", err)
+		os.Exit(1)
+	}
+	utils.ExecutionRoot = root
+	var cfg *config.Config
+	if *configPath != "" {
+		cfg, err = config.Load(*configPath)
+	} else {
+		cfg, err = config.LoadMerged("")
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "audit failed: %v\n", err)
+		os.Exit(1)
+	}
+	if cfg != nil {
+		utils.ToolChecksums = cfg.ToolChecksums
+	}
+	if *verbose {
+		fmt.Fprintf(os.Stderr, "audit: scanning project root %s using vendor dir %s\n", root, *vendorDir)
+	}
+	result, err := audit.ScanProject(context.Background(), root, *vendorDir, cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "audit failed: %v\n", err)
+		os.Exit(1)
+	}
+	if len(result.Findings) == 0 {
+		if *jsonOutput {
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "clean", "findings": []any{}})
+		} else {
+			fmt.Println("audit passed: no vulnerabilities found")
+		}
+		return
+	}
+	if *jsonOutput {
+		_ = json.NewEncoder(os.Stdout).Encode(result)
+		return
+	}
+	for _, finding := range result.Findings {
+		fmt.Printf("[%s] %s\n", finding.Package, finding.Summary)
+		fmt.Printf("  path: %s\n", finding.Path)
+		if finding.Version != "" {
+			fmt.Printf("  version: %s\n", finding.Version)
+		}
+		if finding.URL != "" {
+			fmt.Printf("  url: %s\n", finding.URL)
+		}
+	}
+	os.Exit(1)
+}
+
+func sbomMain(args []string) {
+	fs := flag.NewFlagSet("sbom", flag.ExitOnError)
+	configPath := fs.String("config", "", "config file path")
+	jsonOutput := fs.Bool("json", false, "machine-readable output")
+	verbose := fs.Bool("verbose", false, "print verbose sbom generation output")
+	vendorDir := fs.String("vendor", "vendor", "vendor directory to scan")
+	outPath := fs.String("out", "sbom.json", "output SBOM file path")
+	target := fs.String("target", "", "target triple to annotate in SBOM")
+	fs.Parse(args)
+	root, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sbom failed: %v\n", err)
+		os.Exit(1)
+	}
+	utils.ExecutionRoot = root
+	var cfg *config.Config
+	if *configPath != "" {
+		cfg, err = config.Load(*configPath)
+	} else {
+		cfg, err = config.LoadMerged("")
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sbom failed: %v\n", err)
+		os.Exit(1)
+	}
+	if cfg != nil {
+		utils.ToolChecksums = cfg.ToolChecksums
+	}
+	if *verbose {
+		fmt.Fprintf(os.Stderr, "sbom: generating SBOM for project root %s using vendor dir %s\n", root, *vendorDir)
+	}
+	doc, err := sbom.Generate(root, *vendorDir, version, cfg, *target)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sbom failed: %v\n", err)
+		os.Exit(1)
+	}
+	data, err := sbom.Marshal(doc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sbom failed: %v\n", err)
+		os.Exit(1)
+	}
+	if *jsonOutput {
+		fmt.Println(string(data))
+		return
+	}
+	if err := os.WriteFile(*outPath, data, 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "sbom failed: %v\n", err)
+		os.Exit(1)
+	}
+	if *verbose {
+		fmt.Fprintf(os.Stderr, "sbom written to %s\n", *outPath)
+	}
+}
+
+func verifyMain(args []string) {
+	fs := flag.NewFlagSet("verify", flag.ExitOnError)
+	rootPath := fs.String("root", ".", "project root directory")
+	manifestPath := fs.String("manifest", "blake3.manifest", "manifest file path")
+	updateManifest := fs.Bool("update", false, "update manifest file")
+	jsonOutput := fs.Bool("json", false, "machine-readable output")
+	fs.Parse(args)
+	if err := utils.ValidateCLIPath(*rootPath); err != nil {
+		fmt.Fprintf(os.Stderr, "verify failed: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(*manifestPath); err != nil {
+		fmt.Fprintf(os.Stderr, "verify failed: %v\n", err)
+		os.Exit(2)
+	}
+	root := filepath.Clean(*rootPath)
+	manifest := filepath.Clean(*manifestPath)
+	if *updateManifest {
+		if err := verify.WriteManifest(manifest, root); err != nil {
+			fmt.Fprintf(os.Stderr, "verify failed: %v\n", err)
+			os.Exit(1)
+		}
+		if *jsonOutput {
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "updated", "manifest": manifest})
+			return
+		}
+		fmt.Printf("manifest updated: %s\n", manifest)
+		return
+	}
+	result, err := verify.VerifyRoot(root, manifest)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "verify failed: %v\n", err)
+		os.Exit(1)
+	}
+	if len(result.Missing) == 0 && len(result.Modified) == 0 && len(result.Extra) == 0 {
+		if *jsonOutput {
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "clean"})
+			return
+		}
+		fmt.Println("verify passed: source tree integrity intact")
+		return
+	}
+	if *jsonOutput {
+		_ = json.NewEncoder(os.Stdout).Encode(result)
+		os.Exit(1)
+	}
+	if len(result.Missing) > 0 {
+		fmt.Println("missing files:")
+		for _, path := range result.Missing {
+			fmt.Printf("  %s\n", path)
+		}
+	}
+	if len(result.Modified) > 0 {
+		fmt.Println("modified files:")
+		for _, path := range result.Modified {
+			fmt.Printf("  %s\n", path)
+		}
+	}
+	if len(result.Extra) > 0 {
+		fmt.Println("extra files:")
+		for _, path := range result.Extra {
+			fmt.Printf("  %s\n", path)
+		}
+	}
+	os.Exit(1)
+}
+
+func benchMain(args []string) {
+	fs := flag.NewFlagSet("bench", flag.ExitOnError)
+	asmPath := fs.String("asm", "", "assembler source file")
+	ccPath := fs.String("cc", "", "C source file")
+	dirPath := fs.String("dir", "", "source directory")
+	outBin := fs.String("out", "bench-out", "output binary path")
+	mode := fs.String("mode", "auto", "link mode: auto, c, raw")
+	target := fs.String("target", "x86_64-linux-gnu", "target triple")
+	toolchain := fs.String("toolchain", "auto", "toolchain: auto or zig")
+	jsonOutput := fs.Bool("json", false, "machine-readable output")
+	verbose := fs.Bool("verbose", false, "verbose output")
+	timeoutSec := fs.Int("timeout", 60, "timeout in seconds")
+	jobs := fs.Int("j", 0, "parallel jobs")
+	fs.Parse(args)
+	if err := utils.ValidateCLIPath(*asmPath); err != nil {
+		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(*ccPath); err != nil {
+		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(*dirPath); err != nil {
+		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(*outBin); err != nil {
+		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIArg(*mode); err != nil {
+		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIArg(*target); err != nil {
+		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIArg(*toolchain); err != nil {
+		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		os.Exit(2)
+	}
+	if *mode != "auto" && *mode != "c" && *mode != "raw" {
+		fmt.Fprintln(os.Stderr, "bench failed: invalid mode")
+		os.Exit(2)
+	}
+	if *toolchain != "auto" && *toolchain != "zig" {
+		fmt.Fprintln(os.Stderr, "bench failed: invalid toolchain")
+		os.Exit(2)
+	}
+	if *jobs <= 0 {
+		*jobs = runtime.NumCPU()
+	}
+	if *asmPath == "" && *ccPath == "" && *dirPath == "" {
+		fmt.Fprintln(os.Stderr, "bench failed: missing source path")
+		os.Exit(2)
+	}
+	if *asmPath != "" && *ccPath != "" {
+		fmt.Fprintln(os.Stderr, "bench failed: specify only one of -asm or -cc")
+		os.Exit(2)
+	}
+	root, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		os.Exit(1)
+	}
+	utils.ExecutionRoot = root
+	if *toolchain == "zig" {
+		assembler.ZigRequested = true
+		linker.ZigRequested = true
+	}
+	if utils.CheckTool("zig") == nil {
+		assembler.ZigEnabled = true
+		linker.ZigEnabled = true
+	}
+	if *dirPath != "" {
+		*dirPath = filepath.Clean(*dirPath)
+	}
+	if *asmPath != "" {
+		*asmPath = filepath.Clean(*asmPath)
+	}
+	if *ccPath != "" {
+		*ccPath = filepath.Clean(*ccPath)
+	}
+	if *outBin != "" {
+		*outBin = filepath.Clean(*outBin)
+	}
+	benchTimer := bench.NewTimer()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeoutSec)*time.Second)
+	defer cancel()
+	if *asmPath != "" {
+		objName := strings.TrimSuffix(filepath.Base(*asmPath), filepath.Ext(*asmPath)) + ".o"
+		benchTimer.Stage("assemble", func() error {
+			return assembler.Assemble(ctx, *asmPath, objName, false, *verbose, *mode)
+		})
+		benchTimer.Stage("link", func() error {
+			return linker.Link(ctx, objName, *outBin, *verbose, *mode, false, true, false, nil)
+		})
+	} else if *ccPath != "" {
+		objName := strings.TrimSuffix(filepath.Base(*ccPath), filepath.Ext(*ccPath)) + ".o"
+		benchTimer.Stage("compile", func() error {
+			return assembler.Assemble(ctx, *ccPath, objName, false, *verbose, *mode)
+		})
+		benchTimer.Stage("link", func() error {
+			return linker.Link(ctx, objName, *outBin, *verbose, *mode, false, true, false, nil)
+		})
+	} else {
+		benchTimer.Stage("build_directory", func() error {
+			_, err := builder.BuildDir(ctx, []string{*dirPath}, *outBin, false, *verbose, *mode, false, false, false, true, false, nil, nil, nil, nil, nil, *jobs, "executable")
+			return err
+		})
+	}
+	err = benchTimer.Error()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		os.Exit(1)
+	}
+	if *jsonOutput {
+		data, _ := benchTimer.JSON()
+		fmt.Println(string(data))
+		return
+	}
+	fmt.Print(benchTimer.Report())
+}
+
+func outputVersion() {
+	fmt.Println("ForgeZero version " + version)
+}
+
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	if len(os.Args) >= 2 {
+		switch os.Args[1] {
+		case "audit":
+			auditMain(os.Args[2:])
+			return
+		case "sbom":
+			sbomMain(os.Args[2:])
+			return
+		case "verify":
+			verifyMain(os.Args[2:])
+			return
+		case "bench":
+			benchMain(os.Args[2:])
+			return
+		case "version":
+			outputVersion()
+			return
+		}
+	}
 	var (
 		asmPath            string
 		ccPath             string
@@ -136,10 +475,12 @@ func main() {
 		buildType          string
 		libMode            bool
 		target             string
+		toolchain          string
 		genCompileCommands bool
 		shared             bool
 		ccFlags            string
 		ldFlags            string
+		forceFASM          bool
 	)
 
 	flag.StringVar(&asmPath, "asm", "", "")
@@ -177,12 +518,84 @@ func main() {
 	flag.StringVar(&buildType, "type", "executable", "build type: executable (default) or static")
 	flag.BoolVar(&libMode, "lib", false, "build static library (archive)")
 	flag.StringVar(&target, "target", "x86_64-linux-gnu", "target triple (e.g., x86_64-linux-gnu, arm-linux-gnueabihf, riscv64-unknown-elf)")
+	flag.StringVar(&toolchain, "toolchain", "auto", "toolchain to use: auto or zig")
 	flag.BoolVar(&genCompileCommands, "compile-commands", false, "generate compile_commands.json for LSP and exit")
 	flag.BoolVar(&shared, "shared", false, "build shared library instead of executable")
 	flag.StringVar(&ccFlags, "cc-flag", "", "additional C compiler flags (space-separated)")
 	flag.StringVar(&ldFlags, "ld-flag", "", "additional linker flags (space-separated)")
+	flag.BoolVar(&forceFASM, "fasm", false, "use FASM instead of NASM for .asm files")
 	flag.Usage = printHelp
 	flag.Parse()
+
+	if err := utils.ValidateCLIPath(configPath); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid config path: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(asmPath); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid asm path: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(ccPath); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid cc path: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(dirPath); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid dir path: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(outBin); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid output path: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(outObj); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid object output path: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(ldScript); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid linker script path: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(textAddr); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid text address: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIArg(mode); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid mode: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIArg(format); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid format: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIArg(target); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid target: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIArg(toolchain); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid toolchain: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIArg(buildType); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid build type: %v\n", err)
+		os.Exit(2)
+	}
+	if _, err := utils.ValidateFlagTokens([]byte(ccFlags)); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid C compiler flags: %v\n", err)
+		os.Exit(2)
+	}
+	if _, err := utils.ValidateFlagTokens([]byte(ldFlags)); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid linker flags: %v\n", err)
+		os.Exit(2)
+	}
+	if mode != "" && mode != "auto" && mode != "c" && mode != "raw" {
+		fmt.Fprintln(os.Stderr, "error: -mode must be auto, c, or raw")
+		os.Exit(2)
+	}
+	if toolchain != "" && toolchain != "auto" && toolchain != "zig" {
+		fmt.Fprintln(os.Stderr, "error: -toolchain must be auto or zig")
+		os.Exit(2)
+	}
+
 	if initMode {
 		if err := initpkg.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "init failed: %v\n", err)
@@ -191,6 +604,8 @@ func main() {
 		fmt.Println("project initialized. edit .fz.yaml to configure ur build.")
 		return
 	}
+
+	assembler.ForceFASM = forceFASM
 
 	ctx := context.Background()
 	if len(os.Args) >= 2 && os.Args[1] == "pm" {
@@ -206,11 +621,11 @@ func main() {
 				return
 			}
 			pkgURL := os.Args[3]
-			version := ""
+			ver := ""
 			if len(os.Args) > 4 {
-				version = os.Args[4]
+				ver = os.Args[4]
 			}
-			if err := pkgman.Add(ctx, pkgURL, version); err != nil {
+			if err := pkgman.Add(ctx, pkgURL, ver); err != nil {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
 				os.Exit(1)
 			}
@@ -262,15 +677,6 @@ func main() {
 		return
 	}
 
-	if asmPath == "" && ccPath == "" && dirPath == "" && configPath != "" {
-		cfg, err := config.Load(configPath)
-		if err == nil && (len(cfg.SourceFiles) > 0 || len(cfg.SourceDirs) > 0) {
-			dirPath = "."
-			if len(cfg.SourceFiles) > 0 {
-			}
-		}
-	}
-
 	assembler.CcFlags = ccFlags
 	linker.LdFlags = ldFlags
 	linker.Shared = shared
@@ -279,12 +685,10 @@ func main() {
 	if libMode {
 		buildType = "static"
 	}
-
 	if buildType != "executable" && buildType != "static" {
 		fmt.Fprintf(os.Stderr, "error: -type must be executable or static")
 		os.Exit(2)
 	}
-
 	if updateMode {
 		if err := updater.UpdateSelf(version); err != nil {
 			fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
@@ -292,16 +696,13 @@ func main() {
 		}
 		return
 	}
-
 	if jobs <= 0 {
 		jobs = runtime.NumCPU()
 	}
-
 	if shellMode {
 		shell.Run()
 		return
 	}
-
 	if showMan {
 		fmt.Print(man.GenerateManPage(version))
 		os.Exit(0)
@@ -323,26 +724,22 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(2)
 	}
-
 	linker.LdScript = ldScript
 	linker.TextAddr = textAddr
-
-	if format != "elf32" && format != "elf64" && format != "bin" {
-		fmt.Fprintln(os.Stderr, "error: -format must be elf or bin")
-		os.Exit(2)
-	}
-
 	if mode == "" {
 		mode = "auto"
 	}
 	if noSanitize {
 		sanitize = false
 	}
+	root, err := os.Getwd()
+	if err == nil {
+		utils.ExecutionRoot = root
+	}
 	if watch && jsonOutput {
 		fmt.Fprintln(os.Stderr, "error: -watch and -json cannot be used together")
 		os.Exit(2)
 	}
-
 	srcProvided := 0
 	if asmPath != "" {
 		srcProvided++
@@ -369,22 +766,17 @@ func main() {
 	}
 
 	var cfg *config.Config
-	var err error
-
-	if cfg != nil && len(cfg.Flags.Asm) > 0 {
-		assembler.AsmFlags = cfg.Flags.Asm
-	}
-
-	if cfg != nil && cfg.Flags.Cc != nil {
-		assembler.CcFlags = strings.Join(cfg.Flags.Cc, " ")
-	}
-
-	if len(cfg.Flags.Ld) > 0 {
-		linker.LdFlags = strings.Join(cfg.Flags.Ld, " ")
-	}
-
 	if configPath != "" {
 		cfg, err = config.Load(configPath)
+		if err != nil {
+			if jsonOutput {
+				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: err.Error()}
+				_ = json.NewEncoder(os.Stdout).Encode(report)
+			} else {
+				fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+			}
+			os.Exit(2)
+		}
 	} else {
 		cfg, err = config.LoadMerged("")
 	}
@@ -398,7 +790,8 @@ func main() {
 		os.Exit(2)
 	}
 	if cfg != nil {
-		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode)
+		utils.ToolChecksums = cfg.ToolChecksums
+		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode, toolchain)
 		if verbose && !jsonOutput {
 			fmt.Printf("Loaded config from %s\n", func() string {
 				if configPath != "" {
@@ -407,11 +800,28 @@ func main() {
 				return config.DefaultConfigPath()
 			}())
 		}
+		if len(cfg.Flags.Asm) > 0 {
+			assembler.AsmFlags = cfg.Flags.Asm
+		}
+		if len(cfg.Flags.Cc) > 0 {
+			assembler.CcFlags = strings.Join(cfg.Flags.Cc, " ")
+		}
+		if len(cfg.Flags.Ld) > 0 {
+			linker.LdFlags = strings.Join(cfg.Flags.Ld, " ")
+		}
+		if cfg.Toolchain == "zig" || toolchain == "zig" {
+			assembler.ZigRequested = true
+			linker.ZigRequested = true
+		}
+	}
+	if utils.CheckTool("zig") == nil {
+		assembler.ZigEnabled = true
+		linker.ZigEnabled = true
 	}
 
 	if genCompileCommands {
 		dirs := []string{"."}
-		if cfg != nil && len(cfg.SourceDir) > 0 {
+		if cfg != nil && len(cfg.SourceDirs) > 0 {
 			dirs = cfg.SourceDirs
 		} else if cfg != nil && cfg.SourceDir != "" {
 			dirs = []string{cfg.SourceDir}
@@ -420,9 +830,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error generating compile_commands.json: %v\n", err)
 			os.Exit(1)
 		}
-
 		fmt.Println("compile_commands.json generated")
-
 		return
 	}
 
@@ -497,10 +905,7 @@ func main() {
 		errMsg := "missing source: use -asm, -cc, -dir, or config"
 		if jsonOutput {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
-			if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
-				fmt.Fprintf(os.Stderr, "error: failed to encode report: %v\n", err)
-				os.Exit(1)
-			}
+			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
 			fmt.Fprintln(os.Stderr, errMsg)
 		}
@@ -510,10 +915,7 @@ func main() {
 		errMsg := "cannot specify both single file and -dir"
 		if jsonOutput {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
-			if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
-				fmt.Fprintf(os.Stderr, "error: failed to encode report: %v\n", err)
-				os.Exit(1)
-			}
+			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
 			fmt.Fprintln(os.Stderr, errMsg)
 		}
@@ -545,7 +947,7 @@ func main() {
 			objectFiles = append(objectFiles, objName)
 			finalBinary = binName
 			if verbose && !jsonOutput {
-				if ext == ".c" {
+				if ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" {
 					fmt.Printf("Compiling %s -> %s\n", srcPath, objName)
 				} else {
 					fmt.Printf("Assembling %s -> %s\n", srcPath, objName)
@@ -606,13 +1008,10 @@ func main() {
 				exclude = cfg.Exclude
 			}
 			var ignoreMatcher *ignore.IgnoreMatcher
-			var err error
 			if cfg != nil && cfg.IgnoreFile != "" {
 				if _, err := os.Stat(cfg.IgnoreFile); err == nil {
-					if ignoreMatcher, err = ignore.LoadIgnoreFile(cfg.IgnoreFile); err != nil {
-						if verbose {
-							fmt.Printf("warning: cannot load ignore file %s: %v\n", cfg.IgnoreFile, err)
-						}
+					if ignoreMatcher, err = ignore.LoadIgnoreFile(cfg.IgnoreFile); err != nil && verbose {
+						fmt.Printf("warning: cannot load ignore file %s: %v\n", cfg.IgnoreFile, err)
 					}
 				}
 			}
@@ -659,10 +1058,7 @@ func main() {
 				ObjectFiles: objectFiles,
 				Error:       buildErr.Error(),
 			}
-			if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
-				fmt.Fprintf(os.Stderr, "error: failed to encode report: %v\n", err)
-				os.Exit(1)
-			}
+			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
 			fmt.Fprintf(os.Stderr, "build failed: %v\n", buildErr)
 		}
@@ -678,10 +1074,7 @@ func main() {
 			SourceFiles: sourceFiles,
 			ObjectFiles: objectFiles,
 		}
-		if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
-			fmt.Fprintf(os.Stderr, "error: failed to encode report: %v\n", err)
-			os.Exit(1)
-		}
+		_ = json.NewEncoder(os.Stdout).Encode(report)
 	}
 
 	if watch {
@@ -689,10 +1082,7 @@ func main() {
 		if err != nil {
 			if jsonOutput {
 				report := BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
-				if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
-					fmt.Fprintf(os.Stderr, "error: failed to encode report: %v\n", err)
-					os.Exit(1)
-				}
+				_ = json.NewEncoder(os.Stdout).Encode(report)
 			} else {
 				fmt.Fprintf(os.Stderr, "watcher error: %v\n", err)
 			}
@@ -713,12 +1103,7 @@ func main() {
 		if err := w.AddRecursive(watchTarget); err != nil {
 			if jsonOutput {
 				report := BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
-				if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
-					fmt.Fprintf(
-						os.Stderr, "error: failed to encode report: %v\n", err,
-					)
-					os.Exit(1)
-				}
+				_ = json.NewEncoder(os.Stdout).Encode(report)
 			} else {
 				fmt.Fprintf(os.Stderr, "cannot watch: %v\n", err)
 			}
