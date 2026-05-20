@@ -32,7 +32,6 @@ func TestWriteAndLoadManifest(t *testing.T) {
 }
 
 func TestVerifyRootReportsDifferences(t *testing.T) {
-
 	dir := t.TempDir()
 	fileA := filepath.Join(dir, "foo.txt")
 	fileB := filepath.Join(dir, "bar.txt")
