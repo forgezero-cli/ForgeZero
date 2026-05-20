@@ -270,3 +270,26 @@ _start:
 		t.Errorf("error message should contain 'error', got: %v", err)
 	}
 }
+
+func TestAssembleFASMDebugWarning(t *testing.T) {
+	if _, err := exec.LookPath("fasm"); err != nil {
+		t.Skip("fasm not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "test.fasm", "format ELF64\nsection '.text' executable\n_start:\n mov eax,60\n xor edi,edi\n syscall\n")
+	obj := filepath.Join(dir, "test.o")
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	err := Assemble(context.Background(), src, obj, true, true, "auto")
+	w.Close()
+	os.Stderr = oldStderr
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	if !strings.Contains(buf.String(), "note: FASM debug flag") {
+		t.Error("expected debug note on stderr")
+	}
+}

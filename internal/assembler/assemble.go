@@ -3,6 +3,7 @@ package assembler
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -152,7 +153,11 @@ func assembleFASM(ctx context.Context, src, obj string, debug, verbose bool) err
 	args := []string{src, obj}
 	if debug {
 		args = append([]string{"-dDEBUG"}, args...)
+		if verbose {
+			fmt.Fprintln(os.Stderr, "note: fasm debug flag -dDEBUG defined. for dwarf symbols, add 'format ELF 64 debug to source.")
+		}
 	}
+
 	if len(AsmFlags) > 0 {
 		args = append(args, AsmFlags...)
 	}
