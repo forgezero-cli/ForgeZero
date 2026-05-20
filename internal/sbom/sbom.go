@@ -118,8 +118,10 @@ func Marshal(sbom *SBOM) ([]byte, error) {
 }
 
 func scanVendorComponents(root, vendorDir string) ([]Component, error) {
+    rootAbs := filepath.Clean(root)
     vendorPath := filepath.Join(root, vendorDir)
     info, err := os.Stat(vendorPath)
+
     if err != nil {
         if os.IsNotExist(err) {
             return nil, nil
@@ -137,11 +139,26 @@ func scanVendorComponents(root, vendorDir string) ([]Component, error) {
     for _, entry := range entries {
         path := filepath.Join(vendorPath, entry.Name())
         var hash string
-        if entry.IsDir() {
-            hash, err = utils.HashDir(path)
+
+        // If entry is a symlink, resolve it physically first and then decide
+        // whether the target is a directory or file.
+        if info, lerr := os.Lstat(path); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+            resolved, rerr := filepath.EvalSymlinks(path)
+            if rerr != nil {
+                return nil, rerr
+            }
+            if st, serr := os.Stat(resolved); serr == nil && st.IsDir() {
+                hash, err = utils.HashDirWithRoot(rootAbs, resolved)
+            } else {
+                hash, err = utils.HashFile(resolved)
+            }
+        } else if entry.IsDir() {
+            hash, err = utils.HashDirWithRoot(rootAbs, path)
         } else {
             hash, err = utils.HashFile(path)
         }
+
+
         if err != nil {
             return nil, err
         }
