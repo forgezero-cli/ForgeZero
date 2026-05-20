@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	vendorDir  = "vendor"
-	catalogURL = "https://raw.githubusercontent.com/forgezero-cli/catalog/main/catalog.json"
+	vendorDir = "vendor"
 )
 
 type CatalogPackage struct {
@@ -207,17 +206,34 @@ func Update(ctx context.Context) error {
 	return nil
 }
 
-func fetchCatalog(ctx context.Context) (*Catalog, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", catalogURL, nil)
+func getCatalogURLs() []string {
+	urls := []string{
+		"https://raw.githubusercontent.com/forgezero-cli/ForgeZero/refs/heads/main/catalog/catalog.json",
+	}
+	if envURL := os.Getenv("FZ_CATALOG_URL"); envURL != "" {
+		urls = append([]string{envURL}, urls...)
+	}
+	urls = append(urls, "https://git.wienton.ru/alexvoste/Catalog/raw/branch/main/catalog.json")
+	return urls
+}
+
+func fetchCatalogFromURL(url string) (*Catalog, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	client := http.Client{Timeout: 10 * time.Second}
+	req.Header.Set("User-Agent", "fz/2.0.0")
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -229,8 +245,21 @@ func fetchCatalog(ctx context.Context) (*Catalog, error) {
 	return &cat, nil
 }
 
+func fetchCatalog() (*Catalog, error) {
+	var lastErr error
+	for _, url := range getCatalogURLs() {
+		cat, err := fetchCatalogFromURL(url)
+		if err == nil {
+			return cat, nil
+		}
+		lastErr = err
+		fmt.Fprintf(os.Stderr, "Warning: failed to fetch catalog from %s: %v\n", url, err)
+	}
+	return nil, fmt.Errorf("all catalog URLs failed: %w", lastErr)
+}
+
 func ListCatalog(ctx context.Context) error {
-	cat, err := fetchCatalog(ctx)
+	cat, err := fetchCatalog()
 	if err != nil {
 		return err
 	}
@@ -242,7 +271,7 @@ func ListCatalog(ctx context.Context) error {
 }
 
 func SearchCatalog(ctx context.Context, keyword string) error {
-	cat, err := fetchCatalog(ctx)
+	cat, err := fetchCatalog()
 	if err != nil {
 		return err
 	}
@@ -263,7 +292,7 @@ func SearchCatalog(ctx context.Context, keyword string) error {
 }
 
 func InstallFromCatalog(ctx context.Context, pkgName string) error {
-	cat, err := fetchCatalog(ctx)
+	cat, err := fetchCatalog()
 	if err != nil {
 		return err
 	}
