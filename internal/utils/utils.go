@@ -150,6 +150,9 @@ func HashDir(root string) (string, error) {
 	for _, rel := range files {
 		hasher.Write([]byte(rel))
 		hasher.Write([]byte{0})
+		if _, err := hasher.Write([]byte(rel)); err != nil {
+			fmt.Errorf("hash write failed: %v", err)
+		}
 		fullPath := filepath.Join(root, rel)
 		data, err := os.ReadFile(fullPath)
 		if err != nil {
