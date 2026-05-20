@@ -1188,3 +1188,151 @@ func TestLinkMultipleWithClangFallbackVerbose(t *testing.T) {
 		t.Errorf("expected 2 calls, got %d", callCount)
 	}
 }
+
+func TestLinkWithLdMock(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	var capturedArgs []string
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			capturedArgs = args
+			return "", nil
+		},
+	}
+	err := linkWithLd(context.Background(), "obj.o", "bin", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(capturedArgs, "-o") {
+		t.Error("missing -o flag")
+	}
+}
+
+func TestLinkWithGccVerboseFalseError(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			return "", fmt.Errorf("gcc error")
+		},
+	}
+	err := linkWithGcc(context.Background(), "obj.o", "bin", false, false, false, false, nil)
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "use -verbose for details") {
+		t.Error("should hint -verbose")
+	}
+}
+
+func TestLinkWithLd(t *testing.T) {
+	if _, err := exec.LookPath("ld"); err != nil {
+		t.Skip("ld not installed")
+	}
+	dir := t.TempDir()
+	obj := buildObject(t, dir, "test", `
+.globl _start
+_start:
+    mov $60, %eax
+    xor %edi, %edi
+    syscall
+`)
+	bin := filepath.Join(dir, "test")
+	err := linkWithLd(context.Background(), obj, bin, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(bin); err != nil {
+		t.Error("binary not created")
+	}
+}
+
+func TestLinkMultipleWithLd(t *testing.T) {
+	if _, err := exec.LookPath("ld"); err != nil {
+		t.Skip("ld not installed")
+	}
+	dir := t.TempDir()
+	obj1 := buildObject(t, dir, "a", `
+.globl _start
+_start:
+    call b
+    mov $60, %eax
+    syscall
+`)
+	obj2 := buildObject(t, dir, "b", `
+.globl b
+b:
+    ret
+`)
+	bin := filepath.Join(dir, "test")
+	err := linkMultipleWithLd(context.Background(), []string{obj1, obj2}, bin, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(bin); err != nil {
+		t.Error("binary not created")
+	}
+}
+
+func TestLinkWithLdMockNoRealLd(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	var capturedArgs []string
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			capturedArgs = args
+			return "", nil
+		},
+	}
+	err := linkWithLd(context.Background(), "obj.o", "bin", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(capturedArgs, "-o") {
+		t.Error("missing -o flag")
+	}
+}
+
+func TestLinkWithGccSharedFlag(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	var capturedArgs []string
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			capturedArgs = args
+			return "", nil
+		},
+	}
+	oldShared := Shared
+	Shared = true
+	defer func() { Shared = oldShared }()
+	err := linkWithGcc(context.Background(), "obj.o", "bin", false, false, false, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(capturedArgs, "-shared") {
+		t.Error("missing -shared flag")
+	}
+}
+
+func TestLinkWithGccLdFlags(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	var capturedArgs []string
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			capturedArgs = args
+			return "", nil
+		},
+	}
+	oldLdFlags := LdFlags
+	LdFlags = "-Wl,-Map=output.map -pthread"
+	defer func() { LdFlags = oldLdFlags }()
+	err := linkWithGcc(context.Background(), "obj.o", "bin", false, false, false, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(capturedArgs, "-Wl,-Map=output.map") || !contains(capturedArgs, "-pthread") {
+		t.Errorf("LdFlags not injected correctly: %v", capturedArgs)
+	}
+}
