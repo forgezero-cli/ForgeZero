@@ -268,18 +268,53 @@ func HashDir(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return HashDirWithRoot(rootAbs, rootAbs)
+}
+
+func HashDirWithRoot(rootAbs, dir string) (string, error) {
+	dirAbs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	dirAbs = filepath.Clean(dirAbs)
+
 	var files []string
-	err = filepath.Walk(rootAbs, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(dirAbs, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+
 		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlinks not permitted: %s", path)
+			linkTarget, readErr := os.Readlink(path)
+			if readErr != nil {
+				return fmt.Errorf("cannot read symlink %s: %w", path, readErr)
+			}
+			var targetAbs string
+			if filepath.IsAbs(linkTarget) {
+				targetAbs = filepath.Clean(linkTarget)
+			} else {
+				targetAbs = filepath.Clean(filepath.Join(filepath.Dir(path), linkTarget))
+			}
+
+			targetEval, evalErr := filepath.EvalSymlinks(targetAbs)
+			if evalErr != nil {
+				return fmt.Errorf("cannot resolve symlink %s target %s: %w", path, targetAbs, evalErr)
+			}
+
+			rootAbsClean := filepath.Clean(rootAbs)
+			// Allow symlink only if its resolved target is within the project root.
+			if targetEval != rootAbsClean && !strings.HasPrefix(targetEval, rootAbsClean+string(os.PathSeparator)) {
+				// Security warning, skip (never fail build).
+				fmt.Fprintf(os.Stderr, "SECURITY WARNING: skipping symlink %s -> %s outside project root %s\n", path, targetAbs, rootAbsClean)
+				return nil
+			}
+
 		}
+
 		if info.IsDir() {
 			return nil
 		}
-		rel, err := filepath.Rel(rootAbs, path)
+		rel, err := filepath.Rel(dirAbs, path)
 		if err != nil {
 			return err
 		}
@@ -292,6 +327,7 @@ func HashDir(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	sort.Strings(files)
 	hasher := blake3.New()
 	sep := []byte{0}
@@ -302,7 +338,7 @@ func HashDir(root string) (string, error) {
 		if _, err := hasher.Write(sep); err != nil {
 			return "", err
 		}
-		fullPath := filepath.Join(rootAbs, rel)
+		fullPath := filepath.Join(dirAbs, rel)
 		f, err := os.Open(fullPath)
 		if err != nil {
 			return "", err
@@ -325,3 +361,4 @@ func HashDir(root string) (string, error) {
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
+

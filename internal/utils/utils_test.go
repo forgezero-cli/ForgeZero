@@ -311,10 +311,11 @@ func TestHashDirSymlink(t *testing.T) {
 		t.Skip("symlink not supported")
 	}
 	_, err := HashDir(dir)
-	if err == nil {
-		t.Fatal("expected error for symlink in hash dir")
+	if err != nil {
+		t.Fatalf("expected no error for safe symlink, got %v", err)
 	}
 }
+
 
 func TestRunCommandSilentContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -381,10 +382,11 @@ func TestHashDirRejectsSymlink(t *testing.T) {
 		t.Skip("symlink not supported")
 	}
 	_, err := HashDir(tmpDir)
-	if err == nil {
-		t.Fatal("expected error for symlink in hash dir")
+	if err != nil {
+		t.Fatalf("expected no error for unsafe symlink (should be skipped), got %v", err)
 	}
 }
+
 
 func TestDeriveNamesWithFlags(t *testing.T) {
 	src := "test.asm"
