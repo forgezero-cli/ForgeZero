@@ -2,6 +2,7 @@ package linker
 
 import (
 	"fmt"
+	"strings"
 
 	"fz/internal/assembler"
 )
@@ -13,6 +14,9 @@ func ApplyGccLdFlags(args []string, ldScript, textAddr string) []string {
 	if textAddr != "" {
 		args = append(args, "-Wl,-Ttext="+textAddr)
 	}
+	if !strings.Contains(assembler.Target, "wasm") && !strings.Contains(assembler.Target, "wasm32") {
+		args = append(args, "-Wl,--build-id=none")
+	}
 	return args
 }
 
@@ -22,6 +26,9 @@ func ApplyLdFlags(args []string, ldScript, textAddr string) []string {
 	}
 	if textAddr != "" {
 		args = append(args, "-Ttext", textAddr)
+	}
+	if !strings.Contains(assembler.Target, "wasm") && !strings.Contains(assembler.Target, "wasm32") {
+		args = append(args, "--build-id=none")
 	}
 	return args
 }
