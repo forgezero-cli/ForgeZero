@@ -124,7 +124,6 @@ fallback_func: ret
 `)
 	_, err := readSymbols(obj, false)
 	if err != nil {
-		// If neither objdump nor readelf, skip.
 		t.Skip("no symbol reader available")
 	}
 }

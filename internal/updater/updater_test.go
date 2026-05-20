@@ -56,12 +56,10 @@ func TestUpdateSelfDownload(t *testing.T) {
 	if err := os.WriteFile(fakeExe, []byte("old content"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Override executablePathFunc to return the fakeExe path
 	oldFunc := executablePathFunc
 	executablePathFunc = func() (string, error) { return fakeExe, nil }
 	defer func() { executablePathFunc = oldFunc }()
 
-	// Create a test HTTP server that returns a binary
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, err := w.Write([]byte("new binary content")); err != nil {
 			t.Errorf("mock server write failed: %v", err)
