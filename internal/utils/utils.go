@@ -17,12 +17,16 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-var bufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
-var copyBufferPool = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
+var (
+	bufferPool     = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+	copyBufferPool = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
+)
 
-var ExecutionRoot string
-var ToolChecksums = map[string]string{}
-var CheckToolFunc func(name string) error = checkToolInternal
+var (
+	ExecutionRoot string
+	ToolChecksums                         = map[string]string{}
+	CheckToolFunc func(name string) error = checkToolInternal
+)
 
 type mutexBufferWriter struct {
 	mu  sync.Mutex
@@ -318,9 +322,7 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 			}
 
 			rootAbsClean := filepath.Clean(rootAbs)
-			// Allow symlink only if its resolved target is within the project root.
 			if targetEval != rootAbsClean && !strings.HasPrefix(targetEval, rootAbsClean+string(os.PathSeparator)) {
-				// Security warning, skip (never fail build).
 				fmt.Fprintf(os.Stderr, "SECURITY WARNING: skipping symlink %s -> %s outside project root %s\n", path, targetAbs, rootAbsClean)
 				return nil
 			}
@@ -377,4 +379,3 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
-
