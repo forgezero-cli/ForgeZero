@@ -24,6 +24,17 @@ var ExecutionRoot string
 var ToolChecksums = map[string]string{}
 var CheckToolFunc func(name string) error = checkToolInternal
 
+type mutexBufferWriter struct {
+	mu  sync.Mutex
+	buf *bytes.Buffer
+}
+
+func (w *mutexBufferWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.Write(p)
+}
+
 func checkToolInternal(name string) error {
 	path, err := exec.LookPath(name)
 	if err != nil {
@@ -200,16 +211,21 @@ func RunCommandSilent(ctx context.Context, verbose bool, name string, args ...st
 		cmd.Dir = ExecutionRoot
 	}
 	cmd.Env = deterministicEnv()
+
 	buf := bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufferPool.Put(buf)
+
+	mbw := &mutexBufferWriter{buf: buf}
+
 	if verbose {
-		cmd.Stdout = io.MultiWriter(os.Stdout, buf)
-		cmd.Stderr = io.MultiWriter(os.Stderr, buf)
+		cmd.Stdout = io.MultiWriter(os.Stdout, mbw)
+		cmd.Stderr = io.MultiWriter(os.Stderr, mbw)
 	} else {
-		cmd.Stdout = buf
-		cmd.Stderr = buf
+		cmd.Stdout = mbw
+		cmd.Stderr = mbw
 	}
+
 	err = cmd.Run()
 	return buf.String(), err
 }
