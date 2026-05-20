@@ -174,7 +174,6 @@ func TestCrossCompilerNotFound(t *testing.T) {
 	oldTarget := Target
 	defer func() { Target = oldTarget }()
 	Target = "arm-linux-gnueabihf"
-	// If the compiler is already installed, skip the test
 	if _, err := exec.LookPath("arm-linux-gnueabihf-gcc"); err == nil {
 		t.Skip("cross-compiler present, cannot test missing tool")
 	}
@@ -234,16 +233,28 @@ _start:
 `)
 	obj := filepath.Join(dir, "test.o")
 	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	err := Assemble(context.Background(), src, obj, true, true, "auto")
-	w.Close()
-	os.Stdout = oldStdout
+	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+	os.Stdout = w
+	defer func() {
+		os.Stdout = oldStdout
+		w.Close()
+		r.Close()
+	}()
+
+	err = Assemble(context.Background(), src, obj, true, true, "auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(buf.String(), "-dDEBUG") {
 		t.Error("debug flag -dDEBUG not added to fasm command")
 	}
@@ -279,17 +290,51 @@ func TestAssembleFASMDebugWarning(t *testing.T) {
 	src := writeTempFile(t, dir, "test.fasm", "format ELF64\nsection '.text' executable\n_start:\n mov eax,60\n xor edi,edi\n syscall\n")
 	obj := filepath.Join(dir, "test.o")
 	oldStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-	err := Assemble(context.Background(), src, obj, true, true, "auto")
-	w.Close()
-	os.Stderr = oldStderr
+	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+	os.Stderr = w
+	defer func() {
+		os.Stderr = oldStderr
+		w.Close()
+		r.Close()
+	}()
+
+	err = Assemble(context.Background(), src, obj, true, true, "auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(buf.String(), "note: FASM debug flag") {
 		t.Error("expected debug note on stderr")
+	}
+}
+
+func TestAssembleFASMInjectsFormat(t *testing.T) {
+	if _, err := exec.LookPath("fasm"); err != nil {
+		t.Skip("fasm not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "test.fasm", `
+section '.text' executable
+public _start
+_start:
+    mov eax, 60
+    xor edi, edi
+    syscall
+`)
+	obj := filepath.Join(dir, "test.o")
+	if err := Assemble(context.Background(), src, obj, false, false, "auto"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(obj); err != nil {
+		t.Fatal(err)
 	}
 }

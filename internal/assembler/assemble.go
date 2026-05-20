@@ -1,25 +1,39 @@
 package assembler
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"fz/internal/utils"
+	"fz/internal/zig"
 )
 
 var (
 	OutputFormat = "elf64"
 	Target       = "x86_64-linux-gnu"
 	AsmFlags     []string
+	ZigRequested bool
+	ZigEnabled   bool
+	CcFlags      string
 )
 
-var CcFlags string
+func isWasmTarget() bool {
+	return strings.Contains(Target, "wasm") || strings.Contains(Target, "wasm32")
+}
+
+var (
+	ForceFASM bool
+)
 
 func asmCmdForTarget() string {
 	switch {
+	case isWasmTarget():
+		return "clang"
 	case strings.Contains(Target, "arm"):
 		return "arm-linux-gnueabihf-as"
 	case strings.Contains(Target, "riscv"):
@@ -31,6 +45,8 @@ func asmCmdForTarget() string {
 
 func formatFlagForTarget() string {
 	switch {
+	case isWasmTarget():
+		return ""
 	case strings.Contains(Target, "x86_64"):
 		return "-felf64"
 	case strings.Contains(Target, "i386") || strings.Contains(Target, "i686"):
@@ -44,6 +60,11 @@ func formatFlagForTarget() string {
 
 func ccForTarget() string {
 	switch {
+	case isWasmTarget():
+		if _, err := exec.LookPath("emcc"); err == nil {
+			return "emcc"
+		}
+		return "clang"
 	case strings.Contains(Target, "arm"):
 		return "arm-linux-gnueabihf-gcc"
 	case strings.Contains(Target, "riscv"):
@@ -55,6 +76,11 @@ func ccForTarget() string {
 
 func cxxForTarget() string {
 	switch {
+	case isWasmTarget():
+		if _, err := exec.LookPath("em++"); err == nil {
+			return "em++"
+		}
+		return "clang++"
 	case strings.Contains(Target, "arm"):
 		return "arm-linux-gnueabihf-g++"
 	case strings.Contains(Target, "riscv"):
@@ -75,10 +101,17 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 	ext := strings.ToLower(filepath.Ext(src))
 	switch ext {
 	case ".asm":
+		if ForceFASM {
+			if err := utils.CheckTool("fasm"); err != nil {
+				return err
+			}
+			return assembleFASM(ctx, src, obj, debug, verbose)
+		}
 		if err := utils.CheckTool(asmCmdForTarget()); err != nil {
 			return err
 		}
 		return assembleNASM(ctx, src, obj, debug, verbose)
+
 	case ".s", ".S":
 		if err := utils.CheckTool(asmCmdForTarget()); err != nil {
 			return err
@@ -90,11 +123,17 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 		}
 		return assembleFASM(ctx, src, obj, debug, verbose)
 	case ".c":
+		if zig.ZigRequested || zig.ZigEnabled {
+			return zig.Compile(ctx, src, obj, debug, verbose, Target, CcFlags)
+		}
 		if err := utils.CheckTool(ccForTarget()); err != nil {
 			return err
 		}
 		return assembleC(ctx, src, obj, debug, verbose)
 	case ".cpp", ".cc", ".cxx", ".c++":
+		if zig.ZigRequested || zig.ZigEnabled {
+			return zig.Compile(ctx, src, obj, debug, verbose, Target, CcFlags)
+		}
 		if err := utils.CheckTool(cxxForTarget()); err != nil {
 			return err
 		}
@@ -105,6 +144,9 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 }
 
 func assembleNASM(ctx context.Context, src, obj string, debug, verbose bool) error {
+	if isWasmTarget() {
+		return fmt.Errorf("cannot assemble .asm files for wasm target")
+	}
 	cmd := asmCmdForTarget()
 	format := formatFlagForTarget()
 	args := []string{format, src, "-o", obj}
@@ -130,6 +172,9 @@ func assembleNASM(ctx context.Context, src, obj string, debug, verbose bool) err
 func assembleGAS(ctx context.Context, src, obj string, debug, verbose bool) error {
 	cmd := gasCmdForTarget()
 	args := []string{"-c", src, "-o", obj}
+	if isWasmTarget() {
+		args = append([]string{"--target=wasm32-unknown-unknown"}, args...)
+	}
 	if debug {
 		args = append([]string{"-g"}, args...)
 	}
@@ -150,19 +195,57 @@ func assembleGAS(ctx context.Context, src, obj string, debug, verbose bool) erro
 }
 
 func assembleFASM(ctx context.Context, src, obj string, debug, verbose bool) error {
-	args := []string{src, obj}
-	if debug {
-		args = append([]string{"-dDEBUG"}, args...)
-		if verbose {
-			fmt.Fprintln(os.Stderr, "note: fasm debug flag -dDEBUG defined. for dwarf symbols, add 'format ELF 64 debug to source.")
+	if isWasmTarget() {
+		return fmt.Errorf("cannot assemble .fasm files for wasm target")
+	}
+	srcFile := src
+	var tmpFile *os.File
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("cannot read source: %w", err)
+	}
+	if !bytes.Contains(data, []byte("format ELF64")) {
+		tmpFile, err = os.CreateTemp(filepath.Dir(src), "fz_fasm_*.asm")
+		if err != nil {
+			return fmt.Errorf("cannot create temp file: %w", err)
 		}
+		tmpName := tmpFile.Name()
+		defer func() {
+			if tmpFile != nil {
+				tmpFile.Close()
+			}
+			os.Remove(tmpName)
+		}()
+		if _, err := tmpFile.WriteString("format ELF64\n"); err != nil {
+			return err
+		}
+		if _, err := tmpFile.Write(data); err != nil {
+			return err
+		}
+		if err := tmpFile.Close(); err != nil {
+			return err
+		}
+		tmpFile = nil
+		srcFile = tmpName
+		if verbose {
+			fmt.Println("FASM: injected 'format ELF64' directive (object file mode)")
+		}
+	} else if verbose {
+		fmt.Println("FASM: source already contains 'format ELF64'")
 	}
 
+	args := []string{srcFile, obj}
+	if debug {
+		args = append([]string{"-dDEBUG=1"}, args...)
+	}
 	if len(AsmFlags) > 0 {
 		args = append(args, AsmFlags...)
 	}
 	if verbose {
 		fmt.Println("Running: fasm", strings.Join(args, " "))
+		if debug {
+			fmt.Fprintln(os.Stderr, "note: FASM debug flag")
+		}
 	}
 	output, err := utils.RunCommandSilent(ctx, verbose, "fasm", args...)
 	if err != nil {
@@ -170,8 +253,10 @@ func assembleFASM(ctx context.Context, src, obj string, debug, verbose bool) err
 			return fmt.Errorf("fasm failed (use -verbose for details)")
 		}
 		lines := strings.Split(output, "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "error") {
+		for i := len(lines) - 1; i >= 0; i-- {
+			line := strings.TrimSpace(lines[i])
+			lower := strings.ToLower(line)
+			if strings.Contains(lower, "error") || strings.Contains(lower, "fatal") || strings.Contains(lower, "line") {
 				return fmt.Errorf("fasm error: %s", line)
 			}
 		}
@@ -183,10 +268,19 @@ func assembleFASM(ctx context.Context, src, obj string, debug, verbose bool) err
 func assembleC(ctx context.Context, src, obj string, debug, verbose bool) error {
 	compiler := ccForTarget()
 	args := []string{"-c", src, "-o", obj}
+	if isWasmTarget() && compiler == "clang" {
+		args = append([]string{"--target=wasm32-unknown-unknown"}, args...)
+	}
 	strictFlags := []string{"-Wall", "-Wextra", "-Werror", "-Wpedantic", "-Wshadow", "-Wconversion"}
 	args = append(args, strictFlags...)
 	if debug {
 		args = append(args, "-g")
+		if utils.ExecutionRoot != "" {
+			args = append(args, "-fdebug-prefix-map="+filepath.Clean(utils.ExecutionRoot)+"=.")
+		}
+	}
+	if len(CcFlags) > 0 {
+		args = append(args, strings.Fields(CcFlags)...)
 	}
 	if verbose {
 		fmt.Printf("Running: %s %s\n", compiler, strings.Join(args, " "))
@@ -204,10 +298,19 @@ func assembleC(ctx context.Context, src, obj string, debug, verbose bool) error 
 func assembleCpp(ctx context.Context, src, obj string, debug, verbose bool) error {
 	compiler := cxxForTarget()
 	args := []string{"-c", src, "-o", obj}
+	if isWasmTarget() && compiler == "clang++" {
+		args = append([]string{"--target=wasm32-unknown-unknown"}, args...)
+	}
 	strictFlags := []string{"-Wall", "-Wextra", "-Werror", "-Wpedantic", "-Wshadow", "-Wconversion"}
 	args = append(args, strictFlags...)
 	if debug {
 		args = append(args, "-g")
+		if utils.ExecutionRoot != "" {
+			args = append(args, "-fdebug-prefix-map="+filepath.Clean(utils.ExecutionRoot)+"=.")
+		}
+	}
+	if len(CcFlags) > 0 {
+		args = append(args, strings.Fields(CcFlags)...)
 	}
 	if verbose {
 		fmt.Printf("Running: %s %s\n", compiler, strings.Join(args, " "))
@@ -228,6 +331,8 @@ func CCForTarget() string {
 
 func gasCmdForTarget() string {
 	switch {
+	case isWasmTarget():
+		return "clang"
 	case strings.Contains(Target, "arm"):
 		return "arm-linux-gnueabihf-as"
 	case strings.Contains(Target, "riscv"):
