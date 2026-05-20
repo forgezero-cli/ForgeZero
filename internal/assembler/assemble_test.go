@@ -1,6 +1,7 @@
 package assembler
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -89,30 +90,6 @@ func TestAssembleGASFailure(t *testing.T) {
 	err := Assemble(context.Background(), src, obj, false, false, "auto")
 	if err == nil {
 		t.Error("expected error for invalid asm")
-	}
-}
-
-func TestAssembleFASM(t *testing.T) {
-	if _, err := exec.LookPath("fasm"); err != nil {
-		t.Skip("fasm not installed")
-	}
-	dir := t.TempDir()
-	src := writeTempFile(t, dir, "test.fasm", `
-format ELF64
-section '.text' executable
-public _start
-_start:
-	mov eax, 1
-	xor ebx, ebx
-	int 0x80
-`)
-	obj := filepath.Join(dir, "test.o")
-	err := Assemble(context.Background(), src, obj, false, false, "auto")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(obj); err != nil {
-		t.Error("object file not created")
 	}
 }
 
@@ -214,5 +191,82 @@ func TestCrossCompilerNotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "arm-linux-gnueabihf-gcc") {
 		t.Errorf("error should mention missing compiler: %v", err)
+	}
+}
+
+func TestAssembleFASM(t *testing.T) {
+	if _, err := exec.LookPath("fasm"); err != nil {
+		t.Skip("fasm not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "test.fasm", `
+format ELF64
+section '.text' executable
+public _start
+_start:
+    mov eax, 60
+    xor edi, edi
+    syscall
+`)
+	obj := filepath.Join(dir, "test.o")
+	err := Assemble(context.Background(), src, obj, false, false, "auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(obj); err != nil {
+		t.Error("object file not created")
+	}
+}
+
+func TestAssembleFASMDebug(t *testing.T) {
+	if _, err := exec.LookPath("fasm"); err != nil {
+		t.Skip("fasm not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "test.fasm", `
+format ELF64
+section '.text' executable
+public _start
+_start:
+    mov eax, 60
+    xor edi, edi
+    syscall
+`)
+	obj := filepath.Join(dir, "test.o")
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	err := Assemble(context.Background(), src, obj, true, true, "auto")
+	w.Close()
+	os.Stdout = oldStdout
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	if !strings.Contains(buf.String(), "-dDEBUG") {
+		t.Error("debug flag -dDEBUG not added to fasm command")
+	}
+}
+
+func TestAssembleFASMError(t *testing.T) {
+	if _, err := exec.LookPath("fasm"); err != nil {
+		t.Skip("fasm not installed")
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "bad.fasm", `
+format ELF64
+section '.text' executable
+public _start
+_start:
+    invalid_instruction
+`)
+	obj := filepath.Join(dir, "bad.o")
+	err := Assemble(context.Background(), src, obj, false, true, "auto")
+	if err == nil {
+		t.Error("expected error")
+	}
+	if !strings.Contains(err.Error(), "error") {
+		t.Errorf("error message should contain 'error', got: %v", err)
 	}
 }
