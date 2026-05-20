@@ -7,7 +7,10 @@ import (
 
 func TestRunCreatesFiles(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, _ := os.Getwd()
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("failed to change to test dir: %v", err)
 	}
@@ -17,9 +20,6 @@ func TestRunCreatesFiles(t *testing.T) {
 			t.Fatalf("failed to restore working directory: %v", err)
 		}
 	})
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
 	if err := Run(); err != nil {
 		t.Fatal(err)
 	}
@@ -36,8 +36,10 @@ func TestRunCreatesFiles(t *testing.T) {
 
 func TestRunFailsIfFilesExist(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, _ := os.Getwd()
-
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("failed to change to test directory: %v", err)
 	}
@@ -52,7 +54,9 @@ func TestRunFailsIfFilesExist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if err := Run(); err == nil {
 		t.Error("expected error because .fz.yaml exists")
 	}
