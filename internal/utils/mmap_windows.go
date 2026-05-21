@@ -59,9 +59,5 @@ func getFileDescriptor(f interface {
 }
 
 func unsafeByteSlice(ptr unsafe.Pointer, len int) []byte {
-	return *(*[]byte)(unsafe.Pointer(&struct {
-		data uintptr
-		len  int
-		cap  int
-	}{uintptr(ptr), len, len}))
+	return unsafe.Slice((*byte)(ptr), len)
 }
