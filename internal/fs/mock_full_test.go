@@ -8,7 +8,7 @@ import (
 
 func TestMockAllOpsSuccess(t *testing.T) {
 	dir := t.TempDir()
-	m := NewMock(Unix{})
+	m := NewMock(Default)
 	path := filepath.Join(dir, "f")
 	if err := m.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestMockAllOpsFail(t *testing.T) {
 		{"EvalSymlinks", func(m *Mock) error { _, e := m.EvalSymlinks(path); return e }},
 	}
 	for _, tc := range cases {
-		m := NewMock(Unix{})
+		m := NewMock(Default)
 		m.SetFailOp(tc.op, ErrPermission)
 		if err := tc.run(m); err != ErrPermission {
 			t.Fatalf("%s: got %v", tc.op, err)
@@ -96,16 +96,15 @@ func TestMockAllOpsFail(t *testing.T) {
 }
 
 func TestMockSetFailPath(t *testing.T) {
-	m := NewMock(Unix{})
+	m := NewMock(Default)
 	m.SetFail("Open", "/x", ErrTimeout)
 	if m.err("Open", "/x") != ErrTimeout {
 		t.Fatal("path fail")
 	}
 }
 
-func TestUnixReadlinkEval(t *testing.T) {
+func TestDefaultReadlinkEval(t *testing.T) {
 	dir := t.TempDir()
-	u := Unix{}
 	target := filepath.Join(dir, "t")
 	if err := os.WriteFile(target, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
@@ -114,28 +113,27 @@ func TestUnixReadlinkEval(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Skip("symlink")
 	}
-	if _, err := u.Readlink(link); err != nil {
+	if _, err := Default.Readlink(link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := u.EvalSymlinks(link); err != nil {
+	if _, err := Default.EvalSymlinks(link); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestUnixRemoveAllChmod(t *testing.T) {
+func TestDefaultRemoveAll(t *testing.T) {
 	dir := t.TempDir()
-	u := Unix{}
 	sub := filepath.Join(dir, "sub")
-	if err := u.MkdirAll(sub, 0o700); err != nil {
+	if err := Default.MkdirAll(sub, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.RemoveAll(sub); err != nil {
+	if err := Default.RemoveAll(sub); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestOpenVerifiedNotExist(t *testing.T) {
-	_, err := Unix{}.OpenVerified(filepath.Join(t.TempDir(), "missing"))
+	_, err := Default.OpenVerified(filepath.Join(t.TempDir(), "missing"))
 	if err == nil {
 		t.Fatal("expected error")
 	}
