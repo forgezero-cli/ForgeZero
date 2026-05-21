@@ -8,10 +8,10 @@ import (
 )
 
 var (
-	kernel32 = syscall.NewLazyDLL("kernel32.dll")
-	mapFile  = kernel32.NewProc("MapViewOfFile")
-	unmapAll = kernel32.NewProc("UnmapViewOfFile")
-	mapHandle = kernel32.NewProc("CreateFileMappingW")
+	kernel32    = syscall.NewLazyDLL("kernel32.dll")
+	mapFile     = kernel32.NewProc("MapViewOfFile")
+	unmapAll    = kernel32.NewProc("UnmapViewOfFile")
+	mapHandle   = kernel32.NewProc("CreateFileMappingW")
 	closeHandle = kernel32.NewProc("CloseHandle")
 )
 
@@ -28,12 +28,12 @@ func mmapFile(fd int, size int64) ([]byte, error) {
 		return nil, syscall.Errno(err.(syscall.Errno))
 	}
 	defer closeHandle.Call(hMapping)
-	
+
 	ptr, _, err := mapFile.Call(hMapping, 0, 0, uint32(size>>32), uint32(size))
 	if ptr == 0 {
 		return nil, syscall.Errno(err.(syscall.Errno))
 	}
-	
+
 	return unsafeByteSlice(unsafe.Pointer(ptr), int(size)), nil
 }
 
@@ -54,7 +54,8 @@ func madviseNormal(data []byte) {
 
 func getFileDescriptor(f interface {
 	Fd() uintptr
-}) int {
+},
+) int {
 	return int(f.Fd())
 }
 
