@@ -19,6 +19,7 @@ import (
 	"fz/internal/builder"
 	"fz/internal/compilecommands"
 	"fz/internal/config"
+	"fz/internal/doctor"
 	"fz/internal/ignore"
 	initpkg "fz/internal/init"
 	"fz/internal/linker"
@@ -52,6 +53,7 @@ Usage:
   fz [options] (-asm <file> | -cc <file> | -dir <dir> | (no args with config))
   fz audit [options]
   fz sbom [options]
+  fz doctor [options]
 
 Options:
   -asm <file>            Assembler source (.asm, .s, .S, .fasm)
@@ -226,6 +228,40 @@ func sbomMain(args []string) {
 	}
 	if *verbose {
 		fmt.Fprintf(os.Stderr, "sbom written to %s\n", *outPath)
+	}
+}
+
+func doctorMain(args []string) {
+	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
+	jsonOutput := fs.Bool("json", false, "machine-readable output")
+	rootPath := fs.String("root", "", "project root (default: cwd)")
+	fs.Parse(args)
+	root := *rootPath
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "doctor failed: %v\n", err)
+			os.Exit(1)
+		}
+		root = cwd
+	}
+	report, err := doctor.Run(context.Background(), doctor.Options{Root: root})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "doctor failed: %v\n", err)
+		os.Exit(1)
+	}
+	if *jsonOutput {
+		data, merr := doctor.MarshalJSON(report)
+		if merr != nil {
+			fmt.Fprintf(os.Stderr, "doctor failed: %v\n", merr)
+			os.Exit(1)
+		}
+		fmt.Println(string(data))
+	} else {
+		fmt.Print(doctor.FormatHuman(report))
+	}
+	if !report.Healthy {
+		os.Exit(1)
 	}
 }
 
@@ -440,6 +476,9 @@ func main() {
 			return
 		case "bench":
 			benchMain(os.Args[2:])
+			return
+		case "doctor":
+			doctorMain(os.Args[2:])
 			return
 		case "version":
 			outputVersion()
