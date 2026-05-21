@@ -3,6 +3,7 @@ package fs
 import (
 	"io"
 	"os"
+	"path/filepath"
 )
 
 type Unix struct{}
@@ -21,6 +22,30 @@ func (Unix) ReadFile(path string) ([]byte, error) {
 
 func (Unix) Open(path string) (io.ReadCloser, error) {
 	return os.Open(path)
+}
+
+func (Unix) OpenVerified(path string) (io.ReadCloser, error) {
+	pre, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if pre.Mode()&os.ModeSymlink != 0 {
+		return nil, ErrSymlink
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	post, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if !os.SameFile(pre, post) {
+		f.Close()
+		return nil, ErrPathChanged
+	}
+	return f, nil
 }
 
 func (Unix) CreateTemp(dir, pattern string) (*os.File, error) {
@@ -53,4 +78,16 @@ func (Unix) ReadDir(name string) ([]os.DirEntry, error) {
 
 func (Unix) Chmod(name string, mode os.FileMode) error {
 	return os.Chmod(name, mode)
+}
+
+func (Unix) Readlink(name string) (string, error) {
+	return os.Readlink(name)
+}
+
+func (Unix) EvalSymlinks(path string) (string, error) {
+	return filepath.EvalSymlinks(path)
+}
+
+func (Unix) SameFile(a, b os.FileInfo) bool {
+	return os.SameFile(a, b)
 }
