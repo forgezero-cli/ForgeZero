@@ -1,6 +1,7 @@
 package linker
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,7 +44,7 @@ my_func:
 	mov eax, 2
 	ret
 `)
-	err := CheckDuplicateSymbols([]string{obj1, obj2}, false)
+	err := CheckDuplicateSymbols(context.Background(), []string{obj1, obj2}, false)
 	if err == nil {
 		t.Error("expected duplicate symbol error")
 	}
@@ -53,7 +54,7 @@ global other_func
 other_func:
 	ret
 `)
-	err = CheckDuplicateSymbols([]string{obj1, obj3}, false)
+	err = CheckDuplicateSymbols(context.Background(), []string{obj1, obj3}, false)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -74,7 +75,7 @@ section .text
 global b
 b: ret
 `)
-	err := CheckDuplicateSymbols([]string{obj1, obj2}, false)
+	err := CheckDuplicateSymbols(context.Background(), []string{obj1, obj2}, false)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -90,7 +91,7 @@ section .text
 global foo
 foo: ret
 `)
-	err := CheckDuplicateSymbols([]string{obj}, false)
+	err := CheckDuplicateSymbols(context.Background(), []string{obj}, false)
 	if err != nil {
 		t.Errorf("single file should not produce error: %v", err)
 	}
@@ -106,7 +107,7 @@ section .text
 global bar
 bar: ret
 `)
-	err := CheckDuplicateSymbols([]string{obj}, true)
+	err := CheckDuplicateSymbols(context.Background(), []string{obj}, true)
 	if err != nil {
 		t.Errorf("verbose mode should not error on single file: %v", err)
 	}
@@ -122,7 +123,7 @@ section .text
 global fallback_func
 fallback_func: ret
 `)
-	_, err := readSymbols(obj, false)
+	_, err := readSymbols(context.Background(), obj, false)
 	if err != nil {
 		t.Skip("no symbol reader available")
 	}
