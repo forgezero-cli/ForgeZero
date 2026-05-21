@@ -46,8 +46,8 @@ func CompileArgs(src, obj string, debug bool, target, ext, extraFlags string) []
 	args = append(args, "-fno-ident", "-fno-diagnostics-color", "-Wall", "-Wextra", "-Werror", "-Wpedantic", "-Wshadow", "-Wconversion")
 	if debug {
 		args = append(args, "-g")
-		if utils.ExecutionRoot != "" {
-			args = append(args, "-fdebug-prefix-map="+filepath.Clean(utils.ExecutionRoot)+"=.")
+		if dir := utils.GetExecutionRoot(); dir != "" {
+			args = append(args, "-fdebug-prefix-map="+filepath.Clean(dir)+"=.")
 		}
 	}
 	if extraFlags != "" {

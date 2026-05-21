@@ -22,7 +22,9 @@ func TestCompilerForSource(t *testing.T) {
 }
 
 func TestCompileArgsIncludesTargetAndDebug(t *testing.T) {
-	utils.ExecutionRoot = "/tmp/project"
+	oldRoot := utils.GetExecutionRoot()
+	defer utils.SetExecutionRoot(oldRoot)
+	utils.SetExecutionRoot("/tmp/project")
 	args := CompileArgs("main.c", "main.o", true, "arm-linux-gnueabihf", ".c", "-DTEST=1")
 	if !strings.Contains(strings.Join(args, " "), "-target arm-linux-gnueabihf") {
 		t.Fatal("missing target flag")
