@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+
 	"fz/internal/assembler"
 	"fz/internal/config"
 	"fz/internal/linker"
@@ -120,12 +121,15 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 		}()
 	}
 
-	type pair struct {
-		src string
-		obj string
-	}
+type pair struct {
+	src string
+	obj string
+}
 	pairs := make([]pair, len(srcFiles))
+	_ = pairs
 	objFilesSet := make(map[string]bool)
+
+
 
 	srcRoot := ""
 	if len(dirs) > 0 {
@@ -163,15 +167,16 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 	}
 	sort.Strings(objFiles)
 
-	type job struct {
-		idx int
-		p   pair
-	}
+type job struct {
+	idx int
+	p   pair
+}
 	var wg sync.WaitGroup
-	jobsChan := make(chan job, len(pairs))
 	var firstErr error
 	var errOnce sync.Once
+	jobsChan := make(chan job, jobs)
 	stopChan := make(chan struct{})
+
 
 	worker := func() {
 		defer wg.Done()
