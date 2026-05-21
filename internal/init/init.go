@@ -3,6 +3,8 @@ package initpkg
 import (
 	"fmt"
 	"os"
+
+	"fz/internal/utils"
 )
 
 const readmeTemplate = `# Your Project
@@ -151,14 +153,14 @@ func Run() error {
 		return fmt.Errorf(".fzignore already exists (not overwritten)")
 	}
 	if _, err := os.Stat("README.md"); err != nil {
-		if err := os.WriteFile("README.md", []byte(readmeTemplate), 0o644); err != nil {
+		if err := utils.SecureWriteFile("README.md", []byte(readmeTemplate)); err != nil {
 			return err
 		}
 	}
-	if err := os.WriteFile(".fz.yaml", []byte(yamlTemplate), 0o644); err != nil {
+	if err := utils.SecureWriteFile(".fz.yaml", []byte(yamlTemplate)); err != nil {
 		return err
 	}
-	if err := os.WriteFile(".fzignore", []byte(ignoreTemplate), 0o644); err != nil {
+	if err := utils.SecureWriteFile(".fzignore", []byte(ignoreTemplate)); err != nil {
 		return err
 	}
 	return nil
