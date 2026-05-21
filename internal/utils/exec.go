@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+func LookExecutable(name string) (string, error) {
+	return lookExecutable(name)
+}
+
 func lookExecutable(name string) (string, error) {
 	if runtime.GOOS != "windows" {
 		return exec.LookPath(name)
