@@ -233,6 +233,7 @@ func assembleFASM(ctx context.Context, src, obj string, debug, verbose bool) err
 		if err != nil {
 			return fmt.Errorf("cannot create temp file: %w", err)
 		}
+		_ = tmpFile.Chmod(utils.FilePerm)
 		tmpName := tmpFile.Name()
 		defer func() {
 			if tmpFile != nil {
