@@ -8,7 +8,7 @@ import (
 
 func TestMockInjectedErrors(t *testing.T) {
 	dir := t.TempDir()
-	m := NewMock(Unix{})
+	m := NewMock(Default)
 	m.SetFailOp("MkdirAll", ErrDiskFull)
 	if err := m.MkdirAll(filepath.Join(dir, "x"), 0o700); err != ErrDiskFull {
 		t.Fatalf("got %v", err)
@@ -25,7 +25,7 @@ func TestOpenVerifiedSymlink(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Skip("no symlink")
 	}
-	_, err := Unix{}.OpenVerified(link)
+	_, err := Default.OpenVerified(link)
 	if err != ErrSymlink {
 		t.Fatalf("got %v", err)
 	}
