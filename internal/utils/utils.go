@@ -20,11 +20,6 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-const (
-	DirPerm  os.FileMode = 0o700
-	FilePerm os.FileMode = 0o600
-)
-
 var (
 	bufferPool     = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 	copyBufferPool = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
@@ -38,6 +33,9 @@ var (
 )
 
 func SetExecutionRoot(v string) {
+	if v != "" {
+		v = filepath.Clean(v)
+	}
 	executionRoot.Store(v)
 }
 
@@ -69,7 +67,7 @@ func constantTimeEqual(a, b string) bool {
 }
 
 func checkToolInternal(name string) error {
-	path, err := exec.LookPath(name)
+	path, err := lookExecutable(name)
 	if err != nil {
 		return fmt.Errorf("required tool not found in PATH: %s", name)
 	}
@@ -127,7 +125,7 @@ func EnsureInsideRoot(root, path string) error {
 	if err != nil {
 		return err
 	}
-	if targetEval == rootEval || strings.HasPrefix(targetEval, rootEval+string(os.PathSeparator)) {
+	if pathWithinRoot(rootEval, targetEval) {
 		return nil
 	}
 	return fmt.Errorf("path %s outside project root %s", path, root)
@@ -137,7 +135,7 @@ func ValidateCLIArg(value string) error {
 	if value == "" {
 		return nil
 	}
-	if strings.ContainsAny(value, "`$&|;><*?[]{}()\"'\\") {
+	if strings.ContainsAny(value, forbiddenArgChars()) {
 		return fmt.Errorf("invalid CLI argument: %s", value)
 	}
 	if strings.ContainsAny(value, "\x00\n\r") {
@@ -150,12 +148,20 @@ func ValidateCLIPath(value string) error {
 	if value == "" {
 		return nil
 	}
-	if strings.ContainsAny(value, "`$&|;><*?[]{}()\"'\\\x00\n\r") {
+	if strings.ContainsAny(value, forbiddenPathChars()) {
 		return fmt.Errorf("invalid path: %s", value)
 	}
 	sep := string(os.PathSeparator)
 	if strings.Contains(value, ".."+sep) || strings.Contains(value, sep+"..") {
 		return fmt.Errorf("path traversal not permitted: %s", value)
+	}
+	if runtime.GOOS == "windows" {
+		if strings.Contains(value, "..\\") || strings.Contains(value, "\\..") {
+			return fmt.Errorf("path traversal not permitted: %s", value)
+		}
+		if isUnsafeUNC(value) {
+			return fmt.Errorf("invalid UNC path: %s", value)
+		}
 	}
 	return nil
 }
@@ -276,7 +282,7 @@ func buildCommand(ctx context.Context, name string, args ...string) (*exec.Cmd, 
 	if err := ValidateCLIArg(name); err != nil {
 		return nil, fmt.Errorf("invalid command name: %w", err)
 	}
-	resolved, err := exec.LookPath(name)
+	resolved, err := lookExecutable(name)
 	if err != nil {
 		return nil, fmt.Errorf("executable not found: %s", name)
 	}
@@ -385,7 +391,7 @@ func CopyFile(src, dst string) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp %s: %w", tmpName, err)
 	}
-	if err := fileSystem().Rename(tmpName, dstResolved); err != nil {
+	if err := renameResolved(tmpName, dstResolved); err != nil {
 		return fmt.Errorf("rename %s to %s: %w", tmpName, dstResolved, err)
 	}
 	cleanup = false
