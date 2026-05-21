@@ -98,7 +98,7 @@ func runLinkerCommand(ctx context.Context, verbose bool, name string, args []str
 		if err := utils.ValidateCLIArg(name); err != nil {
 			return "", fmt.Errorf("invalid linker name: %w", err)
 		}
-		resolved, err := lookPathFunc(name)
+		resolved, err := utils.FindExecutable(ctx, name)
 		if err != nil {
 			return "", fmt.Errorf("linker not found: %w", err)
 		}
@@ -190,25 +190,34 @@ func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSym
 		return linkWindowsImpl(ctx, obj, bin, verbose, mode, sanitize, libs)
 	}
 
+	var linkErr error
 	switch mode {
 	case "raw":
-		if err := utils.CheckTool(ldForTarget()); err != nil {
-			return err
+		if linkErr = utils.CheckTool(ldForTarget()); linkErr != nil {
+			return linkErr
 		}
-		return linkWithLd(ctx, obj, bin, verbose, libs)
+		linkErr = linkWithLd(ctx, obj, bin, verbose, libs)
 	case "c":
 		if useZig() {
-			return linkWithZig(ctx, []string{obj}, bin, verbose, Target, sanitize, strict, libs)
+			linkErr = linkWithZig(ctx, []string{obj}, bin, verbose, Target, sanitize, strict, libs)
+			break
 		}
-		if err := utils.CheckTool(gccForTarget()); err != nil {
-			return err
+		if linkErr = utils.CheckTool(gccForTarget()); linkErr != nil {
+			return linkErr
 		}
-		return linkWithGcc(ctx, obj, bin, verbose, false, sanitize, strict, libs)
+		linkErr = linkWithGcc(ctx, obj, bin, verbose, false, sanitize, strict, libs)
 	case "auto":
-		return tryAutoLink(ctx, obj, bin, verbose, sanitize, strict, libs)
+		linkErr = tryAutoLink(ctx, obj, bin, verbose, sanitize, strict, libs)
 	default:
 		return fmt.Errorf("unsupported mode: %s (valid: auto, c, raw)", mode)
 	}
+	if linkErr != nil {
+		return linkErr
+	}
+	if cfg := utils.ConfigFromContext(ctx); cfg != nil && cfg.DeterministicStrip {
+		_, _ = utils.ScrubHostPaths(bin, utils.GetExecutionRoot())
+	}
+	return nil
 }
 
 func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool, libs []string) error {
@@ -238,25 +247,34 @@ func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bo
 		return linkMultipleWindowsImpl(ctx, objFiles, bin, verbose, mode, sanitize, libs)
 	}
 
+	var linkErr error
 	switch mode {
 	case "raw":
-		if err := utils.CheckTool(ldForTarget()); err != nil {
-			return err
+		if linkErr = utils.CheckTool(ldForTarget()); linkErr != nil {
+			return linkErr
 		}
-		return linkMultipleWithLd(ctx, objFiles, bin, verbose, libs)
+		linkErr = linkMultipleWithLd(ctx, objFiles, bin, verbose, libs)
 	case "c":
 		if useZig() {
-			return linkWithZig(ctx, objFiles, bin, verbose, Target, sanitize, strict, libs)
+			linkErr = linkWithZig(ctx, objFiles, bin, verbose, Target, sanitize, strict, libs)
+			break
 		}
-		if err := utils.CheckTool(gccForTarget()); err != nil {
-			return err
+		if linkErr = utils.CheckTool(gccForTarget()); linkErr != nil {
+			return linkErr
 		}
-		return linkMultipleWithGcc(ctx, objFiles, bin, verbose, false, sanitize, strict, libs)
+		linkErr = linkMultipleWithGcc(ctx, objFiles, bin, verbose, false, sanitize, strict, libs)
 	case "auto":
-		return tryAutoLinkMultiple(ctx, objFiles, bin, verbose, sanitize, strict, libs)
+		linkErr = tryAutoLinkMultiple(ctx, objFiles, bin, verbose, sanitize, strict, libs)
 	default:
 		return fmt.Errorf("unsupported mode: %s (valid: auto, c, raw)", mode)
 	}
+	if linkErr != nil {
+		return linkErr
+	}
+	if cfg := utils.ConfigFromContext(ctx); cfg != nil && cfg.DeterministicStrip {
+		_, _ = utils.ScrubHostPaths(bin, utils.GetExecutionRoot())
+	}
+	return nil
 }
 
 func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bool, strict bool, libs []string) error {
