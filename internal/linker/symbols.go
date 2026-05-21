@@ -2,6 +2,7 @@ package linker
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -17,16 +18,19 @@ type SymbolInfo struct {
 	Bound string
 }
 
-func CheckDuplicateSymbols(objFiles []string, verbose bool) error {
+func CheckDuplicateSymbols(ctx context.Context, objFiles []string, verbose bool) error {
 	if len(objFiles) <= 1 {
 		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	symbolMap := make(map[string][]SymbolInfo)
 	for _, obj := range objFiles {
 		if err := utils.CheckFileExists(obj); err != nil {
 			return err
 		}
-		syms, err := readSymbols(obj, verbose)
+		syms, err := readSymbols(ctx, obj, verbose)
 		if err != nil {
 			if verbose {
 				fmt.Printf("Warning: cannot read symbols from %s: %v\n", obj, err)
@@ -63,24 +67,43 @@ func shouldCheckDuplicate(name string) bool {
 	return true
 }
 
-func readSymbols(objPath string, verbose bool) ([]SymbolInfo, error) {
+func readSymbols(ctx context.Context, objPath string, verbose bool) ([]SymbolInfo, error) {
 	if _, err := exec.LookPath("nm"); err == nil {
-		return readSymbolsWithNm(objPath, verbose)
+		return readSymbolsWithNm(ctx, objPath, verbose)
 	}
 	if _, err := exec.LookPath("objdump"); err == nil {
-		return readSymbolsWithObjdump(objPath, verbose)
+		return readSymbolsWithObjdump(ctx, objPath, verbose)
 	}
-	return readSymbolsWithReadelf(objPath, verbose)
+	return readSymbolsWithReadelf(ctx, objPath, verbose)
 }
 
-func readSymbolsWithNm(objPath string, verbose bool) ([]SymbolInfo, error) {
-	cmd := exec.Command("nm", "-g", objPath)
-	out, err := cmd.Output()
+func readSymbolsWithNm(ctx context.Context, objPath string, verbose bool) ([]SymbolInfo, error) {
+	out, err := utils.RunCommandOutput(ctx, "nm", "-g", objPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("nm %s: %w", objPath, err)
 	}
+	return parseNmOutput(objPath, string(out)), nil
+}
+
+func readSymbolsWithObjdump(ctx context.Context, objPath string, verbose bool) ([]SymbolInfo, error) {
+	out, err := utils.RunCommandOutput(ctx, "objdump", "-t", objPath)
+	if err != nil {
+		return nil, fmt.Errorf("objdump %s: %w", objPath, err)
+	}
+	return parseObjdumpOutput(objPath, string(out)), nil
+}
+
+func readSymbolsWithReadelf(ctx context.Context, objPath string, verbose bool) ([]SymbolInfo, error) {
+	out, err := utils.RunCommandOutput(ctx, "readelf", "-s", objPath)
+	if err != nil {
+		return nil, fmt.Errorf("readelf %s: %w", objPath, err)
+	}
+	return parseReadelfOutput(objPath, string(out)), nil
+}
+
+func parseNmOutput(objPath, text string) []SymbolInfo {
 	var syms []SymbolInfo
-	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	scanner := bufio.NewScanner(strings.NewReader(text))
 	for scanner.Scan() {
 		line := scanner.Text()
 		fields := strings.Fields(line)
@@ -95,23 +118,14 @@ func readSymbolsWithNm(objPath string, verbose bool) ([]SymbolInfo, error) {
 		if name == "" || name == "_start" || strings.HasPrefix(name, ".") {
 			continue
 		}
-		syms = append(syms, SymbolInfo{
-			File: objPath,
-			Name: name,
-			Type: "global",
-		})
+		syms = append(syms, SymbolInfo{File: objPath, Name: name, Type: "global"})
 	}
-	return syms, nil
+	return syms
 }
 
-func readSymbolsWithObjdump(objPath string, verbose bool) ([]SymbolInfo, error) {
-	cmd := exec.Command("objdump", "-t", objPath)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
+func parseObjdumpOutput(objPath, text string) []SymbolInfo {
 	var syms []SymbolInfo
-	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	scanner := bufio.NewScanner(strings.NewReader(text))
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.Contains(line, "g") {
@@ -129,23 +143,14 @@ func readSymbolsWithObjdump(objPath string, verbose bool) ([]SymbolInfo, error) 
 		if name == "" || name == "_start" || strings.HasPrefix(name, ".") {
 			continue
 		}
-		syms = append(syms, SymbolInfo{
-			File: objPath,
-			Name: name,
-			Type: "global",
-		})
+		syms = append(syms, SymbolInfo{File: objPath, Name: name, Type: "global"})
 	}
-	return syms, nil
+	return syms
 }
 
-func readSymbolsWithReadelf(objPath string, verbose bool) ([]SymbolInfo, error) {
-	cmd := exec.Command("readelf", "-s", objPath)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
+func parseReadelfOutput(objPath, text string) []SymbolInfo {
 	var syms []SymbolInfo
-	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	scanner := bufio.NewScanner(strings.NewReader(text))
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.Contains(line, "GLOBAL") {
@@ -163,11 +168,7 @@ func readSymbolsWithReadelf(objPath string, verbose bool) ([]SymbolInfo, error) 
 		if name == "" || name == "_start" || strings.HasPrefix(name, ".") {
 			continue
 		}
-		syms = append(syms, SymbolInfo{
-			File: objPath,
-			Name: name,
-			Type: "global",
-		})
+		syms = append(syms, SymbolInfo{File: objPath, Name: name, Type: "global"})
 	}
-	return syms, nil
+	return syms
 }
