@@ -1,5 +1,3 @@
-// Copyright (c) 2026 Alex Voste. MIT License.
-// PROPERTY OF FORGEZERO CORE TEAM.
 package verify
 
 import (
@@ -38,13 +36,17 @@ func LoadManifest(path string) (*Manifest, error) {
 	if err := utils.ValidateCLIPath(path); err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(path)
+	resolved, err := utils.ResolveSecurePath(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load manifest %s: %w", path, err)
+	}
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return nil, fmt.Errorf("read manifest %s: %w", path, err)
 	}
 	var manifest Manifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse manifest %s: %w", path, err)
 	}
 	return &manifest, nil
 }
@@ -65,28 +67,11 @@ func WriteManifest(path, root string) error {
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		Entries:   entries,
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "fz_manifest_*.tmp")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		tmp.Close()
-		_ = os.Remove(tmp.Name())
-	}()
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal manifest: %w", err)
 	}
-	if _, err := tmp.Write(data); err != nil {
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return utils.SecureWriteFile(path, data)
 }
 
 func VerifyRoot(root, manifestPath string) (*VerifyResult, error) {
@@ -151,16 +136,15 @@ func BuildManifest(root string) ([]ManifestEntry, error) {
 	sem := make(chan struct{}, runtime.NumCPU())
 	for i, rel := range files {
 		wg.Add(1)
-		sel := sem
-		sel <- struct{}{}
+		sem <- struct{}{}
 		go func(index int, fileRel string) {
 			defer wg.Done()
-			defer func() { <-sel }()
+			defer func() { <-sem }()
 			fullPath := filepath.Join(root, fileRel)
 			hash, err := utils.HashFile(fullPath)
 			if err != nil {
 				select {
-				case errCh <- err:
+				case errCh <- fmt.Errorf("hash %s: %w", fullPath, err):
 				default:
 				}
 				return
@@ -203,7 +187,6 @@ func collectFiles(root string) ([]string, error) {
 		if filepath.Base(rel) == "manifest.json" {
 			return nil
 		}
-
 		if rel == "." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			return fmt.Errorf("invalid path outside root: %s", path)
 		}
