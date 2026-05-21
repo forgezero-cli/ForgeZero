@@ -61,7 +61,7 @@ func TestCopyFileRenameFail(t *testing.T) {
 	if err := os.WriteFile(src, []byte("x"), FilePerm); err != nil {
 		t.Fatal(err)
 	}
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFailOp("Rename", fzvfs.ErrDiskFull)
 	withMock(t, m)
 	if err := CopyFile(src, dst); err == nil {
@@ -72,7 +72,7 @@ func TestCopyFileRenameFail(t *testing.T) {
 func TestSecureWriteCloseFail(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "out")
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	withMock(t, m)
 	if err := SecureWriteFile(path, []byte("data")); err != nil {
 		return
@@ -81,7 +81,7 @@ func TestSecureWriteCloseFail(t *testing.T) {
 
 func TestHashDirWithRootSymlinkError(t *testing.T) {
 	root := t.TempDir()
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFailOp("Readlink", fzvfs.ErrPermission)
 	withMock(t, m)
 	bad := filepath.Join(root, "link")
@@ -123,7 +123,7 @@ func TestEnsureInsideRootInvalidRoot(t *testing.T) {
 func TestResolveDestEvalFallback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "fallback.txt")
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFailOp("EvalSymlinks", fzvfs.ErrInterrupted)
 	withMock(t, m)
 	got, err := resolveDest(path)
@@ -147,7 +147,7 @@ func TestSecureWriteAllBranches(t *testing.T) {
 		{"Rename", fzvfs.ErrInterrupted},
 	}
 	for _, tc := range cases {
-		m := fzvfs.NewMock(fzvfs.Unix{})
+		m := fzvfs.NewMock(fzvfs.Default)
 		m.SetFailOp(tc.op, tc.err)
 		withMock(t, m)
 		if err := SecureWriteFile(path, []byte("x")); err == nil {
@@ -211,7 +211,7 @@ func TestReadFileSecureReadFail(t *testing.T) {
 	if err := os.WriteFile(path, []byte("x"), FilePerm); err != nil {
 		t.Fatal(err)
 	}
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	withMock(t, m)
 	m.SetFail("OpenVerified", path, fzvfs.ErrTimeout)
 	if _, err := ReadFileSecure(path); err == nil {
@@ -250,7 +250,7 @@ func TestHashFileReadFail(t *testing.T) {
 	if err := os.WriteFile(path, []byte("z"), 0o400); err != nil {
 		t.Fatal(err)
 	}
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFail("OpenVerified", path, fzvfs.ErrPermission)
 	withMock(t, m)
 	if _, err := HashFile(path); err == nil {
