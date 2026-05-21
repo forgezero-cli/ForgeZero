@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"fz/internal/utils"
+	"fz/internal/zig"
 )
 
 func writeTempFile(t *testing.T, dir, name, content string) string {
@@ -336,5 +339,106 @@ _start:
 	}
 	if _, err := os.Stat(obj); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAsmCmdAndFormatFlagLogic(t *testing.T) {
+	cases := []struct {
+		target, wantCmd, wantFormat string
+	}{
+		{"x86_64-linux-gnu", "nasm", "-felf64"},
+		{"i386-linux-gnu", "nasm", "-felf32"},
+		{"arm-linux-gnueabihf", "arm-linux-gnueabihf-as", "-march=armv7-a"},
+		{"riscv64-unknown-elf", "riscv64-unknown-elf-as", "-felf64"},
+	}
+	oldTarget := Target
+	defer func() { Target = oldTarget }()
+	for _, tt := range cases {
+		Target = tt.target
+		if got := asmCmdForTarget(); got != tt.wantCmd {
+			t.Fatalf("asmCmdForTarget(%q) = %q, want %q", tt.target, got, tt.wantCmd)
+		}
+		if got := formatFlagForTarget(); got != tt.wantFormat {
+			t.Fatalf("formatFlagForTarget(%q) = %q, want %q", tt.target, got, tt.wantFormat)
+		}
+	}
+}
+
+func TestAssembleUnsupportedExtension(t *testing.T) {
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "test.txt", "hello")
+	obj := filepath.Join(dir, "test.o")
+	err := Assemble(context.Background(), src, obj, false, false, "auto")
+	if err == nil || !strings.Contains(err.Error(), "unsupported source extension") {
+		t.Fatalf("expected unsupported extension error, got %v", err)
+	}
+}
+
+func TestAssembleFASMInjectsELF64WithMockedCommand(t *testing.T) {
+	oldForce := ForceFASM
+	oldCheck := utils.CheckToolFunc
+	oldRun := runCommand
+	defer func() {
+		ForceFASM = oldForce
+		utils.CheckToolFunc = oldCheck
+		runCommand = oldRun
+	}()
+	ForceFASM = true
+	utils.CheckToolFunc = func(name string) error { return nil }
+	invoked := false
+	runCommand = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+		invoked = true
+		if name != "fasm" {
+			t.Fatalf("expected fasm command, got %s", name)
+		}
+		return "", nil
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "test.fasm", `
+section '.text' executable
+public _start
+_start:
+    mov eax, 60
+    xor edi, edi
+    syscall
+`)
+	obj := filepath.Join(dir, "test.o")
+	if err := Assemble(context.Background(), src, obj, false, false, "auto"); err != nil {
+		t.Fatal(err)
+	}
+	if !invoked {
+		t.Fatal("expected fasm to be invoked")
+	}
+}
+
+func TestAssembleCUsesZigWhenRequested(t *testing.T) {
+	oldTarget := Target
+	oldZigReq := zig.ZigRequested
+	oldZigEnabled := zig.ZigEnabled
+	oldCheck := utils.CheckToolFunc
+	oldRun := zig.RunCommand
+	defer func() {
+		Target = oldTarget
+		zig.ZigRequested = oldZigReq
+		zig.ZigEnabled = oldZigEnabled
+		utils.CheckToolFunc = oldCheck
+		zig.RunCommand = oldRun
+	}()
+	Target = "x86_64-linux-gnu"
+	zig.ZigRequested = true
+	utils.CheckToolFunc = func(name string) error { return nil }
+	called := false
+	zig.RunCommand = func(ctx context.Context, verbose bool, args ...string) (string, error) {
+		called = true
+		return "", nil
+	}
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "test.c", "int main() { return 0; }")
+	obj := filepath.Join(dir, "test.o")
+	if err := Assemble(context.Background(), src, obj, false, false, "auto"); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("expected zig compile to run")
 	}
 }
