@@ -26,6 +26,15 @@ var (
 	runCommand = utils.RunCommandSilent
 )
 
+func validateArgs(args []string) error {
+	for _, arg := range args {
+		if err := utils.ValidateCLIArg(arg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func isWasmTarget() bool {
 	return strings.Contains(Target, "wasm") || strings.Contains(Target, "wasm32")
 }
@@ -95,6 +104,14 @@ func cxxForTarget() string {
 }
 
 func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode string) error {
+	src = filepath.Clean(src)
+	obj = filepath.Clean(obj)
+	if err := utils.ValidateCLIPath(src); err != nil {
+		return fmt.Errorf("invalid source path: %w", err)
+	}
+	if err := utils.ValidateCLIPath(obj); err != nil {
+		return fmt.Errorf("invalid object path: %w", err)
+	}
 	if err := utils.CheckFileExists(src); err != nil {
 		return err
 	}
@@ -158,6 +175,9 @@ func assembleNASM(ctx context.Context, src, obj string, debug, verbose bool) err
 		args = append([]string{"-g"}, args...)
 	}
 	if len(AsmFlags) > 0 {
+		if err := validateArgs(AsmFlags); err != nil {
+			return err
+		}
 		args = append(args, AsmFlags...)
 	}
 	if verbose {
@@ -277,14 +297,18 @@ func assembleC(ctx context.Context, src, obj string, debug, verbose bool) error 
 	}
 	strictFlags := []string{"-Wall", "-Wextra", "-Werror", "-Wpedantic", "-Wshadow", "-Wconversion"}
 	args = append(args, strictFlags...)
-		if debug {
-			args = append(args, "-g")
-			if dir := utils.GetExecutionRoot(); dir != "" {
-				args = append(args, "-fdebug-prefix-map="+filepath.Clean(dir)+"=.")
-			}
+	if debug {
+		args = append(args, "-g")
+		if dir := utils.GetExecutionRoot(); dir != "" {
+			args = append(args, "-fdebug-prefix-map="+filepath.Clean(dir)+"=.")
 		}
+	}
 	if len(CcFlags) > 0 {
-		args = append(args, strings.Fields(CcFlags)...)
+		extraFlags := strings.Fields(CcFlags)
+		if err := validateArgs(extraFlags); err != nil {
+			return err
+		}
+		args = append(args, extraFlags...)
 	}
 	if verbose {
 		fmt.Printf("Running: %s %s\n", compiler, strings.Join(args, " "))
@@ -314,7 +338,11 @@ func assembleCpp(ctx context.Context, src, obj string, debug, verbose bool) erro
 		}
 	}
 	if len(CcFlags) > 0 {
-		args = append(args, strings.Fields(CcFlags)...)
+		extraFlags := strings.Fields(CcFlags)
+		if err := validateArgs(extraFlags); err != nil {
+			return err
+		}
+		args = append(args, extraFlags...)
 	}
 	if verbose {
 		fmt.Printf("Running: %s %s\n", compiler, strings.Join(args, " "))
