@@ -20,6 +20,7 @@ import (
 	"fz/internal/compilecommands"
 	"fz/internal/config"
 	"fz/internal/doctor"
+	fzvfs "fz/internal/fs"
 	"fz/internal/ignore"
 	initpkg "fz/internal/init"
 	"fz/internal/linker"
@@ -43,17 +44,53 @@ type BuildReport struct {
 	Error       string   `json:"error,omitempty"`
 }
 
-var version = "3.0.0 Gloria @latest"
+const (
+	versionCore     = "3.1.0-Aegis"
+	versionCodename = "Sovereign Engineering Update"
+)
 
-func printHelp() {
-	fmt.Fprintf(os.Stderr, `
-fz – assembly & C build tool
+var version = "3.1.0 Aegis @latest"
+
+func versionText() string {
+	var b strings.Builder
+	b.Grow(256)
+	b.WriteString("ForgeZero v")
+	b.WriteString(versionCore)
+	b.WriteString(" [")
+	b.WriteString(versionCodename)
+	b.WriteString("]\nBuild: ")
+	b.WriteString(time.Now().Format("2006-01-02"))
+	b.WriteString(" | OS: ")
+	b.WriteString(runtime.GOOS)
+	b.WriteByte('/')
+	b.WriteString(runtime.GOARCH)
+	b.WriteString(" | VFS: ")
+	b.WriteString(fzvfs.ImplName())
+	b.WriteString(" | Security: Aegis-Hardened\n")
+	b.WriteString("(c) Alex Voste. Binary Integrity: Verified.\n")
+	return b.String()
+}
+
+func outputVersion() {
+	fmt.Print(versionText())
+}
+
+func helpText() string {
+	var b strings.Builder
+	b.Grow(4096)
+	b.WriteString(`
+fz – assembly & C build tool (ForgeZero `)
+	b.WriteString(versionCore)
+	b.WriteString(`)
 
 Usage:
   fz [options] (-asm <file> | -cc <file> | -dir <dir> | (no args with config))
   fz audit [options]
   fz sbom [options]
   fz doctor [options]
+  fz verify [options]
+  fz bench [options]
+  fz pm <subcommand> [args]
 
 Options:
   -asm <file>            Assembler source (.asm, .s, .S, .fasm)
@@ -99,10 +136,34 @@ Examples:
   fz -asm boot.asm -format bin -out boot.bin
   fz -target arm-linux-gnueabihf -cc test.c -out test_arm
   fz sbom -out sbom.json
+  fz doctor -root .
+  fz doctor -json
+  fz verify --update
+  fz bench -dir ./src -json
 
 Supported extensions: .asm, .s, .S, .fasm, .c, .cpp, .cc, .cxx
-`)
-	fmt.Fprintf(os.Stderr, `
+
+Aegis Security & Integrity (v3.1.0):
+  doctor [options]        Self-audit: toolchain reachability, R/W permissions, platform
+                          -root <dir>   project root (default: cwd)
+                          -json         machine-readable report; exit 1 if unhealthy
+  audit [options]         SAST scan: secrets, license risks, vendor keyword matches
+                          -config -vendor -verbose -json
+  sbom [options]          Supply Chain (SBOM): CycloneDX JSON, BLAKE3 per component
+                          -config -vendor -target -out <path> -json
+  verify [options]        Source tree BLAKE3 manifest integrity
+                          -root <dir> -manifest <file> -update -json
+  bench [options]         Nanosecond build phase profiler
+                          -asm|-cc|-dir -out -mode -target -toolchain -n -json -verbose
+
+Aegis technical (internal architecture):
+  FileSystem VFS          internal/fs: Unix or Windows backend via build tags
+                          OpenVerified: Lstat + SameFile TOCTOU hardening on reads
+                          SecureWriteFile: temp 0600, close, atomic rename
+  RunCommand              All subprocesses (git, ar, zig, fasm, gcc, ld, nasm, …)
+                          exec.LookPath resolution, ValidateCLIArg per token,
+                          deterministicEnv (LC_ALL=C, TZ=UTC, SOURCE_DATE_EPOCH)
+
 Package Manager (fz pm):
   add <repo> [version]    Clone and add package to project
   remove <name>           Remove installed package
@@ -112,6 +173,11 @@ Package Manager (fz pm):
   search <keyword>        Search catalog
   install <name>          Install package from catalog (with hash verification)
 `)
+	return b.String()
+}
+
+func printHelp() {
+	fmt.Fprint(os.Stderr, helpText())
 }
 
 func auditMain(args []string) {
@@ -457,10 +523,6 @@ func benchMain(args []string) {
 	fmt.Print(benchTimer.Report())
 }
 
-func outputVersion() {
-	fmt.Println("ForgeZero version " + version)
-}
-
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	if len(os.Args) >= 2 {
@@ -759,7 +821,7 @@ func main() {
 			report := BuildReport{Status: "info", ExitCode: 0, DurationMs: 0, Binary: version}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
-			fmt.Printf("fz version %s\n", version)
+			outputVersion()
 		}
 		os.Exit(0)
 	}
