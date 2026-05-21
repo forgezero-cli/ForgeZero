@@ -62,10 +62,13 @@ You can list files/directories to ignore (like .gitignore). Syntax: glob pattern
 MIT
 
 ---
-Created with ForgeZero – https://github.com/forgezero-cli/ForgeZero
 `
 
+
+
+
 const yamlTemplate = `# fz configuration file
+
 # Copyright (c) 2026 ForgeZero
 
 # Source directories to scan recursively (optional, default: current directory)

@@ -11,7 +11,7 @@ func BenchmarkHashFile100MB(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer os.Remove(tmpFile.Name())
-	data := make([]byte, 100*1024*1024) // 100 MB
+	data := make([]byte, 100*1024*1024)
 	for i := range data {
 		data[i] = byte(i % 256)
 	}

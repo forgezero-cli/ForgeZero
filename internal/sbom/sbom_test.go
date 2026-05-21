@@ -65,7 +65,7 @@ func TestGenerateSBOMVendorSymlinkInsideRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create real directory and a symlink to it under vendor/.
+
 	realDir := filepath.Join(tmp, "real", "libreal")
 	if err := os.MkdirAll(realDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestGenerateSBOMVendorSymlinkOutsideRootSecurityWarningAndSkip(t *testing.T
 		t.Fatal(err)
 	}
 
-	// Outside root target.
+
 	outside := filepath.Join(t.TempDir(), "outside", "libout")
 	if err := os.MkdirAll(outside, 0o755); err != nil {
 		t.Fatal(err)

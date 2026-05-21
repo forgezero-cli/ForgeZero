@@ -45,7 +45,6 @@ func TestGetLatestVersionNotFound(t *testing.T) {
 }
 
 func TestAssetName(t *testing.T) {
-	// Just ensure it doesn't panic
 	name := assetName()
 	if name == "" {
 		t.Error("asset name is empty")

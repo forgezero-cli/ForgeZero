@@ -52,14 +52,13 @@ func TestUpdateConfig(t *testing.T) {
 	os.Chdir(tmpDir)
 	defer os.Chdir(oldWd)
 
-	// Write initial .fz.yaml
 	initialYAML := "source_dirs: []\noutput: test\n"
 	if err := os.WriteFile(".fz.yaml", []byte(initialYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	pkgPath := "vendor/github.com/user/lib"
-	// Add
+
 	if err := updateConfig(pkgPath, true); err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +69,7 @@ func TestUpdateConfig(t *testing.T) {
 	if !strings.Contains(string(data), pkgPath) {
 		t.Errorf("config does not contain %s", pkgPath)
 	}
-	// Remove
+
 	if err := updateConfig(pkgPath, false); err != nil {
 		t.Fatal(err)
 	}
@@ -159,12 +158,12 @@ func TestList(t *testing.T) {
 	}()
 	require.NoError(t, os.Chdir(tmpDir))
 
-	// Capture stdout
+
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	// No packages
+
 	List()
 	w.Close()
 	os.Stdout = oldStdout

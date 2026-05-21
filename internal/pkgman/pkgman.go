@@ -69,7 +69,7 @@ func Add(ctx context.Context, pkgURL, version string) error {
 }
 
 func Remove(ctx context.Context, pkgURL string) error {
-	_ = ctx // consistency, not used yet
+	_ = ctx
 	repo, _, err := parsePkgURL(pkgURL)
 	if err == nil {
 		dest := filepath.Join(vendorDir, repo)
@@ -317,7 +317,7 @@ func InstallFromCatalog(ctx context.Context, pkgName string) error {
 		if err != nil {
 			fmt.Printf("Warning: failed to compute hash for %s: %v\n", pkgName, err)
 		} else if actualHash != pkg.Hash {
-			_ = Remove(ctx, pkgName) // attempt cleanup
+			_ = Remove(ctx, pkgName)
 			return fmt.Errorf("hash mismatch for package %s (expected %s, got %s)", pkgName, pkg.Hash, actualHash)
 		} else {
 			fmt.Printf("Hash verification passed for %s\n", pkgName)
