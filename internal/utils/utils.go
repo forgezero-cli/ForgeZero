@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/subtle"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/zeebo/blake3"
 )
@@ -23,8 +23,33 @@ import (
 var (
 	bufferPool     = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 	copyBufferPool = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
+	hasherPool     = sync.Pool{New: func() any { return blake3.New() }}
 	hashSep        = []byte{0}
 )
+
+var (
+	ErrHashOpen  = errors.New("hash: open")
+	ErrHashMmap  = errors.New("hash: mmap")
+	ErrHashSize  = errors.New("hash: size")
+	ErrHashRead  = errors.New("hash: read")
+) 
+
+var globalScratchPad = func() []byte {
+	b := make([]byte, 1024*1024+64)
+	base := uintptr(unsafe.Pointer(&b[0]))
+	off := int((64 - (base % 64)) % 64)
+	return b[off:]
+}()
+
+func alignedSlice(n int) []byte {
+	if n <= len(globalScratchPad) {
+		return globalScratchPad[:n]
+	}
+	b := make([]byte, n+64)
+	base := uintptr(unsafe.Pointer(&b[0]))
+	off := int((64 - (base % 64)) % 64)
+	return b[off:off+n]
+}
 
 var (
 	executionRoot atomic.Value
@@ -65,6 +90,21 @@ func constantTimeEqual(a, b string) bool {
 	}
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
+
+func blake3HexDigestToString(d [32]byte) string {
+	var out [64]byte
+	const hextable = "0123456789abcdef"
+	for i := 0; i < 32; i++ {
+		b := d[i]
+		out[i*2] = hextable[b>>4]
+		out[i*2+1] = hextable[b&0x0f]
+	}
+	return *(*string)(unsafe.Pointer(&struct {
+		data *[64]byte
+		len  int
+	}{&out, 64}))
+}
+
 
 func checkToolInternal(name string) error {
 	path, err := lookExecutable(name)
@@ -399,31 +439,50 @@ func CopyFile(src, dst string) error {
 }
 
 func hashStream(r io.Reader) (string, error) {
-	hasher := blake3.New()
+	hasher := hasherPool.Get().(*blake3.Hasher)
 	buf := copyBufferPool.Get().([]byte)
 	defer func() {
+		hasher.Reset()
+		hasherPool.Put(hasher)
 		ZeroizeBytes(buf)
 		copyBufferPool.Put(buf)
 	}()
 	if _, err := io.CopyBuffer(hasher, r, buf); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(hasher.Sum(nil)), nil
+	digest := hasher.Digest()
+	var out [32]byte
+	digest.Read(out[:])
+	return blake3HexDigestToString(out), nil
 }
 
 func HashFile(path string) (string, error) {
 	resolved, err := ResolveSecurePath(path)
 	if err != nil {
-		return "", fmt.Errorf("hash %s: %w", path, err)
+		return "", ErrHashOpen
 	}
 	f, err := openVerified(resolved)
 	if err != nil {
-		return "", fmt.Errorf("hash open %s: %w", path, err)
+		return "", ErrHashOpen
 	}
 	defer f.Close()
+	
+	if of, ok := f.(interface{ Stat() (os.FileInfo, error); Fd() uintptr }); ok {
+		fi, err := of.Stat()
+		if err == nil && fi.Size() > 0 {
+			size := fi.Size()
+			data, merr := mmapFile(getFileDescriptor(of), size)
+			if merr == nil {
+				sum := blake3.Sum256(data)
+				_ = unmapFile(data)
+				return blake3HexDigestToString(sum), nil
+			}
+		}
+	}
+	
 	h, err := hashStream(f)
 	if err != nil {
-		return "", fmt.Errorf("hash read %s: %w", path, err)
+		return "", ErrHashRead
 	}
 	return h, nil
 }
@@ -436,37 +495,16 @@ func HashDir(root string) (string, error) {
 	return HashDirWithRoot(rootAbs, rootAbs)
 }
 
-func symlinkAllowed(rootEval, path, targetAbs string) (bool, error) {
-	linkTarget, err := fileSystem().Readlink(path)
-	if err != nil {
-		return false, fmt.Errorf("cannot read symlink %s: %w", path, err)
-	}
-	if !filepath.IsAbs(linkTarget) {
-		targetAbs = filepath.Clean(filepath.Join(filepath.Dir(path), linkTarget))
-	} else {
-		targetAbs = filepath.Clean(linkTarget)
-	}
-	targetEval, err := fileSystem().EvalSymlinks(targetAbs)
-	if err != nil {
-		return false, fmt.Errorf("cannot resolve symlink %s target %s: %w", path, targetAbs, err)
-	}
-	rootClean := filepath.Clean(rootEval)
-	if targetEval == rootClean || strings.HasPrefix(targetEval, rootClean+string(os.PathSeparator)) {
-		return true, nil
-	}
-	fmt.Fprintf(os.Stderr, "SECURITY WARNING: skipping symlink %s -> %s outside project root %s\n", path, targetAbs, rootClean)
-	return false, nil
-}
-
 func HashDirWithRoot(rootAbs, dir string) (string, error) {
 	dirAbs, err := resolveOrAbs(dir)
 	if err != nil {
-		return "", fmt.Errorf("hash dir abs %s: %w", dir, err)
+		return "", ErrHashRead
 	}
-	rootEval, err := ResolveSecurePath(rootAbs)
-	if err != nil {
+	rootEval, _ := ResolveSecurePath(rootAbs)
+	if rootEval == "" {
 		rootEval = filepath.Clean(rootAbs)
 	}
+	
 	var files []string
 	walkErr := filepath.Walk(dirAbs, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -506,43 +544,57 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 			return err
 		}
 		if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-			return fmt.Errorf("invalid path outside root: %s", path)
+			return ErrHashRead
 		}
 		files = append(files, rel)
 		return nil
 	})
 	if walkErr != nil {
-		return "", walkErr
+		return "", ErrHashRead
 	}
 	sort.Strings(files)
-	hasher := blake3.New()
-	buf := copyBufferPool.Get().([]byte)
+	
+	hasher := hasherPool.Get().(*blake3.Hasher)
 	defer func() {
-		ZeroizeBytes(buf)
-		copyBufferPool.Put(buf)
+		hasher.Reset()
+		hasherPool.Put(hasher)
 	}()
+	
+	buf := alignedSlice(32 * 1024)
 	for _, rel := range files {
-		if _, err := hasher.Write([]byte(rel)); err != nil {
-			return "", err
-		}
-		if _, err := hasher.Write(hashSep); err != nil {
-			return "", err
-		}
+		hasher.Write([]byte(rel))
+		hasher.Write(hashSep)
 		fullPath := filepath.Join(dirAbs, rel)
+		
 		f, err := openVerified(fullPath)
 		if err != nil {
-			return "", fmt.Errorf("hash %s: %w", fullPath, err)
+			return "", ErrHashOpen
 		}
-		if _, err := io.CopyBuffer(hasher, f, buf); err != nil {
-			f.Close()
-			return "", fmt.Errorf("hash read %s: %w", fullPath, err)
+		
+		mmapped := false
+		if of, ok := f.(interface{ Stat() (os.FileInfo, error); Fd() uintptr }); ok {
+			fi, _ := of.Stat()
+			if fi != nil && fi.Size() > 0 {
+				size := fi.Size()
+				data, merr := mmapFile(getFileDescriptor(of), size)
+				if merr == nil {
+					hasher.Write(data)
+					_ = unmapFile(data)
+					mmapped = true
+				}
+			}
 		}
-		if err := f.Close(); err != nil {
-			return "", err
+		
+		if !mmapped {
+			io.CopyBuffer(hasher, f, buf)
 		}
-		if _, err := hasher.Write(hashSep); err != nil {
-			return "", err
-		}
+		
+		f.Close()
+		hasher.Write(hashSep)
 	}
-	return hex.EncodeToString(hasher.Sum(nil)), nil
+	
+	digest := hasher.Digest()
+	var out [32]byte
+	digest.Read(out[:])
+	return blake3HexDigestToString(out), nil
 }
