@@ -2,10 +2,12 @@ package updater
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -129,5 +131,46 @@ func TestUpdateSelfPermissionDenied(t *testing.T) {
 	err := UpdateSelf("0.0.0")
 	if err == nil {
 		t.Error("expected permission error when writing to read-only file")
+	}
+}
+
+func TestUpdateSelfDownloadsNewVersion(t *testing.T) {
+	oldHttpGet := httpGet
+	oldExec := executablePathFunc
+	oldURL := apiURL
+	defer func() {
+		httpGet = oldHttpGet
+		executablePathFunc = oldExec
+		apiURL = oldURL
+	}()
+	apiURL = "https://api.github.com/repos/forgezero-cli/ForgeZero/releases/latest"
+	tmpDir := t.TempDir()
+	fakeExe := filepath.Join(tmpDir, "fz")
+	if err := os.WriteFile(fakeExe, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	executablePathFunc = func() (string, error) { return fakeExe, nil }
+	httpGet = func(url string) (*http.Response, error) {
+		if strings.Contains(url, "releases/latest") {
+			body := `{"tag_name":"v0.1.0"}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		}
+		if strings.Contains(url, "releases/download") {
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("new content")), Header: make(http.Header)}, nil
+		}
+		return nil, nil
+	}
+	if err := UpdateSelf("0.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(fakeExe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "new content" {
+		t.Fatalf("expected new content, got %q", string(data))
+	}
+	if _, err := os.Stat(fakeExe + ".old"); err != nil {
+		t.Fatal(err)
 	}
 }

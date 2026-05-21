@@ -13,6 +13,7 @@ import (
 var (
 	apiURL             = "https://api.github.com/repos/forgezero-cli/ForgeZero/releases/latest"
 	executablePathFunc = os.Executable
+	httpGet            = http.Get
 )
 
 type Release struct {
@@ -24,7 +25,7 @@ type Release struct {
 }
 
 func GetLatestVersion() (string, error) {
-	resp, err := http.Get(apiURL)
+	resp, err := httpGet(apiURL)
 	if err != nil {
 		return "", err
 	}
@@ -61,7 +62,7 @@ func UpdateSelf(currentVersion string) error {
 
 	asset := assetName()
 	url := fmt.Sprintf("https://github.com/forgezero-cli/ForgeZero/releases/download/v%s/%s", latest, asset)
-	resp, err := http.Get(url)
+	resp, err := httpGet(url)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("could not download binary: %v", err)
 	}
