@@ -1,5 +1,3 @@
-// Copyright (c) 2026 Alex Voste. MIT License.
-// PROPERTY OF FORGEZERO CORE TEAM.
 package main
 
 import (
@@ -1039,6 +1037,9 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
 	defer cancel()
+	if cfg != nil {
+		ctx = utils.ContextWithConfig(ctx, cfg)
+	}
 
 	build := func() error {
 		if srcPath != "" {
