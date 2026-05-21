@@ -36,13 +36,9 @@ func LoadManifest(path string) (*Manifest, error) {
 	if err := utils.ValidateCLIPath(path); err != nil {
 		return nil, err
 	}
-	resolved, err := utils.ResolveSecurePath(path)
+	data, err := utils.ReadFileSecure(path)
 	if err != nil {
 		return nil, fmt.Errorf("load manifest %s: %w", path, err)
-	}
-	data, err := os.ReadFile(resolved)
-	if err != nil {
-		return nil, fmt.Errorf("read manifest %s: %w", path, err)
 	}
 	var manifest Manifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
@@ -93,23 +89,21 @@ func VerifyRoot(root, manifestPath string) (*VerifyResult, error) {
 	for _, entry := range entries {
 		current[entry.Path] = entry.Hash
 	}
-	recorded := map[string]string{}
+	var missing, modified, extra []string
 	for _, entry := range manifest.Entries {
-		recorded[entry.Path] = entry.Hash
-	}
-	var missing []string
-	var modified []string
-	for path, hash := range recorded {
-		currentHash, ok := current[path]
+		currentHash, ok := current[entry.Path]
 		if !ok {
-			missing = append(missing, path)
+			missing = append(missing, entry.Path)
 			continue
 		}
-		if currentHash != hash {
-			modified = append(modified, path)
+		if !utils.ConstantTimeEqual(currentHash, entry.Hash) {
+			modified = append(modified, entry.Path)
 		}
 	}
-	var extra []string
+	recorded := make(map[string]struct{}, len(manifest.Entries))
+	for _, entry := range manifest.Entries {
+		recorded[entry.Path] = struct{}{}
+	}
 	for path := range current {
 		if _, ok := recorded[path]; !ok {
 			extra = append(extra, path)
@@ -131,7 +125,7 @@ func BuildManifest(root string) ([]ManifestEntry, error) {
 		return nil, err
 	}
 	entries := make([]ManifestEntry, len(files))
-	errCh := make(chan error, 1)
+	errCh := make(chan error, len(files))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, runtime.NumCPU())
 	for i, rel := range files {
@@ -140,6 +134,14 @@ func BuildManifest(root string) ([]ManifestEntry, error) {
 		go func(index int, fileRel string) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			defer func() {
+				if r := recover(); r != nil {
+					select {
+					case errCh <- fmt.Errorf("panic hashing %s: %v", fileRel, r):
+					default:
+					}
+				}
+			}()
 			fullPath := filepath.Join(root, fileRel)
 			hash, err := utils.HashFile(fullPath)
 			if err != nil {
@@ -153,10 +155,11 @@ func BuildManifest(root string) ([]ManifestEntry, error) {
 		}(i, rel)
 	}
 	wg.Wait()
-	select {
-	case err := <-errCh:
-		return nil, err
-	default:
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return nil, err
+		}
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Path < entries[j].Path
