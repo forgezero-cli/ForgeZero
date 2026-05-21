@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -107,11 +106,11 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 
 	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
 	cacheDir := filepath.Join(filepath.Dir(outBin), ".fz_cache")
-	if err := os.MkdirAll(objDir, 0o755); err != nil {
+	if err := utils.SecureMkdirAll(filepath.Join(objDir, ".keep")); err != nil {
 		return nil, fmt.Errorf("cannot create object temp dir: %w", err)
 	}
 	if !noCache {
-		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		if err := utils.SecureMkdirAll(filepath.Join(cacheDir, ".keep")); err != nil {
 			return nil, fmt.Errorf("cannot create cache dir: %w", err)
 		}
 	}
@@ -151,7 +150,7 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 		srcExt := strings.TrimPrefix(ext, ".")
 		objName := baseNoExt + "_" + srcExt + ".o"
 		objPath := filepath.Join(objDir, objName)
-		if err := os.MkdirAll(filepath.Dir(objPath), 0o755); err != nil {
+		if err := utils.SecureMkdirAll(objPath); err != nil {
 			return nil, fmt.Errorf("cannot create subdir for object: %w", err)
 		}
 		pairs[i] = pair{src: src, obj: objPath}
@@ -240,7 +239,7 @@ outer:
 		if verbose {
 			fmt.Printf("Creating static library %s from %d object files\n", outBin, len(objFiles))
 		}
-		if err := createArchive(objFiles, outBin, verbose); err != nil {
+		if err := createArchive(ctx, objFiles, outBin, verbose); err != nil {
 			return nil, fmt.Errorf("archive creation failed: %w", err)
 		}
 	} else {
@@ -287,15 +286,13 @@ func storeCache(src, obj, cacheDir string, debug, verbose bool, mode string) err
 	return utils.CopyFile(obj, cacheObj)
 }
 
-func createArchive(objFiles []string, outBin string, verbose bool) error {
+func createArchive(ctx context.Context, objFiles []string, outBin string, verbose bool) error {
 	args := append([]string{"rcs", outBin}, objFiles...)
 	if verbose {
 		fmt.Printf("Running: ar %s\n", strings.Join(args, " "))
 	}
-	cmd := exec.Command("ar", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	_, err := utils.RunCommand(ctx, verbose, os.Stdout, os.Stderr, "ar", args...)
+	return err
 }
 
 func CleanDir(dir string, verbose bool) error {
