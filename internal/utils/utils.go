@@ -80,8 +80,13 @@ type mutexBufferWriter struct {
 
 func (w *mutexBufferWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.buf.Write(p)
+	n, err := w.buf.Write(p)
+	w.mu.Unlock()
+	return n, err
+}
+
+func bytesToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
 }
 
 func constantTimeEqual(a, b string) bool {
@@ -357,7 +362,6 @@ func RunCommand(ctx context.Context, verbose bool, stdout, stderr io.Writer, nam
 	}
 	buf := bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
-	defer bufferPool.Put(buf)
 	mbw := &mutexBufferWriter{buf: buf}
 	if stdout == nil {
 		stdout = mbw
@@ -373,10 +377,12 @@ func RunCommand(ctx context.Context, verbose bool, stdout, stderr io.Writer, nam
 		cmd.Stderr = stderr
 	}
 	runErr := cmd.Run()
+	out := ""
 	if stdout == mbw {
-		return buf.String(), runErr
+		out = buf.String()
 	}
-	return "", runErr
+	bufferPool.Put(buf)
+	return out, runErr
 }
 
 func RunCommandSilent(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
@@ -404,55 +410,59 @@ func CopyFile(src, dst string) error {
 	if err != nil {
 		return fmt.Errorf("open src %s: %w", src, err)
 	}
-	defer in.Close()
 	tmp, err := fileSystem().CreateTemp(filepath.Dir(dstResolved), "fz_copy_*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp for %s: %w", dst, err)
 	}
 	tmpName := tmp.Name()
-	cleanup := true
-	defer func() {
-		tmp.Close()
-		if cleanup {
-			_ = fileSystem().Remove(tmpName)
-		}
-	}()
 	if err := fileSystem().Chmod(tmpName, FilePerm); err != nil {
+		tmp.Close()
+		_ = fileSystem().Remove(tmpName)
 		return fmt.Errorf("chmod temp %s: %w", tmpName, err)
 	}
 	buf := copyBufferPool.Get().([]byte)
-	defer func() {
+	if _, err := io.CopyBuffer(tmp, in, buf); err != nil {
 		ZeroizeBytes(buf)
 		copyBufferPool.Put(buf)
-	}()
-	if _, err := io.CopyBuffer(tmp, in, buf); err != nil {
+		in.Close()
+		tmp.Close()
+		_ = fileSystem().Remove(tmpName)
 		return fmt.Errorf("copy data to %s: %w", tmpName, err)
 	}
+	ZeroizeBytes(buf)
+	copyBufferPool.Put(buf)
+	if err := in.Close(); err != nil {
+		tmp.Close()
+		_ = fileSystem().Remove(tmpName)
+		return fmt.Errorf("close src %s: %w", srcResolved, err)
+	}
 	if err := tmp.Close(); err != nil {
+		_ = fileSystem().Remove(tmpName)
 		return fmt.Errorf("close temp %s: %w", tmpName, err)
 	}
 	if err := renameResolved(tmpName, dstResolved); err != nil {
 		return fmt.Errorf("rename %s to %s: %w", tmpName, dstResolved, err)
 	}
-	cleanup = false
 	return fileSystem().Chmod(dstResolved, FilePerm)
 }
 
 func hashStream(r io.Reader) (string, error) {
 	hasher := hasherPool.Get().(*blake3.Hasher)
 	buf := copyBufferPool.Get().([]byte)
-	defer func() {
+	if _, err := io.CopyBuffer(hasher, r, buf); err != nil {
 		hasher.Reset()
 		hasherPool.Put(hasher)
 		ZeroizeBytes(buf)
 		copyBufferPool.Put(buf)
-	}()
-	if _, err := io.CopyBuffer(hasher, r, buf); err != nil {
 		return "", err
 	}
 	digest := hasher.Digest()
 	var out [32]byte
 	digest.Read(out[:])
+	hasher.Reset()
+	hasherPool.Put(hasher)
+	ZeroizeBytes(buf)
+	copyBufferPool.Put(buf)
 	return blake3HexDigestToString(out), nil
 }
 
@@ -465,22 +475,29 @@ func HashFile(path string) (string, error) {
 	if err != nil {
 		return "", ErrHashOpen
 	}
-	defer f.Close()
-	
+	var result string
 	if of, ok := f.(interface{ Stat() (os.FileInfo, error); Fd() uintptr }); ok {
 		fi, err := of.Stat()
-		if err == nil && fi.Size() > 0 {
-			size := fi.Size()
-			data, merr := mmapFile(getFileDescriptor(of), size)
-			if merr == nil {
-				sum := blake3.Sum256(data)
-				_ = unmapFile(data)
-				return blake3HexDigestToString(sum), nil
+		if err == nil {
+			if fi.Size() == 0 {
+				result = blake3HexDigestToString(blake3.Sum256(nil))
+			} else {
+				size := fi.Size()
+				data, merr := mmapFile(getFileDescriptor(of), size)
+				if merr == nil {
+					madviseNormal(data)
+					result = blake3HexDigestToString(blake3.Sum256(data))
+					_ = unmapFile(data)
+				}
 			}
 		}
 	}
-	
+	if result != "" {
+		f.Close()
+		return result, nil
+	}
 	h, err := hashStream(f)
+	f.Close()
 	if err != nil {
 		return "", ErrHashRead
 	}
@@ -504,7 +521,6 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 	if rootEval == "" {
 		rootEval = filepath.Clean(rootAbs)
 	}
-	
 	var files []string
 	walkErr := filepath.Walk(dirAbs, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -553,24 +569,18 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 		return "", ErrHashRead
 	}
 	sort.Strings(files)
-	
 	hasher := hasherPool.Get().(*blake3.Hasher)
-	defer func() {
-		hasher.Reset()
-		hasherPool.Put(hasher)
-	}()
-	
 	buf := alignedSlice(32 * 1024)
 	for _, rel := range files {
 		hasher.Write([]byte(rel))
 		hasher.Write(hashSep)
-		fullPath := filepath.Join(dirAbs, rel)
-		
+		fullPath := dirAbs + string(os.PathSeparator) + rel
 		f, err := openVerified(fullPath)
 		if err != nil {
+			hasher.Reset()
+			hasherPool.Put(hasher)
 			return "", ErrHashOpen
 		}
-		
 		mmapped := false
 		if of, ok := f.(interface{ Stat() (os.FileInfo, error); Fd() uintptr }); ok {
 			fi, _ := of.Stat()
@@ -578,23 +588,23 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 				size := fi.Size()
 				data, merr := mmapFile(getFileDescriptor(of), size)
 				if merr == nil {
+					madviseNormal(data)
 					hasher.Write(data)
 					_ = unmapFile(data)
 					mmapped = true
 				}
 			}
 		}
-		
 		if !mmapped {
 			io.CopyBuffer(hasher, f, buf)
 		}
-		
 		f.Close()
 		hasher.Write(hashSep)
 	}
-	
 	digest := hasher.Digest()
 	var out [32]byte
 	digest.Read(out[:])
+	hasher.Reset()
+	hasherPool.Put(hasher)
 	return blake3HexDigestToString(out), nil
 }
