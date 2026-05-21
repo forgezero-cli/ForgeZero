@@ -1,0 +1,106 @@
+package sbom
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"fz/internal/config"
+	"fz/internal/utils"
+)
+
+func TestGenerateMalformedVendorWalk(t *testing.T) {
+	root := t.TempDir()
+	vendor := filepath.Join(root, "vendor")
+	os.Mkdir(vendor, 0o000)
+	defer os.Chmod(vendor, 0o755)
+	_, err := Generate(root, "vendor", "1", nil, "")
+	if err == nil {
+		t.Fatal("expected walk error")
+	}
+}
+
+func TestMarshalRoundTrip(t *testing.T) {
+	sb := &SBOM{Version: 1, Components: []Component{{Name: "c", Version: "1"}}}
+	data, err := Marshal(sb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded SBOM
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestScanVendorComponentsWithGit(t *testing.T) {
+	root := t.TempDir()
+	vendor := filepath.Join(root, "vendor", "github.com", "u", "lib")
+	os.MkdirAll(filepath.Join(vendor, ".git"), 0o755)
+	os.WriteFile(filepath.Join(vendor, "README"), []byte("lib"), 0o644)
+	comps, err := scanVendorComponents(root, "vendor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(comps) == 0 {
+		t.Fatal("expected component")
+	}
+}
+
+func TestDetectToolchainVersions(t *testing.T) {
+	vers := detectToolchainVersions("x86_64-linux-gnu")
+	if vers == nil {
+		t.Fatal("nil versions")
+	}
+}
+
+func TestQueryToolVersionUnknown(t *testing.T) {
+	v, ok := queryToolVersion("definitely-not-a-real-tool-xyz", "--version")
+	if ok || v != "" {
+		t.Fatalf("got %q ok=%v", v, ok)
+	}
+}
+
+func TestGenerateWithVendorHash(t *testing.T) {
+	root := t.TempDir()
+	vendor := filepath.Join(root, "vendor", "pkg")
+	os.MkdirAll(vendor, utils.DirPerm)
+	os.WriteFile(filepath.Join(vendor, "data.txt"), []byte("payload"), utils.FilePerm)
+	sb, err := Generate(root, "vendor", "3.1", nil, "x86_64-linux-gnu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sb.Components) == 0 {
+		t.Fatal("expected components")
+	}
+	if len(sb.Components[0].Hashes) == 0 {
+		t.Fatal("expected hash")
+	}
+}
+
+func TestScanVendorComponentsContextCancel(t *testing.T) {
+	root := t.TempDir()
+	vendor := filepath.Join(root, "vendor", "deep", "nested")
+	os.MkdirAll(vendor, 0o755)
+	_, err := scanVendorComponents(root, "vendor")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGenerateJSONIncludesTools(t *testing.T) {
+	root := t.TempDir()
+	cfg := &config.Config{ToolChecksums: map[string]string{"nasm": "dead"}}
+	sb, err := Generate(root, "vendor", "1", cfg, "wasm32-wasi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := Marshal(sb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "nasm") {
+		t.Fatal(string(data))
+	}
+}
