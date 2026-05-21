@@ -7,12 +7,12 @@ import (
 )
 
 var (
-	ErrDiskFull      = errors.New("disk full")
-	ErrPermission    = errors.New("permission denied")
-	ErrTimeout       = errors.New("i/o timeout")
-	ErrInterrupted   = errors.New("interrupted system call")
-	ErrSymlink       = errors.New("symlink not permitted")
-	ErrPathChanged   = errors.New("path changed during open")
+	ErrDiskFull    = errors.New("disk full")
+	ErrPermission  = errors.New("permission denied")
+	ErrTimeout     = errors.New("i/o timeout")
+	ErrInterrupted = errors.New("interrupted system call")
+	ErrSymlink     = errors.New("symlink not permitted")
+	ErrPathChanged = errors.New("path changed during open")
 )
 
 type FileSystem interface {
@@ -33,5 +33,3 @@ type FileSystem interface {
 	EvalSymlinks(path string) (string, error)
 	SameFile(a, b os.FileInfo) bool
 }
-
-var Default FileSystem = Unix{}
