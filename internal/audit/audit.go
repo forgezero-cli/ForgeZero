@@ -336,6 +336,12 @@ func scanVendorLicenses(ctx context.Context, vendorPath string, cfg *config.Conf
 	if vendorPath == "" {
 		return nil
 	}
+	if _, err := os.Stat(vendorPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
 	return filepath.WalkDir(vendorPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
