@@ -2,13 +2,15 @@ package builder
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
-
+	"sync/atomic"
+	"unsafe"
 
 	"fz/internal/assembler"
 	"fz/internal/config"
@@ -23,6 +25,34 @@ type BuildResult struct {
 	CacheDir    string
 }
 
+type pathBuffer struct {
+	buf [2048]byte
+	n   int
+}
+
+func (p *pathBuffer) appendString(s string) {
+	copy(p.buf[p.n:], s)
+	p.n += len(s)
+}
+
+func (p *pathBuffer) appendByte(b byte) {
+	p.buf[p.n] = b
+	p.n++
+}
+
+func (p *pathBuffer) String() string {
+	return unsafe.String((*byte)(unsafe.Pointer(&p.buf[0])), p.n)
+}
+
+type pair struct {
+	src string
+	obj string
+}
+
+type resultError struct {
+	err error
+}
+
 func matchExclude(path string, excludes []string) bool {
 	for _, pattern := range excludes {
 		if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
@@ -33,6 +63,40 @@ func matchExclude(path string, excludes []string) bool {
 		}
 	}
 	return false
+}
+
+func joinPath(base, name string) string {
+	var pb pathBuffer
+	pb.appendString(base)
+	if len(base) > 0 && base[len(base)-1] != byte(os.PathSeparator) {
+		pb.appendByte(byte(os.PathSeparator))
+	}
+	pb.appendString(name)
+	return pb.String()
+}
+
+func buildCacheKey(hash string, debug bool, mode string) string {
+	var pb pathBuffer
+	pb.appendString(hash)
+	pb.appendByte('_')
+	if debug {
+		pb.appendByte('1')
+	} else {
+		pb.appendByte('0')
+	}
+	pb.appendByte('_')
+	pb.appendString(mode)
+	return pb.String()
+}
+
+func cacheEntryPath(dir, key string) string {
+	var pb pathBuffer
+	pb.appendString(dir)
+	if len(dir) > 0 && dir[len(dir)-1] != byte(os.PathSeparator) {
+		pb.appendByte(byte(os.PathSeparator))
+	}
+	pb.appendString(key)
+	return pb.String()
 }
 
 func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int, buildType string) (*BuildResult, error) {
@@ -105,42 +169,25 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 	}
 	sort.Strings(srcFiles)
 
-	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
-	cacheDir := filepath.Join(filepath.Dir(outBin), ".fz_cache")
-	if err := utils.SecureMkdirAll(filepath.Join(objDir, ".keep")); err != nil {
+	objDir := joinPath(filepath.Dir(outBin), ".fz_objs")
+	cacheDir := joinPath(filepath.Dir(outBin), ".fz_cache")
+	if err := utils.SecureMkdirAll(joinPath(objDir, ".keep")); err != nil {
 		return nil, fmt.Errorf("cannot create object temp dir: %w", err)
 	}
 	if !noCache {
-		if err := utils.SecureMkdirAll(filepath.Join(cacheDir, ".keep")); err != nil {
+		if err := utils.SecureMkdirAll(joinPath(cacheDir, ".keep")); err != nil {
 			return nil, fmt.Errorf("cannot create cache dir: %w", err)
 		}
 	}
-	if !keepObj {
-		defer func() {
-			os.RemoveAll(objDir)
-		}()
-	}
+	cleanupObjDir := !keepObj
 
-type pair struct {
-	src string
-	obj string
-}
 	pairs := make([]pair, len(srcFiles))
-	_ = pairs
-	objFilesSet := make(map[string]bool)
-
-
-
-	srcRoot := ""
-	if len(dirs) > 0 {
-		srcRoot = dirs[0]
-	}
 	for i, src := range srcFiles {
 		srcAbs, err := filepath.Abs(src)
 		if err != nil {
 			return nil, err
 		}
-		if err := utils.EnsureInsideRoot(srcRoot, srcAbs); err != nil {
+		if err := utils.EnsureInsideRoot(dirs[0], srcAbs); err != nil {
 			return nil, err
 		}
 		var rel string
@@ -153,69 +200,72 @@ type pair struct {
 		baseNoExt := strings.TrimSuffix(rel, ext)
 		srcExt := strings.TrimPrefix(ext, ".")
 		objName := baseNoExt + "_" + srcExt + ".o"
-		objPath := filepath.Join(objDir, objName)
+		var pb pathBuffer
+		pb.appendString(objDir)
+		pb.appendByte(byte(os.PathSeparator))
+		pb.appendString(objName)
+		objPath := pb.String()
 		if err := utils.SecureMkdirAll(objPath); err != nil {
 			return nil, fmt.Errorf("cannot create subdir for object: %w", err)
 		}
 		pairs[i] = pair{src: src, obj: objPath}
-		objFilesSet[objPath] = true
 	}
 
-	var objFiles []string
-	for _, p := range pairs {
-		objFiles = append(objFiles, p.obj)
+	objFiles := make([]string, len(pairs))
+	for i, p := range pairs {
+		objFiles[i] = p.obj
 	}
 	sort.Strings(objFiles)
 
-type job struct {
-	idx int
-	p   pair
-}
+	if jobs <= 0 {
+		jobs = 1
+	}
+	var nextIndex uint32
+	var stopFlag uint32
+	var firstErr atomic.Pointer[resultError]
 	var wg sync.WaitGroup
-	var firstErr error
-	var errOnce sync.Once
-	jobsChan := make(chan job, jobs)
-	stopChan := make(chan struct{})
 
+	recordError := func(err error) {
+		entry := &resultError{err: err}
+		if firstErr.CompareAndSwap(nil, entry) {
+			atomic.StoreUint32(&stopFlag, 1)
+		}
+	}
 
 	worker := func() {
 		defer wg.Done()
 		for {
-			select {
-			case job, ok := <-jobsChan:
-				if !ok {
+			if atomic.LoadUint32(&stopFlag) == 1 {
+				return
+			}
+			idx := int(atomic.AddUint32(&nextIndex, 1) - 1)
+			if idx >= len(pairs) {
+				return
+			}
+			p := pairs[idx]
+			needAssemble := true
+			if !noCache {
+				cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
+				if err == nil && cachedObj != "" {
+					if verbose {
+						fmt.Printf("Cache hit for %s\n", p.src)
+					}
+					if err := utils.CopyFile(cachedObj, p.obj); err == nil {
+						needAssemble = false
+					}
+				}
+			}
+			if needAssemble {
+				if verbose {
+					fmt.Printf("Assembling %s -> %s\n", p.src, p.obj)
+				}
+				if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
+					recordError(fmt.Errorf("assemble %s: %w", p.src, err))
 					return
 				}
-				p := job.p
-				needAssemble := true
 				if !noCache {
-					cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
-					if err == nil && cachedObj != "" {
-						if verbose {
-							fmt.Printf("Cache hit for %s\n", p.src)
-						}
-						if err := utils.CopyFile(cachedObj, p.obj); err == nil {
-							needAssemble = false
-						}
-					}
+					storeCache(p.src, p.obj, cacheDir, debug, verbose, mode)
 				}
-				if needAssemble {
-					if verbose {
-						fmt.Printf("Assembling %s -> %s\n", p.src, p.obj)
-					}
-					if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
-						errOnce.Do(func() {
-							firstErr = fmt.Errorf("assemble %s: %w", p.src, err)
-							close(stopChan)
-						})
-						return
-					}
-					if !noCache {
-						storeCache(p.src, p.obj, cacheDir, debug, verbose, mode)
-					}
-				}
-			case <-stopChan:
-				return
 			}
 		}
 	}
@@ -224,20 +274,13 @@ type job struct {
 		wg.Add(1)
 		go worker()
 	}
-
-outer:
-	for i, p := range pairs {
-		select {
-		case <-stopChan:
-			break outer
-		default:
-			jobsChan <- job{idx: i, p: p}
-		}
-	}
-	close(jobsChan)
 	wg.Wait()
-	if firstErr != nil {
-		return nil, firstErr
+
+	if entry := firstErr.Load(); entry != nil {
+		if cleanupObjDir {
+			os.RemoveAll(objDir)
+		}
+		return nil, entry.err
 	}
 
 	if buildType == "static" {
@@ -245,6 +288,9 @@ outer:
 			fmt.Printf("Creating static library %s from %d object files\n", outBin, len(objFiles))
 		}
 		if err := createArchive(ctx, objFiles, outBin, verbose); err != nil {
+			if cleanupObjDir {
+				os.RemoveAll(objDir)
+			}
 			return nil, fmt.Errorf("archive creation failed: %w", err)
 		}
 	} else {
@@ -252,8 +298,15 @@ outer:
 			fmt.Printf("Linking %d object files -> %s (mode: %s)\n", len(objFiles), outBin, mode)
 		}
 		if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck, sanitize, strict, libs); err != nil {
+			if cleanupObjDir {
+				os.RemoveAll(objDir)
+			}
 			return nil, fmt.Errorf("link failed: %w", err)
 		}
+	}
+
+	if cleanupObjDir {
+		os.RemoveAll(objDir)
 	}
 
 	return &BuildResult{
@@ -269,14 +322,14 @@ func checkCache(src, cacheDir string, debug, verbose bool, mode string) (string,
 	if err != nil {
 		return "", err
 	}
-	key := fmt.Sprintf("%s_%v_%s", h, debug, mode)
-	cacheObj := filepath.Join(cacheDir, key+".o")
+	key := buildCacheKey(h, debug, mode)
+	cacheObj := cacheEntryPath(cacheDir, key+".o")
 	info, err := os.Stat(cacheObj)
 	if err != nil {
 		return "", err
 	}
 	if info.Size() == 0 {
-		return "", fmt.Errorf("cached file is empty")
+		return "", errors.New("cached file is empty")
 	}
 	return cacheObj, nil
 }
@@ -286,8 +339,8 @@ func storeCache(src, obj, cacheDir string, debug, verbose bool, mode string) err
 	if err != nil {
 		return err
 	}
-	key := fmt.Sprintf("%s_%v_%s", h, debug, mode)
-	cacheObj := filepath.Join(cacheDir, key+".o")
+	key := buildCacheKey(h, debug, mode)
+	cacheObj := cacheEntryPath(cacheDir, key+".o")
 	return utils.CopyFile(obj, cacheObj)
 }
 
@@ -301,8 +354,8 @@ func createArchive(ctx context.Context, objFiles []string, outBin string, verbos
 }
 
 func CleanDir(dir string, verbose bool) error {
-	objDir := filepath.Join(dir, ".fz_objs")
-	cacheDir := filepath.Join(dir, ".fz_cache")
+	objDir := joinPath(dir, ".fz_objs")
+	cacheDir := joinPath(dir, ".fz_cache")
 	for _, d := range []string{objDir, cacheDir} {
 		if _, err := os.Stat(d); err == nil {
 			if verbose {
@@ -316,7 +369,7 @@ func CleanDir(dir string, verbose bool) error {
 	base := filepath.Base(dir)
 	patterns := []string{base + ".out", base + ".exe"}
 	for _, p := range patterns {
-		path := filepath.Join(dir, p)
+		path := joinPath(dir, p)
 		if _, err := os.Stat(path); err == nil {
 			if verbose {
 				fmt.Printf("Removing %s\n", path)
@@ -335,7 +388,7 @@ func CleanDir(dir string, verbose bool) error {
 			continue
 		}
 		name := entry.Name()
-		path := filepath.Join(dir, name)
+		path := joinPath(dir, name)
 		if strings.HasSuffix(name, ".o") {
 			if verbose {
 				fmt.Printf("Removing object file %s\n", path)
