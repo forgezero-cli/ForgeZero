@@ -123,7 +123,7 @@ func TestGenerateSBOMVendorSymlinkOutsideRootSecurityWarningAndSkip(t *testing.T
 	_ = w.Close()
 	os.Stderr = oldStderr
 	if genErr != nil {
-		t.Fatal(genErr)
+		t.Fatalf("generate: %v", genErr)
 	}
 
 	var buf bytes.Buffer
