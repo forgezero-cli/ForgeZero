@@ -43,11 +43,11 @@ func GetLatestVersion() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("fetch latest version: %w", err)
 	}
-	if resp == nil || resp.Body == nil {
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
+	if resp == nil {
 		return "", errors.New("empty response from upstream")
+	}
+	if resp.Body == nil {
+		return "", errors.New("empty response body")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -93,11 +93,11 @@ func UpdateSelf(currentVersion string) error {
 	if err != nil {
 		return fmt.Errorf("download binary: %w", err)
 	}
-	if resp == nil || resp.Body == nil {
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
+	if resp == nil {
 		return errors.New("empty download response")
+	}
+	if resp.Body == nil {
+		return errors.New("empty download body")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
