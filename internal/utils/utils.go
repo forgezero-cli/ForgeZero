@@ -28,11 +28,16 @@ var (
 )
 
 var (
-	ErrHashOpen  = errors.New("hash: open")
-	ErrHashMmap  = errors.New("hash: mmap")
-	ErrHashSize  = errors.New("hash: size")
-	ErrHashRead  = errors.New("hash: read")
-) 
+	ErrHashOpen     = errors.New("hash: open")
+	ErrHashMmap     = errors.New("hash: mmap")
+	ErrHashSize     = errors.New("hash: size")
+	ErrHashRead     = errors.New("hash: read")
+	ErrScanOpen     = errors.New("scan: open")
+	ErrScanMmap     = errors.New("scan: mmap")
+	ErrScanResolve  = errors.New("scan: resolve")
+	includeBytes    = [7]byte{'i', 'n', 'c', 'l', 'u', 'd', 'e'}
+	warnOutsideHead = []byte("WARNING: include outside root ignored: ")
+)
 
 var globalScratchPad = func() []byte {
 	b := make([]byte, 1024*1024+64)
@@ -607,4 +612,191 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 	hasher.Reset()
 	hasherPool.Put(hasher)
 	return blake3HexDigestToString(out), nil
+}
+
+func hashPath(path string) uint64 {
+	h := uint64(1469598103934665603)
+	for i := 0; i < len(path); i++ {
+		h ^= uint64(path[i])
+		h *= 1099511628211
+	}
+	return h
+}
+
+func joinPath(base, file string) string {
+	if len(base) == 0 {
+		return file
+	}
+	sep := byte(os.PathSeparator)
+	need := len(base) + 1 + len(file)
+	buf := make([]byte, need)
+	n := copy(buf, base)
+	if base[len(base)-1] != sep {
+		buf[n] = sep
+		n++
+	}
+	n += copy(buf[n:], file)
+	return unsafe.String(&buf[0], n)
+}
+
+func resolveIncludePath(currentDir, include string) (string, error) {
+	if filepath.IsAbs(include) {
+		return ResolveSecurePath(include)
+	}
+	return ResolveSecurePath(joinPath(currentDir, include))
+}
+
+func warnOutsideRoot(path string) {
+	var tmp [4096]byte
+	n := copy(tmp[:], warnOutsideHead)
+	if n+len(path)+1 > len(tmp) {
+		os.Stderr.Write(warnOutsideHead)
+		os.Stderr.Write([]byte(path))
+		os.Stderr.Write([]byte{'\n'})
+		return
+	}
+	n += copy(tmp[n:], path)
+	tmp[n] = '\n'
+	os.Stderr.Write(tmp[:n+1])
+}
+
+func mmapPath(path string) ([]byte, error) {
+	resolved, err := ResolveSecurePath(path)
+	if err != nil {
+		return nil, ErrScanResolve
+	}
+	f, err := openVerified(resolved)
+	if err != nil {
+		return nil, ErrScanOpen
+	}
+	of, ok := f.(interface{ Stat() (os.FileInfo, error); Fd() uintptr })
+	if !ok {
+		f.Close()
+		return nil, ErrScanOpen
+	}
+	fi, err := of.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if fi.Size() == 0 {
+		f.Close()
+		return nil, nil
+	}
+	data, err := mmapFile(getFileDescriptor(of), fi.Size())
+	f.Close()
+	if err != nil {
+		return nil, ErrScanMmap
+	}
+	return data, nil
+}
+
+func scanFileIncludes(path string) ([]string, error) {
+	data, err := mmapPath(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+	defer unmapFile(data)
+	currentDir := filepath.Dir(path)
+	list := make([]string, 0, 8)
+	for i := 0; i < len(data); i++ {
+		if data[i] != '#' {
+			continue
+		}
+		j := i + 1
+		for j < len(data) && (data[j] == ' ' || data[j] == '\t') {
+			j++
+		}
+		if j+len(includeBytes) >= len(data) {
+			continue
+		}
+		ok := true
+		for k := 0; k < len(includeBytes); k++ {
+			if data[j+k] != includeBytes[k] {
+				ok = false
+				break
+			}
+		}
+		if !ok {
+			continue
+		}
+		j += len(includeBytes)
+		for j < len(data) && (data[j] == ' ' || data[j] == '\t') {
+			j++
+		}
+		if j >= len(data) {
+			continue
+		}
+		switch data[j] {
+		case '"':
+			start := j + 1
+			k := start
+			for k < len(data) && data[k] != '"' {
+				k++
+			}
+			if k >= len(data) {
+				continue
+			}
+			inc := unsafe.String(&data[start], k-start)
+			resolved, err := resolveIncludePath(currentDir, inc)
+			if err == nil {
+				list = append(list, resolved)
+			}
+		case '<':
+			start := j + 1
+			k := start
+			for k < len(data) && data[k] != '>' {
+				k++
+			}
+			if k >= len(data) {
+				continue
+			}
+			inc := unsafe.String(&data[start], k-start)
+			resolved, err := resolveIncludePath(currentDir, inc)
+			if err == nil {
+				list = append(list, resolved)
+			}
+		}
+	}
+	return list, nil
+}
+
+func ScanDependencies(path string) ([]string, error) {
+	resolved, err := ResolveSecurePath(path)
+	if err != nil {
+		return nil, err
+	}
+	rootDir := filepath.Dir(resolved)
+	stack := []string{resolved}
+	visited := make(map[uint64]struct{}, 64)
+	deps := make([]string, 0, 64)
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		h := hashPath(cur)
+		if _, ok := visited[h]; ok {
+			continue
+		}
+		visited[h] = struct{}{}
+		deps = append(deps, cur)
+		includes, err := scanFileIncludes(cur)
+		if err != nil {
+			return nil, err
+		}
+		for _, inc := range includes {
+			if !pathWithinRoot(rootDir, inc) {
+				warnOutsideRoot(inc)
+				continue
+			}
+			hi := hashPath(inc)
+			if _, ok := visited[hi]; ok {
+				continue
+			}
+			stack = append(stack, inc)
+		}
+	}
+	return deps, nil
 }
