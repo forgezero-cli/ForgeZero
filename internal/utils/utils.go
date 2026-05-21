@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,6 +20,11 @@ import (
 	"github.com/zeebo/blake3"
 )
 
+const (
+	DirPerm  os.FileMode = 0o700
+	FilePerm os.FileMode = 0o600
+)
+
 var (
 	bufferPool     = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 	copyBufferPool = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
@@ -26,8 +32,8 @@ var (
 
 var (
 	executionRoot atomic.Value
-	ToolChecksums  sync.Map
-	CheckToolFunc  func(name string) error = checkToolInternal
+	ToolChecksums sync.Map
+	CheckToolFunc func(name string) error = checkToolInternal
 )
 
 func SetExecutionRoot(v string) {
@@ -53,6 +59,13 @@ func (w *mutexBufferWriter) Write(p []byte) (int, error) {
 	return w.buf.Write(p)
 }
 
+func constantTimeEqual(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
 func checkToolInternal(name string) error {
 	path, err := exec.LookPath(name)
 	if err != nil {
@@ -64,8 +77,8 @@ func checkToolInternal(name string) error {
 			if err != nil {
 				return fmt.Errorf("cannot verify checksum for %s: %w", path, err)
 			}
-			if actual != expected {
-				return fmt.Errorf("tool checksum mismatch for %s: expected %s got %s", name, expected, actual)
+			if !constantTimeEqual(actual, expected) {
+				return fmt.Errorf("tool checksum mismatch for %s", name)
 			}
 		}
 	}
@@ -99,24 +112,33 @@ func deterministicEnv() []string {
 	return env
 }
 
+func ResolveSecurePath(path string) (string, error) {
+	if err := ValidateCLIPath(path); err != nil {
+		return "", err
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve path %s: %w", path, err)
+	}
+	abs = filepath.Clean(abs)
+	eval, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return abs, nil
+		}
+		return "", fmt.Errorf("eval symlinks %s: %w", abs, err)
+	}
+	return eval, nil
+}
+
 func EnsureInsideRoot(root, path string) error {
-	rootAbs, err := filepath.Abs(root)
+	rootEval, err := ResolveSecurePath(root)
 	if err != nil {
 		return err
 	}
-	rootAbs = filepath.Clean(rootAbs)
-	rootEval, err := filepath.EvalSymlinks(rootAbs)
-	if err != nil {
-		rootEval = rootAbs
-	}
-	targetAbs, err := filepath.Abs(path)
+	targetEval, err := ResolveSecurePath(path)
 	if err != nil {
 		return err
-	}
-	targetAbs = filepath.Clean(targetAbs)
-	targetEval, err := filepath.EvalSymlinks(targetAbs)
-	if err != nil {
-		targetEval = targetAbs
 	}
 	if targetEval == rootEval || strings.HasPrefix(targetEval, rootEval+string(os.PathSeparator)) {
 		return nil
@@ -191,7 +213,11 @@ func DeriveNames(src, outFlag, outObjFlag string) (bin, obj string) {
 }
 
 func CheckFileExists(path string) error {
-	info, err := os.Stat(path)
+	resolved, err := ResolveSecurePath(path)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(resolved)
 	if os.IsNotExist(err) {
 		return fmt.Errorf("file does not exist: %s", path)
 	}
@@ -204,12 +230,59 @@ func CheckFileExists(path string) error {
 	return nil
 }
 
-func EnsureDir(path string) error {
+func SecureMkdirAll(path string) error {
 	dir := filepath.Dir(path)
 	if dir == "" || dir == "." {
 		return nil
 	}
-	return os.MkdirAll(dir, 0o755)
+	resolved, err := ResolveSecurePath(dir)
+	if err != nil {
+		abs, absErr := filepath.Abs(dir)
+		if absErr != nil {
+			return fmt.Errorf("mkdir %s: %w", dir, err)
+		}
+		resolved = filepath.Clean(abs)
+	}
+	return os.MkdirAll(resolved, DirPerm)
+}
+
+func EnsureDir(path string) error {
+	return SecureMkdirAll(path)
+}
+
+func SecureWriteFile(path string, data []byte) error {
+	if err := SecureMkdirAll(path); err != nil {
+		return err
+	}
+	resolved, err := ResolveSecurePath(path)
+	if err != nil {
+		abs, absErr := filepath.Abs(path)
+		if absErr != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+		resolved = filepath.Clean(abs)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(resolved), ".fz_write_*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp for %s: %w", path, err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(FilePerm); err != nil {
+		tmp.Close()
+		return fmt.Errorf("chmod temp %s: %w", tmpName, err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temp %s: %w", tmpName, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp %s: %w", tmpName, err)
+	}
+	if err := os.Rename(tmpName, resolved); err != nil {
+		return fmt.Errorf("rename %s to %s: %w", tmpName, resolved, err)
+	}
+	return os.Chmod(resolved, FilePerm)
 }
 
 func SupportedExtension(ext string) bool {
@@ -225,22 +298,22 @@ func IsWindows() bool {
 	return runtime.GOOS == "windows"
 }
 
-func RunCommandSilent(ctx context.Context, verbose bool, name string, args ...string) (output string, err error) {
+func buildCommand(ctx context.Context, name string, args ...string) (*exec.Cmd, string, error) {
 	if name == "" {
-		return "", errors.New("command name required")
+		return nil, "", errors.New("command name required")
 	}
 	if err := ValidateCLIArg(name); err != nil {
-		return "", fmt.Errorf("invalid command name: %w", err)
+		return nil, "", fmt.Errorf("invalid command name: %w", err)
 	}
 	resolved, err := exec.LookPath(name)
 	if err != nil {
-		return "", fmt.Errorf("executable not found: %s", name)
+		return nil, "", fmt.Errorf("executable not found: %s", name)
 	}
 	base := filepath.Base(resolved)
 	if base == "sh" || base == "bash" {
 		if len(args) >= 1 {
 			if err := ValidateCLIArg(args[0]); err != nil {
-				return "", fmt.Errorf("invalid arg: %w", err)
+				return nil, "", fmt.Errorf("invalid arg: %w", err)
 			}
 		}
 	}
@@ -249,7 +322,7 @@ func RunCommandSilent(ctx context.Context, verbose bool, name string, args ...st
 			continue
 		}
 		if err := ValidateCLIArg(a); err != nil {
-			return "", fmt.Errorf("invalid arg: %w", err)
+			return nil, "", fmt.Errorf("invalid arg: %w", err)
 		}
 	}
 	cmd := exec.CommandContext(ctx, resolved, args...)
@@ -257,37 +330,77 @@ func RunCommandSilent(ctx context.Context, verbose bool, name string, args ...st
 		cmd.Dir = dir
 	}
 	cmd.Env = deterministicEnv()
+	return cmd, base, nil
+}
 
+func RunCommand(ctx context.Context, verbose bool, stdout, stderr io.Writer, name string, args ...string) (string, error) {
+	cmd, _, err := buildCommand(ctx, name, args...)
+	if err != nil {
+		return "", err
+	}
 	buf := bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufferPool.Put(buf)
-
 	mbw := &mutexBufferWriter{buf: buf}
-
-	if verbose {
-		cmd.Stdout = io.MultiWriter(os.Stdout, mbw)
-		cmd.Stderr = io.MultiWriter(os.Stderr, mbw)
-	} else {
-		cmd.Stdout = mbw
-		cmd.Stderr = mbw
+	if stdout == nil {
+		stdout = mbw
 	}
+	if stderr == nil {
+		stderr = mbw
+	}
+	if verbose {
+		cmd.Stdout = io.MultiWriter(os.Stdout, stdout)
+		cmd.Stderr = io.MultiWriter(os.Stderr, stderr)
+	} else {
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
+	}
+	runErr := cmd.Run()
+	if stdout == mbw {
+		return buf.String(), runErr
+	}
+	return "", runErr
+}
 
-	err = cmd.Run()
-	return buf.String(), err
+func RunCommandSilent(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+	return RunCommand(ctx, verbose, nil, nil, name, args...)
+}
+
+func RunCommandOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
+	out, err := RunCommandSilent(ctx, false, name, args...)
+	return []byte(out), err
 }
 
 func CopyFile(src, dst string) error {
-	if err := EnsureDir(dst); err != nil {
+	srcResolved, err := ResolveSecurePath(src)
+	if err != nil {
+		return fmt.Errorf("copy src %s: %w", src, err)
+	}
+	if err := SecureMkdirAll(dst); err != nil {
 		return err
 	}
-	in, err := os.Open(src)
+	dstResolved, err := ResolveSecurePath(dst)
 	if err != nil {
-		return err
+		abs, absErr := filepath.Abs(dst)
+		if absErr != nil {
+			return fmt.Errorf("copy dst %s: %w", dst, err)
+		}
+		dstResolved = filepath.Clean(abs)
+	}
+	in, err := os.Open(srcResolved)
+	if err != nil {
+		return fmt.Errorf("open src %s: %w", src, err)
 	}
 	defer in.Close()
-	tmp, err := os.CreateTemp(filepath.Dir(dst), "fz_copy_*.tmp")
+	tmp, err := os.CreateTemp(filepath.Dir(dstResolved), "fz_copy_*.tmp")
 	if err != nil {
-		return err
+		return fmt.Errorf("create temp for %s: %w", dst, err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(FilePerm); err != nil {
+		tmp.Close()
+		return fmt.Errorf("chmod temp %s: %w", tmpName, err)
 	}
 	buf := copyBufferPool.Get().([]byte)
 	defer func() {
@@ -296,20 +409,25 @@ func CopyFile(src, dst string) error {
 	}()
 	if _, err := io.CopyBuffer(tmp, in, buf); err != nil {
 		tmp.Close()
-		os.Remove(tmp.Name())
-		return err
+		return fmt.Errorf("copy data to %s: %w", tmpName, err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
-		return err
+		return fmt.Errorf("close temp %s: %w", tmpName, err)
 	}
-	return os.Rename(tmp.Name(), dst)
+	if err := os.Rename(tmpName, dstResolved); err != nil {
+		return fmt.Errorf("rename %s to %s: %w", tmpName, dstResolved, err)
+	}
+	return os.Chmod(dstResolved, FilePerm)
 }
 
 func HashFile(path string) (string, error) {
-	f, err := os.Open(path)
+	resolved, err := ResolveSecurePath(path)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("hash %s: %w", path, err)
+	}
+	f, err := os.Open(resolved)
+	if err != nil {
+		return "", fmt.Errorf("open %s: %w", path, err)
 	}
 	defer f.Close()
 	hasher := blake3.New()
@@ -319,7 +437,7 @@ func HashFile(path string) (string, error) {
 		copyBufferPool.Put(buf)
 	}()
 	if _, err := io.CopyBuffer(hasher, f, buf); err != nil {
-		return "", err
+		return "", fmt.Errorf("hash read %s: %w", path, err)
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
@@ -328,7 +446,7 @@ func HashDir(root string) (string, error) {
 	root = filepath.Clean(root)
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("hash dir %s: %w", root, err)
 	}
 	return HashDirWithRoot(rootAbs, rootAbs)
 }
@@ -336,16 +454,18 @@ func HashDir(root string) (string, error) {
 func HashDirWithRoot(rootAbs, dir string) (string, error) {
 	dirAbs, err := filepath.Abs(dir)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("hash dir abs %s: %w", dir, err)
 	}
 	dirAbs = filepath.Clean(dirAbs)
-
+	rootEval, err := ResolveSecurePath(rootAbs)
+	if err != nil {
+		rootEval = filepath.Clean(rootAbs)
+	}
 	var files []string
 	err = filepath.Walk(dirAbs, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-
 		if info.Mode()&os.ModeSymlink != 0 {
 			linkTarget, readErr := os.Readlink(path)
 			if readErr != nil {
@@ -357,20 +477,16 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 			} else {
 				targetAbs = filepath.Clean(filepath.Join(filepath.Dir(path), linkTarget))
 			}
-
 			targetEval, evalErr := filepath.EvalSymlinks(targetAbs)
 			if evalErr != nil {
 				return fmt.Errorf("cannot resolve symlink %s target %s: %w", path, targetAbs, evalErr)
 			}
-
-			rootAbsClean := filepath.Clean(rootAbs)
+			rootAbsClean := filepath.Clean(rootEval)
 			if targetEval != rootAbsClean && !strings.HasPrefix(targetEval, rootAbsClean+string(os.PathSeparator)) {
 				fmt.Fprintf(os.Stderr, "SECURITY WARNING: skipping symlink %s -> %s outside project root %s\n", path, targetAbs, rootAbsClean)
 				return nil
 			}
-
 		}
-
 		if info.IsDir() {
 			return nil
 		}
@@ -387,7 +503,6 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	sort.Strings(files)
 	hasher := blake3.New()
 	sep := []byte{0}
@@ -401,14 +516,14 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 		fullPath := filepath.Join(dirAbs, rel)
 		f, err := os.Open(fullPath)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("open %s: %w", fullPath, err)
 		}
 		buf := copyBufferPool.Get().([]byte)
 		if _, err := io.CopyBuffer(hasher, f, buf); err != nil {
 			f.Close()
 			ZeroizeBytes(buf)
 			copyBufferPool.Put(buf)
-			return "", err
+			return "", fmt.Errorf("hash %s: %w", fullPath, err)
 		}
 		ZeroizeBytes(buf)
 		copyBufferPool.Put(buf)
