@@ -245,13 +245,22 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 			p := pairs[idx]
 			needAssemble := true
 			if !noCache {
-				cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
-				if err == nil && cachedObj != "" {
-					if verbose {
-						fmt.Printf("Cache hit for %s\n", p.src)
-					}
-					if err := utils.CopyFile(cachedObj, p.obj); err == nil {
-						needAssemble = false
+				restored, err := restoreShadowCache(p.src, p.obj, debug, mode)
+				if err != nil {
+					recordError(fmt.Errorf("shadow cache %s: %w", p.src, err))
+					return
+				}
+				if restored {
+					needAssemble = false
+				} else {
+					cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
+					if err == nil && cachedObj != "" {
+						if verbose {
+							fmt.Printf("Cache hit for %s\n", p.src)
+						}
+						if err := utils.CopyFile(cachedObj, p.obj); err == nil {
+							needAssemble = false
+						}
 					}
 				}
 			}
@@ -265,6 +274,7 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 				}
 				if !noCache {
 					storeCache(p.src, p.obj, cacheDir, debug, verbose, mode)
+					storeShadowCache(p.src, p.obj, debug, mode)
 				}
 			}
 		}
@@ -334,6 +344,36 @@ func checkCache(src, cacheDir string, debug, verbose bool, mode string) (string,
 	return cacheObj, nil
 }
 
+func restoreShadowCache(src, obj string, debug bool, mode string) (bool, error) {
+	flags := []string{fmt.Sprintf("debug=%t", debug), fmt.Sprintf("mode=%s", mode)}
+	key, err := utils.ShadowCacheKey(src, flags)
+	if err != nil {
+		return false, err
+	}
+	shadowObj := utils.ShadowCachePath(key)
+	if _, err := os.Stat(shadowObj); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := utils.EnsureDir(obj); err != nil {
+		return false, err
+	}
+	if err := os.Link(shadowObj, obj); err != nil {
+		if !os.IsExist(err) {
+			return false, utils.CopyFile(shadowObj, obj)
+		}
+	}
+	if err := os.Chmod(obj, utils.FilePerm); err != nil {
+		return false, err
+	}
+	if debug {
+		fmt.Printf("Shadow cache restored %s -> %s\n", shadowObj, obj)
+	}
+	return true, nil
+}
+
 func storeCache(src, obj, cacheDir string, debug, verbose bool, mode string) error {
 	h, err := utils.HashFile(src)
 	if err != nil {
@@ -342,6 +382,28 @@ func storeCache(src, obj, cacheDir string, debug, verbose bool, mode string) err
 	key := buildCacheKey(h, debug, mode)
 	cacheObj := cacheEntryPath(cacheDir, key+".o")
 	return utils.CopyFile(obj, cacheObj)
+}
+
+func storeShadowCache(src, obj string, debug bool, mode string) error {
+	flags := []string{fmt.Sprintf("debug=%t", debug), fmt.Sprintf("mode=%s", mode)}
+	key, err := utils.ShadowCacheKey(src, flags)
+	if err != nil {
+		return err
+	}
+	shadowObj := utils.ShadowCachePath(key)
+	if _, err := os.Stat(shadowObj); err == nil {
+		return nil
+	}
+	if err := utils.EnsureDir(shadowObj); err != nil {
+		return err
+	}
+	if err := os.Link(obj, shadowObj); err != nil {
+		if os.IsExist(err) {
+			return nil
+		}
+		return utils.CopyFile(obj, shadowObj)
+	}
+	return nil
 }
 
 func createArchive(ctx context.Context, objFiles []string, outBin string, verbose bool) error {

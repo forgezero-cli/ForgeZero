@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"fz/internal/utils"
 )
 
 func TestCollectSourceFilesWalk(t *testing.T) {
@@ -47,6 +49,85 @@ func TestCheckCacheHit(t *testing.T) {
 	}
 	if got == "" {
 		t.Fatal("expected cache hit")
+	}
+}
+
+func TestStoreShadowCacheHardLink(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Setenv("XDG_CACHE_HOME", dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Unsetenv("XDG_CACHE_HOME")
+
+	src := filepath.Join(dir, "src.c")
+	if err := os.WriteFile(src, []byte("int x=0;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	obj := filepath.Join(dir, "build", "src.o")
+	if err := os.MkdirAll(filepath.Dir(obj), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(obj, []byte{1, 2, 3}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeShadowCache(src, obj, false, "auto"); err != nil {
+		t.Fatal(err)
+	}
+	key, err := utils.ShadowCacheKey(src, []string{"debug=false", "mode=auto"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shadowObj := filepath.Join(dir, "aegis", "shadow", key+".o")
+	info1, err := os.Stat(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info2, err := os.Stat(shadowObj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(info1, info2) {
+		t.Fatal("expected hard link in shadow cache")
+	}
+}
+
+func TestRestoreShadowCache(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Setenv("XDG_CACHE_HOME", dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Unsetenv("XDG_CACHE_HOME")
+
+	src := filepath.Join(dir, "src.c")
+	if err := os.WriteFile(src, []byte("int y=1;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	obj := filepath.Join(dir, "build", "src.o")
+	if err := os.MkdirAll(filepath.Dir(obj), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(obj, []byte{1, 2, 3}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeShadowCache(src, obj, false, "auto"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(obj); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := restoreShadowCache(src, obj, false, "auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored {
+		t.Fatal("expected shadow cache restore")
+	}
+	got, err := os.ReadFile(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, []byte{1, 2, 3}) {
+		t.Fatalf("unexpected obj contents: %v", got)
 	}
 }
 
