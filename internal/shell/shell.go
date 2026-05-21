@@ -9,6 +9,10 @@ import (
 	"github.com/c-bata/go-prompt"
 )
 
+var promptNew = func(executor func(string), completer func(prompt.Document) []prompt.Suggest, opts ...prompt.Option) interface{ Run() } {
+	return prompt.New(executor, completer, opts...)
+}
+
 func Run() {
 	state := DefaultState()
 
@@ -58,7 +62,7 @@ func Run() {
 		}
 	}
 
-	p := prompt.New(
+	p := promptNew(
 		executor,
 		Completer,
 		prompt.OptionTitle("fz shell"),

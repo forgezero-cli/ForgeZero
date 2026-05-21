@@ -7,7 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/c-bata/go-prompt"
 )
+
+type fakePrompt struct{}
+
+func (fakePrompt) Run() {}
 
 func TestSplitCommand(t *testing.T) {
 	tests := []struct {
@@ -167,5 +173,19 @@ func TestCmdClean(t *testing.T) {
 	}
 	if _, err := os.Stat(cacheDir); !os.IsNotExist(err) {
 		t.Error(".fz_cache not removed")
+	}
+}
+
+func TestRunUsesPromptNew(t *testing.T) {
+	oldPromptNew := promptNew
+	defer func() { promptNew = oldPromptNew }()
+	invoked := false
+	promptNew = func(executor func(string), completer func(prompt.Document) []prompt.Suggest, opts ...prompt.Option) interface{ Run() } {
+		invoked = true
+		return fakePrompt{}
+	}
+	Run()
+	if !invoked {
+		t.Fatal("expected promptNew to be invoked")
 	}
 }
