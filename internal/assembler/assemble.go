@@ -277,12 +277,12 @@ func assembleC(ctx context.Context, src, obj string, debug, verbose bool) error 
 	}
 	strictFlags := []string{"-Wall", "-Wextra", "-Werror", "-Wpedantic", "-Wshadow", "-Wconversion"}
 	args = append(args, strictFlags...)
-	if debug {
-		args = append(args, "-g")
-		if utils.ExecutionRoot != "" {
-			args = append(args, "-fdebug-prefix-map="+filepath.Clean(utils.ExecutionRoot)+"=.")
+		if debug {
+			args = append(args, "-g")
+			if dir := utils.GetExecutionRoot(); dir != "" {
+				args = append(args, "-fdebug-prefix-map="+filepath.Clean(dir)+"=.")
+			}
 		}
-	}
 	if len(CcFlags) > 0 {
 		args = append(args, strings.Fields(CcFlags)...)
 	}
@@ -309,8 +309,8 @@ func assembleCpp(ctx context.Context, src, obj string, debug, verbose bool) erro
 	args = append(args, strictFlags...)
 	if debug {
 		args = append(args, "-g")
-		if utils.ExecutionRoot != "" {
-			args = append(args, "-fdebug-prefix-map="+filepath.Clean(utils.ExecutionRoot)+"=.")
+		if dir := utils.GetExecutionRoot(); dir != "" {
+			args = append(args, "-fdebug-prefix-map="+filepath.Clean(dir)+"=.")
 		}
 	}
 	if len(CcFlags) > 0 {
