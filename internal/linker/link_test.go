@@ -519,6 +519,46 @@ func TestLinkWithLdMissingLib(t *testing.T) {
 	}
 }
 
+func TestValidateLinkCallErrors(t *testing.T) {
+	if err := validateLinkCall(nil, "out"); err == nil {
+		t.Error("expected invalid linking context error")
+	}
+	if err := validateLinkCall(context.Background(), ""); err == nil {
+		t.Error("expected output file name required error")
+	}
+}
+
+func TestShouldUseResponseFile(t *testing.T) {
+	args := make([]string, 200)
+	for i := range args {
+		args[i] = "arg"
+	}
+	if !shouldUseResponseFile(args) {
+		t.Fatal("expected response file for many args")
+	}
+}
+
+func TestCreateResponseFileWritesArgs(t *testing.T) {
+	path, err := createResponseFile([]string{"a", "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "a") || !strings.Contains(string(data), "b") {
+		t.Fatal("response file content missing args")
+	}
+}
+
+func TestRunLinkerCommandNoName(t *testing.T) {
+	if _, err := runLinkerCommand(context.Background(), false, "", []string{"a"}); err == nil {
+		t.Fatal("expected error when linker name is empty")
+	}
+}
+
 func TestLinkMultipleWithClangNoFallbackError(t *testing.T) {
 	oldRunner := runner
 	defer func() { runner = oldRunner }()
