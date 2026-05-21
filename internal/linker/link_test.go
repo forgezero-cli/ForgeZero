@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"fz/internal/assembler"
+	"fz/internal/config"
 	"fz/internal/utils"
 )
 
@@ -105,6 +106,78 @@ func TestApplyLdFlags(t *testing.T) {
 	expected := []string{"test.o", "-o", "bin", "-T", "script.ld", "-Ttext", "0x1000", "--build-id=none"}
 	if !equalSlices(got, expected) {
 		t.Errorf("ApplyLdFlags = %v, want %v", got, expected)
+	}
+}
+
+func TestLinkObjectsDedupAndOptimizationFlags(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	var seenArgs []string
+	runner = &MockRunner{RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+		seenArgs = append([]string(nil), args...)
+		return "", nil
+	}}
+
+	target := filepath.Join(t.TempDir(), "out")
+	cfg := &config.Config{Toolchain: "c", Verbose: false, OptimizationLevel: 3}
+	if err := LinkObjects(context.Background(), target, []string{"b.o", "a.o", "b.o"}, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !contains(seenArgs, "-flto") || !contains(seenArgs, "-fuse-linker-plugin") || !contains(seenArgs, "-Wl,--gc-sections") {
+		t.Fatalf("optimization flags missing: %v", seenArgs)
+	}
+	if !contains(seenArgs, "-o") || !contains(seenArgs, target) {
+		t.Fatalf("output flags missing: %v", seenArgs)
+	}
+	countA := 0
+	for _, arg := range seenArgs {
+		if arg == "a.o" {
+			countA++
+		}
+	}
+	if countA != 1 {
+		t.Fatalf("expected deduped objects, got %v", seenArgs)
+	}
+}
+
+func TestLinkObjectsUsesResponseFile(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	called := false
+	runner = &MockRunner{RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+		if len(args) == 1 && strings.HasPrefix(args[0], "@") {
+			called = true
+			return "", nil
+		}
+		return "", fmt.Errorf("expected response file")
+	}}
+
+	objs := make([]string, 520)
+	for i := range objs {
+		objs[i] = fmt.Sprintf("obj%d.o", i)
+	}
+	target := filepath.Join(t.TempDir(), "out")
+	cfg := &config.Config{Toolchain: "c", Verbose: false}
+	if err := LinkObjects(context.Background(), target, objs, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("expected response file to be used")
+	}
+}
+
+func TestLinkObjectsReportsUndefinedSymbol(t *testing.T) {
+	oldRunner := runner
+	defer func() { runner = oldRunner }()
+	runner = &MockRunner{RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+		return "foo: undefined reference to 'bar'", fmt.Errorf("link failed")
+	}}
+
+	target := filepath.Join(t.TempDir(), "out")
+	cfg := &config.Config{Toolchain: "c", Verbose: false}
+	err := LinkObjects(context.Background(), target, []string{"a.o"}, cfg)
+	if err == nil || !strings.Contains(err.Error(), "undefined symbols") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

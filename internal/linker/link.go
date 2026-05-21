@@ -50,6 +50,9 @@ func shouldUseResponseFile(args []string) bool {
 }
 
 func createResponseFile(args []string) (string, error) {
+	if len(args) > 512 {
+		return createMmapResponseFile(args)
+	}
 	f, err := os.CreateTemp("", "fz_link_args_*.rsp")
 	if err != nil {
 		return "", err
