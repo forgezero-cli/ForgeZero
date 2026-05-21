@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+
+	"fz/internal/config"
 
 	"github.com/zeebo/blake3"
 )
@@ -399,7 +402,7 @@ func buildCommand(ctx context.Context, name string, args ...string) (*exec.Cmd, 
 	if err := ValidateCLIArg(name); err != nil {
 		return nil, fmt.Errorf("invalid command name: %w", err)
 	}
-	resolved, err := lookExecutable(name)
+	resolved, err := FindExecutable(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("executable not found: %s", name)
 	}
@@ -423,8 +426,138 @@ func buildCommand(ctx context.Context, name string, args ...string) (*exec.Cmd, 
 	if dir := GetExecutionRoot(); dir != "" {
 		cmd.Dir = dir
 	}
-	cmd.Env = deterministicEnv()
+	if cfg := ConfigFromContext(ctx); cfg != nil && cfg.Isolation {
+		cmd.Env = SafeEnv(cfg)
+	} else {
+		cmd.Env = deterministicEnv()
+	}
 	return cmd, nil
+}
+
+type ctxCfgKey struct{}
+
+func ContextWithConfig(ctx context.Context, cfg *config.Config) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, ctxCfgKey{}, cfg)
+}
+
+func ConfigFromContext(ctx context.Context) *config.Config {
+	if ctx == nil {
+		return nil
+	}
+	v := ctx.Value(ctxCfgKey{})
+	if v == nil {
+		return nil
+	}
+	if cfg, ok := v.(*config.Config); ok {
+		return cfg
+	}
+	return nil
+}
+
+func SafeEnv(cfg *config.Config) []string {
+	env := deterministicEnv()
+	if cfg == nil {
+		return env
+	}
+	if len(cfg.ToolchainSettings.EnvAllow) == 0 {
+		return env
+	}
+	base := map[string]string{}
+	for _, e := range os.Environ() {
+		for _, k := range cfg.ToolchainSettings.EnvAllow {
+			if strings.HasPrefix(e, k+"=") {
+				parts := strings.SplitN(e, "=", 2)
+				base[parts[0]] = parts[1]
+			}
+		}
+	}
+	out := env[:0]
+	for _, e := range env {
+		out = append(out, e)
+	}
+	for k, v := range base {
+		out = ensureEnv(out, k, v)
+	}
+	if len(cfg.ToolchainSettings.SearchPriority) > 0 {
+		for _, p := range cfg.ToolchainSettings.SearchPriority {
+			if p == "local" {
+				root := GetExecutionRoot()
+				if root != "" {
+					localBin := filepath.Join(root, "toolchain", "bin")
+					out = ensureEnv(out, "PATH", localBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+				}
+				break
+			}
+		}
+	}
+	return out
+}
+
+func FindExecutable(ctx context.Context, name string) (string, error) {
+	if filepath.IsAbs(name) {
+		return name, nil
+	}
+	if cfg := ConfigFromContext(ctx); cfg != nil {
+		for _, p := range cfg.ToolchainSettings.SearchPriority {
+			switch p {
+			case "local":
+				root := GetExecutionRoot()
+				if root != "" {
+					cand := filepath.Join(root, "toolchain", "bin", name)
+					if _, err := os.Stat(cand); err == nil {
+						return filepath.Abs(cand)
+					}
+					cand2 := filepath.Join(root, "bin", name)
+					if _, err := os.Stat(cand2); err == nil {
+						return filepath.Abs(cand2)
+					}
+				}
+			case "system":
+				if pth, err := lookExecutable(name); err == nil {
+					return filepath.Abs(pth)
+				}
+			}
+		}
+	}
+	pth, err := lookExecutable(name)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(pth)
+}
+
+func ScrubHostPaths(path string, hostRoot string) (string, error) {
+	if hostRoot == "" {
+		return "", nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	root := []byte(hostRoot)
+	base := []byte("./" + filepath.Base(hostRoot))
+	changed := false
+	for i := 0; i+len(root) <= len(data); i++ {
+		if bytes.Equal(data[i:i+len(root)], root) {
+			copy(data[i:i+len(base)], base)
+			for j := i + len(base); j < i+len(root); j++ {
+				data[j] = 0
+			}
+			changed = true
+			i += len(root) - 1
+		}
+	}
+	if !changed {
+		h := hex.EncodeToString(nil)
+		return h, nil
+	}
+	if err := os.WriteFile(path, data, 0o755); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("scrubbed:%d", len(root)), nil
 }
 
 func RunCommand(ctx context.Context, verbose bool, stdout, stderr io.Writer, name string, args ...string) (string, error) {
