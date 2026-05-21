@@ -54,8 +54,7 @@ func createResponseFile(args []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// ensure the file is only readable/writable by the current user
-	_ = f.Chmod(0o600)
+	_ = f.Chmod(utils.FilePerm)
 	for _, arg := range args {
 		if strings.ContainsAny(arg, "\n\r\x00") {
 			f.Close()
@@ -92,12 +91,10 @@ func runLinkerCommand(ctx context.Context, verbose bool, name string, args []str
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	// only resolve the executable when running through the real runner
 	if _, isReal := runner.(*RealCmdRunner); isReal {
 		if err := utils.ValidateCLIArg(name); err != nil {
 			return "", fmt.Errorf("invalid linker name: %w", err)
 		}
-		// resolve the executable to an absolute path to avoid PATH injection surprises
 		resolved, err := lookPathFunc(name)
 		if err != nil {
 			return "", fmt.Errorf("linker not found: %w", err)
@@ -181,7 +178,7 @@ func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSym
 		return err
 	}
 	if !noSymbolCheck {
-		if err := CheckDuplicateSymbols([]string{obj}, verbose); err != nil {
+		if err := CheckDuplicateSymbols(ctx, []string{obj}, verbose); err != nil {
 			return err
 		}
 	}
@@ -229,7 +226,7 @@ func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bo
 		return err
 	}
 	if !noSymbolCheck {
-		if err := CheckDuplicateSymbols(objFiles, verbose); err != nil {
+		if err := CheckDuplicateSymbols(ctx, objFiles, verbose); err != nil {
 			return err
 		}
 	}
