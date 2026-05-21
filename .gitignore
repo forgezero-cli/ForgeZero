@@ -10,7 +10,7 @@ release
 fz-shell
 rustcache/target/
 rustcache/Cargo.lock
-
+*.exe
 # OS stuff
 .DS_Store
 fz/
