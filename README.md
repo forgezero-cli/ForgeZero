@@ -20,7 +20,7 @@
   </table>
 </div>
 
-> **Version:** 3.0.0 GLORIA &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
+> **Version:** 3.1.0 Aegis &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
 
 ForgeZero is a high-performance, zero-overhead build tool for assembly and C developers. It wraps NASM, GAS, FASM, GCC, Clang, Zig, and LD into a single unified command-line interface — no Makefiles, no build scripts, no configuration required to get started.
 
@@ -67,6 +67,7 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly and C dev
     - 15.5 [Clean](#155-clean)
     - 15.6 [Parallel Builds](#156-parallel-builds)
     - 15.7 [Interactive Shell](#157-interactive-shell)
+    - 15.8 [Virtual Filesystem Layer (VFS)](#158-virtual-filesystem-layer-vfs)
 16. [Configuration File Reference](#16-configuration-file-reference)
     - 16.1 [Basic Fields](#161-basic-fields)
     - 16.2 [Multiple Source Directories](#162-multiple-source-directories)
@@ -95,8 +96,13 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly and C dev
 28. [Exit Codes](#28-exit-codes)
 29. [Troubleshooting](#29-troubleshooting)
 30. [Roadmap](#30-roadmap)
-31. [Contributing](#31-contributing)
-32. [License](#32-license)
+31. [Virtual Filesystem Layer (Aegis)](#31-virtual-filesystem-layer-aegis)
+32. [Aegis Security Core](#32-aegis-security-core)
+33. [System Self-Audit (`fz doctor`)](#33-system-self-audit-fz-doctor)
+34. [Cross-Platform Readiness](#34-cross-platform-readiness)
+35. [Testing Standards (Aegis)](#35-testing-standards-aegis)
+36. [Contributing](#36-contributing)
+37. [License](#37-license)
 
 ---
 
@@ -122,6 +128,18 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 - Verifies source tree integrity via BLAKE3 manifests.
 - Profiles every build phase with nanosecond precision (`fz bench`).
 - Compiles to WebAssembly via `wasm32-emscripten` and `wasm32-wasi`.
+- Routes security-sensitive filesystem operations through a virtual layer with TOCTOU-safe `OpenVerified` reads (v3.1.0 Aegis).
+- Runs `fz doctor` to verify toolchain presence, directory permissions, and platform integrity before builds.
+
+**What's new in v3.1.0 Aegis:**
+
+- **Virtual filesystem abstraction (`internal/fs`)** — all durable I/O routes through a `FileSystem` interface with Unix and native Windows implementations. `OpenVerified` closes the TOCTOU window between metadata check and read open via `Lstat` + `SameFile` identity verification.
+- **Hardened subprocess execution** — external tools (`git`, `ar`, `zig`, `fasm`, `gcc`, `ld`, `nasm`, …) invoke exclusively through `utils.RunCommand`, which resolves binaries with `exec.LookPath`, validates every argument, and runs under a fixed, reproducibility-oriented environment.
+- **Atomic secure writes** — manifests, configuration files, SBOM output, and doctor probe files use `SecureWriteFile`: mode `0600` temporary file, flush via close, platform-specific atomic rename (retry loop on Windows file locks).
+- **Constant-time toolchain checksum comparison** — optional per-tool BLAKE3 expectations in config are verified with `crypto/subtle.ConstantTimeCompare` to reduce timing leakage during integrity audits.
+- **`fz doctor`** — four-stage self-audit: toolchain reachability, recursive permission probe (read/write via `OpenVerified`), platform integrity (`GOOS`/`GOARCH`, VFS backend name, execution root, CPU count), and consolidated human or `--json` reporting.
+- **Native Windows I/O path** — `//go:build windows` selects `fs.Windows`, `CleanPath` for drive/UNC normalization, and `renameAtomic` with bounded retries when AV software holds transient locks.
+- **Fault-injection test suite** — `fs.Mock` injects `ErrDiskFull`, `ErrPermission`, `ErrTimeout`, and related errors; critical internal packages target **90%+** statement coverage. See [Section 35](#35-testing-standards-aegis).
 
 **What's new in v3.0.0 GLORIA:**
 
@@ -417,7 +435,9 @@ fz -v
 
 ### 3.6 Windows
 
-Windows support is in progress. The recommended approach is **WSL2** (Windows Subsystem for Linux), which provides a full Linux environment and the best compatibility with all ForgeZero features.
+As of **v3.1.0 Aegis**, ForgeZero ships a first-class native Windows filesystem backend (`internal/fs.Windows`) and Windows-specific atomic rename retry logic. WSL2 remains the path of least resistance for full toolchain parity, but native Windows builds no longer depend on translating paths through a Linux compatibility layer for ForgeZero's own I/O.
+
+The recommended approach for day-to-day development on Windows is still **WSL2** (Windows Subsystem for Linux), which provides a full Linux environment and the best compatibility with all ForgeZero features.
 
 #### Option A — WSL2 (Recommended)
 
@@ -484,6 +504,8 @@ Move `fz.exe` to a directory on your `PATH`.
 
 > **Known limitation:** `-sanitize` and `-strict` require Clang with AddressSanitizer support compiled for Windows. This is available via the LLVM official Windows release but requires additional setup beyond MSYS2. Basic NASM assembly and GCC linking work without any extra configuration.
 
+Native Windows I/O behavior (path cleaning, `OpenVerified`, locked-file renames) is documented in [Section 34](#34-cross-platform-readiness).
+
 ---
 
 ### 3.7 Build from Source (All Platforms)
@@ -499,7 +521,10 @@ Run tests:
 
 ```bash
 go test ./...
+go test ./internal/... -cover
 ```
+
+The `internal/` tree is the primary coverage target for v3.1.0 Aegis. Critical packages (`pkgman`, `fs`, `doctor`, `config`, `zig`, and others) are held to **90%+** statement coverage; fault injection via `fs.Mock` is mandatory for I/O failure paths. See [Section 35](#35-testing-standards-aegis).
 
 Install to `PATH`:
 
@@ -746,7 +771,7 @@ Each level overrides values from the previous one. This lets you set organizatio
 fz [options]
 ```
 
-At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, `sbom`, `audit`, `verify`, `bench`, or a valid config file must be present.
+At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, `sbom`, `audit`, `verify`, `bench`, `doctor`, or a valid config file must be present.
 
 ### Full Flag Reference
 
@@ -817,6 +842,9 @@ At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, `sbom`, `audit`,
 | `fz verify --generate` | Generate a new BLAKE3 manifest of the current source tree. |
 | `fz verify --strict` | Also report UNTRACKED files (files on disk not in the manifest). |
 | `fz verify -manifest <f>` | Use a specific manifest file instead of the default `.fz.manifest`. |
+| `fz doctor` | Run the Aegis self-audit: toolchain, permissions, platform integrity. |
+| `fz doctor -root <dir>` | Audit a specific project root (default: current working directory). |
+| `fz doctor -json` | Emit the audit report as JSON; exit code `1` if `healthy` is false. |
 
 ### Performance Sub-commands
 
@@ -1414,6 +1442,27 @@ fz> exit
 
 ---
 
+### 15.8 Virtual Filesystem Layer (VFS)
+
+> **New in v3.1.0 Aegis**
+
+ForgeZero no longer calls `os.Open`, `os.WriteFile`, or `os.Rename` directly from security-sensitive code paths. The `internal/fs` package defines a `FileSystem` interface; `internal/utils` binds a process-wide implementation through `SetFileSystem` / `fileSystem()` so production code, tests, and fault injection share one API.
+
+| Component | Role |
+|-----------|------|
+| `FileSystem` interface | Contract for mkdir, read, write, verified open, temp files, rename, stat, symlinks |
+| `fs.Unix` | POSIX implementation (`//go:build !windows`) |
+| `fs.Windows` | Native Windows implementation (`//go:build windows`) |
+| `fs.Default` | Platform `Default` variable (`Unix{}` or `Windows{}`) selected at compile time |
+| `fs.Mock` | Test double that delegates to `Base` and injects per-operation errors |
+| `utils.SetFileSystem` | Runtime swap used only in tests |
+
+Operations that touch project secrets, manifests, or configuration — including `SecureWriteFile`, `ReadFileSecure`, `OpenVerifiedRead`, and `fz doctor`'s tree walk — use this layer.
+
+Full architectural detail: [Section 31](#31-virtual-filesystem-layer-aegis).
+
+---
+
 ## 16. Configuration File Reference
 
 ForgeZero accepts YAML configuration files. The file is searched automatically in this order: `.fz.yaml`, `fz.yaml`, `.fz.yml`, `fz.yml`. Use `-config <path>` to specify explicitly.
@@ -1875,7 +1924,7 @@ gdb ./boot
 
 ## 19. Supply Chain Security
 
-> **New in v3.0.0 GLORIA**
+> **New in v3.0.0 GLORIA** · hardened in **v3.1.0 Aegis** ([Section 32](#32-aegis-security-core))
 
 ### 19.1 SBOM Generation (fz sbom)
 
@@ -2997,10 +3046,635 @@ C:\msys64\mingw64\bin
 | Man page (`man fz`) | Planned |
 | Windows native support without WSL2 | In progress |
 | macOS full support and testing | In progress |
+| VFS abstraction + `OpenVerified` TOCTOU hardening | ✅ Done (v3.1.0) |
+| Aegis hardened `RunCommand` wrapper | ✅ Done (v3.1.0) |
+| `SecureWriteFile` atomic write pipeline | ✅ Done (v3.1.0) |
+| Constant-time toolchain checksum verify | ✅ Done (v3.1.0) |
+| `fz doctor` self-audit command | ✅ Done (v3.1.0) |
+| Native Windows `fs.Windows` + rename retry | ✅ Done (v3.1.0) |
+| 90%+ coverage + `fs.Mock` fault injection | ✅ Done (v3.1.0) |
 
 ---
 
-## 31. Contributing
+## 31. Virtual Filesystem Layer (Aegis)
+
+> **Package:** `internal/fs` · **Consumers:** `internal/utils`, `internal/doctor`, `internal/verify`, `internal/sbom`, `internal/pkgman` (via utils), all manifest and config writers
+
+ForgeZero v3.1.0 introduces a deliberate separation between *what* filesystem operations the build tool requires and *how* the host operating system performs them. The goal is twofold: enable deterministic fault-injection tests without patching `os` globally, and centralize symlink and path-substitution defenses in one audited code path.
+
+### 31.1 Design: The `FileSystem` Interface
+
+All durable and security-sensitive operations flow through a single interface:
+
+```go
+type FileSystem interface {
+    MkdirAll(path string, perm os.FileMode) error
+    WriteFile(path string, data []byte, perm os.FileMode) error
+    ReadFile(path string) ([]byte, error)
+    Open(path string) (io.ReadCloser, error)
+    OpenVerified(path string) (io.ReadCloser, error)
+    CreateTemp(dir, pattern string) (*os.File, error)
+    Remove(name string) error
+    RemoveAll(path string) error
+    Rename(oldpath, newpath string) error
+    Stat(name string) (os.FileInfo, error)
+    Lstat(name string) (os.FileInfo, error)
+    ReadDir(name string) ([]os.DirEntry, error)
+    Chmod(name string, mode os.FileMode) error
+    Readlink(name string) (string, error)
+    EvalSymlinks(path string) (string, error)
+    SameFile(a, b os.FileInfo) bool
+}
+```
+
+The interface is intentionally narrow. It mirrors the subset of `os` and `path/filepath` calls ForgeZero actually needs, not a full virtual filesystem framework. Higher-level packages never import `os` for manifest reads, config writes, or doctor tree walks when a verified or atomic path exists in `internal/utils`.
+
+**Binding model:**
+
+- At compile time, `fs.Default` is set to `Unix{}` or `Windows{}` via build tags in `default_unix.go` / `default_windows.go`.
+- At run time, `utils.fileSystem()` returns the active implementation (production: `fs.Default`; tests: `fs.Mock` installed with `utils.SetFileSystem`).
+- `fs.ImplName()` reports `"unix"` or `"windows"` for inclusion in `fz doctor` platform output.
+
+### 31.2 Unix Implementation
+
+The `Unix` type (`unix.go`, build tag `!windows`) is a thin, explicit wrapper over the Go standard library. It exists so that:
+
+1. Every platform-specific behavior is visible in one file per OS.
+2. Tests can substitute `Mock` without build-tag fragmentation in consumer packages.
+
+`OpenVerified` on Unix executes the following sequence:
+
+```go
+pre, err := os.Lstat(path)          // metadata without following final symlink hop
+if pre.Mode()&os.ModeSymlink != 0 {
+    return nil, ErrSymlink            // symlinks are rejected for verified reads
+}
+f, err := os.Open(path)               // open the same path
+post, err := f.Stat()                 // metadata of the opened descriptor
+if !os.SameFile(pre, post) {
+    f.Close()
+    return nil, ErrPathChanged        // inode/device identity changed between check and use
+}
+return f, nil
+```
+
+**Why `Lstat` and not `Stat`?** `Stat` follows symlinks. An attacker could place a symlink at `path` pointing outside the project root; `Stat` would describe the target file, while the subsequent open might race to different content. `Lstat` inspects the link itself. If it is a symlink, ForgeZero returns `ErrSymlink` immediately.
+
+**Why `SameFile` after open?** This addresses classic **TOCTOU (time-of-check to time-of-use)** symlink substitution:
+
+| Phase | Attacker action | Without `SameFile` | With `SameFile` |
+|-------|-----------------|--------------------|-----------------|
+| T0 | `path` is a regular file the auditor expects | Check passes | `Lstat` records inode A |
+| T1 | Attacker replaces `path` with symlink to `/etc/passwd` | — | — |
+| T2 | Reader calls `Open` | May read sensitive file | `Open` follows symlink; `Stat` on fd may differ |
+| T3 | Compare identities | — | `os.SameFile(pre, post)` fails → `ErrPathChanged` |
+
+`os.SameFile` compares device and inode (or equivalent on the platform). If the object opened is not the same file that was inspected at T0, the operation aborts. The error surface is `fs.ErrPathChanged` (distinct from `fs.ErrSymlink`).
+
+`Rename` on Unix delegates to `renameAtomic`, which is currently `os.Rename` — on POSIX, rename within the same filesystem is atomic with respect to readers observing the destination path.
+
+### 31.3 Windows Implementation and Build Tags
+
+Native Windows support is not a runtime fork inside Unix code. It is a **separate compilation unit**:
+
+| File | Build constraint | Purpose |
+|------|------------------|---------|
+| `unix.go`, `default_unix.go`, `rename_unix.go`, `impl_unix.go` | `!windows` | POSIX backend |
+| `windows.go`, `default_windows.go`, `rename_windows.go`, `impl_windows.go` | `windows` | Win32 API backend |
+| `pathnorm.go` | all platforms | `CleanPath`, `HasDrivePrefix`, `IsUNC`, `NormalizeAbs` |
+
+The `Windows` struct implements the same `FileSystem` contract. Differences that matter for correctness:
+
+- **Path normalization:** Every entry point passes paths through `CleanPath` before syscalls. Drive letters, backslashes, and UNC prefixes are normalized consistently before `Lstat` / `Open`.
+- **`OpenVerified`:** Identical logical steps as Unix (`Lstat` → reject symlink → `Open` → `Stat` → `SameFile`), with `isSymlinkMode` abstracting mode-bit checks.
+- **`Chmod`:** Best-effort on Windows (permission model differs); failures do not block writes that already succeeded.
+- **`renameAtomic`:** Documented in [Section 34](#34-cross-platform-readiness).
+
+`ImplName()` returns `"windows"` so CI logs and `fz doctor -json` output explicitly state which backend executed.
+
+### 31.4 Path Normalization and UNC Handling
+
+`pathnorm.go` provides shared helpers:
+
+- `CleanPath` — trims, applies `filepath.Clean`, preserves `\\` UNC prefixes on Windows.
+- `IsUNC` — detects `\\server\share` roots.
+- `HasDrivePrefix` — detects `C:\` style paths.
+- `NormalizeAbs` — resolves to absolute form; UNC paths skip redundant `Abs` behavior.
+
+`utils.ValidateCLIPath` and `ResolveSecurePath` cooperate with these helpers so CLI-supplied paths cannot inject shell metacharacters or traverse above the execution root.
+
+### 31.5 The `Mock` Implementation and Fault Injection
+
+`fs.Mock` embeds a `Base FileSystem` (defaults to `fs.Default`) and a mutex-protected `failures` map keyed by `operation:path` or `operation:` (global op failure).
+
+```go
+m := fs.NewMock(fs.Default)
+m.SetFailOp("Rename", fs.ErrDiskFull)
+m.SetFail("OpenVerified", resolvedPath, fs.ErrPermission)
+utils.SetFileSystem(m)
+defer utils.SetFileSystem(nil)
+```
+
+Canonical injected errors (defined in `fs.go`):
+
+| Variable | Simulated condition |
+|----------|---------------------|
+| `ErrDiskFull` | `ENOSPC` / quota exhaustion |
+| `ErrPermission` | `EACCES` / `EPERM` |
+| `ErrTimeout` | I/O timeout |
+| `ErrInterrupted` | `EINTR` |
+| `ErrSymlink` | Policy violation (not only mock — production path too) |
+| `ErrPathChanged` | TOCTOU detection |
+
+Tests in `internal/utils`, `internal/doctor`, `internal/fs`, and other packages call `SetFileSystem` to force `SecureWriteFile`, `ReadFileSecure`, and `scanTree` through failure branches without root privileges or filling disks.
+
+### 31.6 Consumer Integration in `internal/utils`
+
+Production code paths use:
+
+| Function | VFS operations used |
+|----------|---------------------|
+| `SecureWriteFile` | `MkdirAll`, `CreateTemp`, `Chmod`, `Write`, `Close`, `Rename`, `Chmod` |
+| `ReadFileSecure` | `ResolveSecurePath` → `OpenVerified` → read |
+| `OpenVerifiedRead` | Same as above |
+| `CopyFile` | `OpenVerified` source, temp file, `Rename` |
+| `RemovePath` | `Remove` |
+| `StatResolved` / `ReadDirResolved` | `Stat`, `ReadDir` on resolved paths |
+
+`ResolveSecurePath` evaluates symlinks when present, but treats not-exist as a non-fatal condition for write destinations (parent directory creation). Reads of existing files always go through `OpenVerified` when integrity matters.
+
+---
+
+## 32. Aegis Security Core
+
+> **Packages:** `internal/utils`, `internal/fs`, `internal/pkgman`, `internal/assembler`, `internal/linker`, `internal/zig`
+
+v3.1.0 Aegis names the cross-cutting security properties that apply regardless of which assembler backend or linker mode is selected. They are not optional hardening flags; they are invariant behaviors of the binary.
+
+### 32.1 Command Hardening: The `RunCommand` Pipeline
+
+Every external process ForgeZero spawns — including but not limited to `git`, `ar`, `zig`, `fasm`, `gcc`, `g++`, `clang`, `ld`, `nasm`, `objdump`, `nm`, and `readelf` — must pass through `utils.RunCommand` (or a thin wrapper such as `pkgman.runGit` or `zig.RunCommand` that ultimately calls the same primitives).
+
+**Stage 1 — Command name validation**
+
+```go
+if err := ValidateCLIArg(name); err != nil { return err }
+```
+
+Forbidden characters in arguments and paths are defined in `forbiddenArgChars()` / `forbiddenPathChars()` and include shell metacharacters, backticks, pipes, redirection symbols, and embedded NUL/newline bytes. This blocks injection via malicious config flags or crafted filenames passed through to tools.
+
+**Stage 2 — Absolute executable resolution**
+
+```go
+resolved, err := lookExecutable(name)  // exec.LookPath on Unix; .exe/.bat search on Windows
+cmd := exec.CommandContext(ctx, resolved, args...)
+```
+
+ForgeZero does not invoke bare names found in `PATH` without resolution. The actual executable path is fixed before `exec`. Combined with `ValidateCLIArg` on each argument, the command vector is fully expanded and inspectable when `-verbose` is enabled.
+
+On Windows, `lookExecutable` probes `name`, `name.exe`, and `name.bat` in order.
+
+**Stage 3 — Argument sanitization**
+
+Each argument is validated with `ValidateCLIArg`, except the shell escape hatch: when the resolved basename is `sh` or `bash` and the invocation is `sh -c script`, the script body at index `1` is skipped (legacy compatibility for wrapped tools). All other arguments, including every `git` subcommand token and every linker flag, are validated.
+
+**Stage 4 — Fixed environment**
+
+```go
+cmd.Env = deterministicEnv()
+```
+
+`deterministicEnv()` copies `os.Environ()` then forces:
+
+| Variable | Value | Rationale |
+|----------|-------|-----------|
+| `LC_ALL` | `C` | Stable locale sorting and diagnostics |
+| `LANG` | `C` | Same |
+| `TZ` | `UTC` | Reproducible timestamps in tool output |
+| `SOURCE_DATE_EPOCH` | `1600000000` | Aligns with reproducible build expectations |
+
+Child processes do not inherit ambient locale randomness that could change compiler warning text or path behavior across machines.
+
+**Stage 5 — Execution root**
+
+When `utils.SetExecutionRoot` has been called (build, doctor, SBOM generation), `cmd.Dir` is set to that directory so relative paths in tool invocations resolve inside the project tree.
+
+**Public entry points:**
+
+| API | Use case |
+|-----|----------|
+| `RunCommand(ctx, verbose, stdout, stderr, name, args...)` | Full control of streams; captures output in internal buffer when streams nil |
+| `RunCommandSilent(ctx, verbose, name, args...)` | Assembler, linker, zig backends |
+| `RunCommandOutput(ctx, name, args...)` | Symbol extraction (`nm`, `objdump`) |
+
+Injectability: `utils.CheckToolFunc` replaces toolchain presence checks in tests. `pkgman.runGit` is swappable for git failure simulation. `linker.runner` and `assembler.runCommand` provide additional seams for mock runners without bypassing validation.
+
+### 32.2 Atomic Writes: `SecureWriteFile`
+
+Non-atomic `os.WriteFile` is not used for security-sensitive outputs. `SecureWriteFile` implements write-via-temporary-file:
+
+```
+Validate path → SecureMkdirAll(parent)
+    → resolveDest(path) [symlink-aware absolute path]
+    → atomicWrite(resolved, data)
+```
+
+`atomicWrite` algorithm:
+
+1. `CreateTemp(dir, ".fz_write_*.tmp")` in the destination directory (same volume for atomic rename).
+2. `Chmod(tmpName, 0600)` — `utils.FilePerm` is `os.FileMode(0600)`.
+3. Write full payload to the temporary descriptor.
+4. `Close` the descriptor (buffers flushed to the kernel).
+5. `renameResolved(tmpName, resolved)` → platform `Rename` (see Section 34 for Windows retries).
+6. `Chmod(resolved, 0600)` on the final path.
+
+On failure after temp creation, a deferred cleanup removes the partial temp file.
+
+**Why this matters:**
+
+| Risk | Non-atomic write | `SecureWriteFile` |
+|------|------------------|-------------------|
+| Crash mid-write | Truncated `.fz.yaml`, corrupt manifest | Readers see old file or nothing; never half-written final path |
+| Concurrent reader | Partial JSON / YAML | Readers observe previous complete version until rename |
+| Permission leak | umask-dependent final mode | Temp and final file explicitly `0600` |
+| Symlink redirect | Write escapes project | `resolveDest` + verified read paths reject symlinks on read; write path resolved |
+
+Files written through this path include: `.fz.yaml` updates from `fz pm`, `.fz.manifest`, `compile_commands.json`, SBOM outputs, `fz -init` templates, and the `fz doctor` probe file `.fz_doctor_probe`.
+
+### 32.3 Constant-Time Toolchain Checksum Verification
+
+`.fz.yaml` may specify expected BLAKE3 digests per tool binary:
+
+```yaml
+tool_checksums:
+  gcc: "abc123..."
+  nasm: "def456..."
+```
+
+During `utils.CheckTool(name)`:
+
+1. Resolve tool with `lookExecutable`.
+2. If no expectation configured, return success after presence check.
+3. Otherwise `HashFile(path)` computes BLAKE3 of the on-disk executable.
+4. Compare with `constantTimeEqual(actual, expected)` → `crypto/subtle.ConstantTimeCompare`.
+
+**Threat model:** A local attacker who can influence timing of manifest verification should not learn expected hash bytes byte-by-byte through a standard string comparison that short-circuits on first differing octet. Constant-time comparison removes that side channel for equal-length hex strings.
+
+Mismatch produces `tool checksum mismatch for <name>` and fails the build before any compilation.
+
+### 32.4 Execution Root and Path Confinement
+
+`SetExecutionRoot` / `GetExecutionRoot` store the canonical project directory. Functions such as `EnsureInsideRoot`, `HashDirWithRoot`, and doctor's `scanTree` use `ResolveSecurePath` to ensure scanned paths do not escape the root via symlinks or `..` segments after evaluation.
+
+Symlink files encountered during directory walks for integrity or doctor are skipped (not followed) when policy requires containment.
+
+### 32.5 Synergy with Supply-Chain Commands
+
+| Command | Security mechanism |
+|---------|-------------------|
+| `fz pm add` / `update` | `runGit` → `RunCommand`; timeout via context |
+| `fz verify` | `ReadFileSecure` on manifest; BLAKE3 over tree |
+| `fz sbom` | `HashDirWithRoot`; `SecureWriteFile` if persisting |
+| `fz audit` | `OpenVerifiedRead` per source file in doctor-style walks |
+| `fz doctor` | `SecureWriteFile` probe; `OpenVerifiedRead` on every regular file |
+
+---
+
+## 33. System Self-Audit (`fz doctor`)
+
+> **Package:** `internal/doctor` · **Entry point:** `fz doctor [options]`
+
+`fz doctor` is a pre-flight diagnostic command. It does not compile code. It answers whether the current machine and project directory satisfy ForgeZero's minimum operational requirements before a long build or CI job is started.
+
+### 33.1 Invocation
+
+```bash
+fz doctor
+fz doctor -root /path/to/project
+fz doctor -json
+fz doctor -root ./myapp -json
+```
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `-root` | current working directory | Directory to audit for permissions and file readability |
+| `-json` | off | Emit machine-readable `Report` JSON |
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| `0` | `report.Healthy == true` |
+| `1` | Degraded or failed audit (`Healthy == false`, or run error) |
+
+### 33.2 Audit Pipeline (Four Stages)
+
+`doctor.Run` executes stages in a fixed order:
+
+```
+SetExecutionRoot(root)
+  → Stage A: auditToolchain()
+  → Stage B: auditPermissions(root)
+  → Stage C: Platform metadata (GOOS, GOARCH, ImplName, CPUs)
+  → Stage D: healthyFromChecks() + status aggregation
+```
+
+#### Stage A — Toolchain Reachability
+
+`auditToolchain` probes a minimal required set:
+
+| Tool | Required when | Check method |
+|------|---------------|--------------|
+| `zig` | always (v3.1.0 policy) | `utils.LookExecutable` |
+| `fasm` | non-Windows only | `LookExecutable` |
+| `wasm-ld` | optional | `LookExecutable` |
+
+Each result is a `ToolCheck` record: `name`, `required`, `found`, `path` (if found), `error` (if missing).
+
+Missing **required** tools set `Healthy = false` and append `toolchain: <name> unavailable` to `Errors`.
+
+#### Stage B — Recursive Permission Audit
+
+`auditPermissions(root)` performs:
+
+1. **Root resolution** — `ResolveSecurePath(root)`; failure records `resolve root` error.
+2. **Root stat** — must be a directory.
+3. **Writability probe** — writes `.fz_doctor_probe` via `SecureWriteFile`, deletes via `RemovePath`. Failure marks `Writable = false`.
+4. **Tree scan** — iterative directory stack (not recursive syscalls) via `scanTree`:
+   - Skips `.git`, `.fz_objs`, `.fz_cache`, `vendor` directories.
+   - Counts directories (`DirsScanned`) and regular files (`FilesSeen`).
+   - For each regular file: `Lstat` → skip symlinks → `OpenVerifiedRead` → close.
+
+Any `OpenVerifiedRead` failure marks the tree **not readable** and records the path in `Permissions.Error`.
+
+This stage validates that the same `OpenVerified` path used in production can read every source file under the project root.
+
+#### Stage C — Platform Integrity
+
+Populated at report construction:
+
+| Field | Source |
+|-------|--------|
+| `platform.goos` | `runtime.GOOS` |
+| `platform.goarch` | `runtime.GOARCH` |
+| `platform.path_separator` | `os.PathSeparator` |
+| `platform.filesystem_impl` | `fs.ImplName()` (`unix` / `windows`) |
+| `platform.execution_root` | `utils.GetExecutionRoot()` after set |
+| `platform.num_cpu` | `runtime.NumCPU()` |
+
+#### Stage D — Health Aggregation
+
+`healthyFromChecks()` sets `Healthy = false` if:
+
+- Any required toolchain entry has `found == false`.
+- `Permissions.Readable == false` OR `Permissions.Writable == false`.
+
+`Status` is `"ok"` when healthy, `"degraded"` otherwise. Panics in permission audit are recovered and reported as `doctor panic: ...` without crashing the process silently.
+
+### 33.3 Human-Readable Output Example
+
+```
+fz doctor: ok
+platform: linux/amd64 fs=unix sep="/" root=/home/dev/myproject cpus=16
+toolchain:
+  zig (required): /usr/local/bin/zig
+  fasm (required): /usr/bin/fasm
+  wasm-ld: missing
+permissions: root=/home/dev/myproject readable=true writable=true dirs=42 files=318
+```
+
+Degraded example:
+
+```
+fz doctor: degraded
+platform: linux/amd64 fs=unix sep="/" root=/home/dev/myproject cpus=16
+toolchain:
+  zig (required): missing
+  fasm (required): /usr/bin/fasm
+  wasm-ld: missing
+permissions: root=/home/dev/myproject readable=true writable=false dirs=10 files=0
+  error: write probe: permission denied
+issue: toolchain: zig unavailable
+```
+
+### 33.4 JSON Output Example
+
+```bash
+fz doctor -json
+```
+
+```json
+{
+  "status": "degraded",
+  "healthy": false,
+  "toolchain": [
+    {
+      "name": "zig",
+      "required": true,
+      "found": false,
+      "error": "required tool not found in PATH: zig"
+    },
+    {
+      "name": "fasm",
+      "required": true,
+      "found": true,
+      "path": "/usr/bin/fasm"
+    },
+    {
+      "name": "wasm-ld",
+      "required": false,
+      "found": false,
+      "error": "required tool not found in PATH: wasm-ld"
+    }
+  ],
+  "permissions": {
+    "root": "/home/dev/myproject",
+    "writable": true,
+    "readable": true,
+    "dirs_scanned": 42,
+    "files_seen": 318
+  },
+  "platform": {
+    "goos": "linux",
+    "goarch": "amd64",
+    "path_separator": "/",
+    "filesystem_impl": "unix",
+    "execution_root": "/home/dev/myproject",
+    "num_cpu": 16
+  },
+  "errors": [
+    "toolchain: zig unavailable"
+  ]
+}
+```
+
+JSON is suitable for CI gates:
+
+```bash
+fz doctor -json | jq -e '.healthy'
+```
+
+### 33.5 Relationship to `fz audit`
+
+| Command | Purpose |
+|---------|---------|
+| `fz doctor` | Machine and workspace *operational* readiness (tools, permissions, platform) |
+| `fz audit` | Source code *security* patterns (secrets, licenses, dangerous APIs) |
+
+Run `fz doctor` before builds on a fresh runner; run `fz audit` before release tagging.
+
+---
+
+## 34. Cross-Platform Readiness
+
+> **Build tags:** `windows` / `!windows` · **Packages:** `internal/fs`, `internal/utils`
+
+v3.1.0 Aegis treats Windows as a compile-time target with its own filesystem adapter, not as an afterthought on the Unix code path.
+
+### 34.1 Compile-Time Backend Selection
+
+```
+GOOS=linux   → package fs compiles: unix.go, default_unix.go, rename_unix.go, impl_unix.go
+GOOS=windows → package fs compiles: windows.go, default_windows.go, rename_windows.go, impl_windows.go
+GOOS=linux   → utils.IsWindows() == false
+GOOS=windows → utils.IsWindows() == true (output naming, path validation)
+```
+
+There is no `if runtime.GOOS == "windows"` inside `OpenVerified` itself; the correct struct is selected by the Go toolchain. This keeps dead branches out of Linux binaries and allows Windows-only syscalls and retry policies without `#ifdef` clutter in shared files.
+
+### 34.2 Windows Path Handling
+
+`CleanPath` is applied at the boundary of every `Windows` method:
+
+- Converts slash-mixed paths to OS-native separators where appropriate.
+- Preserves UNC paths (`\\host\share\...`) without breaking `filepath.Clean` assumptions.
+- Cooperates with `ValidateCLIPath` rejection of unsafe UNC forms (`isUnsafeUNC` in `internal/utils/security.go`).
+
+Output binary naming in `builder` uses `utils.IsWindows()` to select `.exe` suffix when deriving default output names.
+
+### 34.3 Atomic Rename on Windows
+
+POSIX `rename(2)` replacing an existing destination is atomic. Windows may return sharing violations when antivirus, indexing, or another process holds a handle on the destination file.
+
+`rename_windows.go` implements bounded retry:
+
+```go
+for attempt := 0; attempt < 8; attempt++ {
+    if err := os.Rename(oldpath, newpath); err == nil {
+        return nil
+    }
+    last = err
+    time.Sleep(time.Millisecond * time.Duration(10*(attempt+1)))
+}
+return last
+```
+
+Backoff schedule: 10ms, 20ms, … up to 80ms between attempts. This integrates with `SecureWriteFile` so manifest updates survive transient locks on `compile_commands.json` or `.fz.yaml` on corporate Windows images.
+
+Unix continues to use single-shot `os.Rename` (`rename_unix.go`).
+
+### 34.4 `OpenVerified` Parity
+
+Windows receives the same TOCTOU logic as Unix (see Section 31.2). Symlink rejection uses mode-bit inspection compatible with Windows reparse points where applicable.
+
+### 34.5 Toolchain Notes on Windows
+
+| Component | Native Windows status |
+|-----------|----------------------|
+| ForgeZero I/O (`internal/fs`) | Supported (v3.1.0) |
+| NASM + GCC via MSYS2 MinGW | Supported (manual PATH setup) |
+| `fz doctor` | Reports `filesystem_impl: "windows"` |
+| `-sanitize` / `-strict` | Requires LLVM ASan build for Windows |
+| WSL2 | Still recommended for simplest toolchain install |
+
+`fz doctor` should be the first command run after installing `fz.exe` on a native Windows host to confirm PATH and directory permissions.
+
+### 34.6 macOS and BSD
+
+macOS builds use the `Unix` backend (`ImplName: "unix"`). Behavior matches Linux for `OpenVerified` and atomic rename. No separate Darwin struct is required because Go's `os` package maps to POSIX semantics on macOS.
+
+---
+
+## 35. Testing Standards (Aegis)
+
+> **Policy version:** v3.1.0 · **Command:** `go test ./internal/... -cover`
+
+### 35.1 Coverage Targets
+
+The v3.1.0 release cycle raised statement coverage across `internal/` packages. The engineering standard for security-critical packages is **≥ 90%** statement coverage. Representative results from the Aegis test blitz (your tree may vary slightly by platform):
+
+| Package | Coverage class | Notes |
+|---------|----------------|-------|
+| `internal/pkgman` | ≥ 90% | HTTP catalog mock, `runGit` injection, install/hash mismatch |
+| `internal/fs` | ≥ 90% | `Mock` all ops, `OpenVerified`, pathnorm |
+| `internal/doctor` | ≥ 90% | Permission failures, JSON, `scanTree` open errors |
+| `internal/config` | ≥ 90% | `LoadMerged`, `Merge`, validation |
+| `internal/zig` | ≥ 90% | `RunCommand` mock, link/compile failures |
+| `internal/man` | 100% | Man page generator |
+| `internal/assembler` | high 80s–90s | Mocked `runCommand`, all target triple branches |
+| `internal/linker` | high 70s–80s | Windows impl tests, response file, symbol parsers |
+| `internal/shell` | high 80s | Executor branches, `cmdBuild` paths |
+
+Packages below 90% are dominated by platform-specific linker backends or optional external tools (`objdump` integration tests skipped when tool absent). Coverage gaps are tracked; new code in security paths must include tests.
+
+### 35.2 Fault Injection via `fs.Mock`
+
+Every error return defined in `internal/fs` is injectable:
+
+```go
+m := fs.NewMock(fs.Default)
+m.SetFailOp("CreateTemp", fs.ErrDiskFull)
+utils.SetFileSystem(m)
+t.Cleanup(func() { utils.SetFileSystem(nil) })
+err := utils.SecureWriteFile("out/config.yaml", data)
+// expect error, no partial final file
+```
+
+Tests cover:
+
+- **Disk full** on temp creation, write, or rename.
+- **Permission denied** on `OpenVerified`, `MkdirAll`, `Remove`.
+- **I/O timeout** on read paths.
+- **Symlink** and **path changed** policy errors from `OpenVerified`.
+
+This validates that higher-level commands (`fz doctor`, `fz verify`, `fz pm` config writes) degrade gracefully rather than panic or leave partial state.
+
+### 35.3 Subprocess Mocking
+
+| Seam | Package | Injected behavior |
+|------|---------|-------------------|
+| `runGit` | `pkgman` | Clone/checkout/pull failures without network |
+| `RunCommand` | `zig` | Compile/link success and failure |
+| `runner` | `linker` | Linker exit codes and stdout |
+| `runCommand` | `assembler` | Assembler/compiler failures |
+| `CheckToolFunc` | `utils` | Missing toolchain simulation |
+
+### 35.4 HTTP and Catalog Tests
+
+`pkgman` tests replace `httpClient` with `httptest` transports returning malformed JSON, HTTP 404, and truncated bodies to verify catalog fetch error aggregation without contacting external networks.
+
+### 35.5 Race and Integration Commands
+
+```bash
+go test ./... -race
+go test ./internal/... -coverprofile=coverage.out
+go tool cover -func=coverage.out
+```
+
+Parallel build races were addressed in v3.0.0; v3.1.0 extends race-safety expectations to VFS-backed I/O in doctor and verify paths.
+
+### 35.6 Contributor Requirements
+
+Pull requests that touch `internal/fs`, `internal/utils` (I/O or `RunCommand`), or `internal/doctor` must:
+
+1. Include table-driven tests for new branches.
+2. Use `fs.Mock` or existing seams for failure paths (no skipped `err` handlers).
+3. Not regress package coverage below the 90% bar for the modified package.
+4. Pass `go test ./...` locally before review.
+
+---
+
+## 36. Contributing
 
 Contributions are welcome: bug reports, feature requests, documentation improvements, and code patches.
 
@@ -3010,7 +3684,10 @@ Contributions are welcome: bug reports, feature requests, documentation improvem
 
    ```bash
    go test ./...
+   go test ./internal/... -cover
    ```
+
+   Security-sensitive changes must include fault-injection or mock tests per [Section 35](#35-testing-standards-aegis).
 
 4. **Submit a Pull Request** with a clear description of the change and the problem it solves.
 
@@ -3020,7 +3697,7 @@ Repository: [github.com/forgezero-cli/ForgeZero](https://github.com/forgezero-cl
 
 ---
 
-## 32. License
+## 37. License
 
 ForgeZero is released under the **MIT License**.
 
