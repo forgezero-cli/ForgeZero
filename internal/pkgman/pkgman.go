@@ -17,6 +17,10 @@ import (
 
 var httpClient = &http.Client{}
 
+var runGit = func(ctx context.Context, args ...string) (string, error) {
+	return utils.RunCommand(ctx, false, os.Stdout, os.Stderr, "git", args...)
+}
+
 const (
 	vendorDir = "vendor"
 )
@@ -49,11 +53,11 @@ func Add(ctx context.Context, pkgURL, version string) error {
 		return fmt.Errorf("prepare vendor dir: %w", err)
 	}
 	cloneURL := fmt.Sprintf("https://%s", repo)
-	if _, err := utils.RunCommand(ctx, false, os.Stdout, os.Stderr, "git", "clone", cloneURL, dest); err != nil {
+	if _, err := runGit(ctx, "clone", cloneURL, dest); err != nil {
 		return fmt.Errorf("git clone %s: %w", repo, err)
 	}
 	if tag != "" {
-		if _, err := utils.RunCommand(ctx, false, os.Stdout, os.Stderr, "git", "-C", dest, "checkout", tag); err != nil {
+		if _, err := runGit(ctx, "-C", dest, "checkout", tag); err != nil {
 			return fmt.Errorf("git checkout %s@%s: %w", repo, tag, err)
 		}
 	}
@@ -189,7 +193,7 @@ func Update(ctx context.Context) error {
 	}
 	for _, entry := range entries {
 		pkgPath := filepath.Join(vendorDir, entry.Name())
-		if _, err := utils.RunCommand(ctx, false, os.Stdout, os.Stderr, "git", "-C", pkgPath, "pull"); err != nil {
+		if _, err := runGit(ctx, "-C", pkgPath, "pull"); err != nil {
 			fmt.Printf("Warning: failed to update %s: %v\n", entry.Name(), err)
 		} else {
 			fmt.Printf("Updated %s\n", entry.Name())
