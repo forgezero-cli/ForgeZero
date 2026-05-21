@@ -59,13 +59,13 @@ func Generate(root, vendorDir, buildVersion string, cfg *config.Config, target s
 	if root == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("getwd: %w", err)
 		}
 		root = cwd
 	}
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("abs root: %w", err)
 	}
 	if err := utils.EnsureInsideRoot(rootAbs, rootAbs); err != nil {
 		return nil, err
@@ -94,23 +94,25 @@ func Generate(root, vendorDir, buildVersion string, cfg *config.Config, target s
 		},
 	}
 	if len(cfg.ToolChecksums) > 0 {
-		var keys []string
+		keys := make([]string, 0, len(cfg.ToolChecksums))
 		for k := range cfg.ToolChecksums {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, name := range keys {
-			metadata.Properties = append(metadata.Properties, Property{Name: fmt.Sprintf("tool.checksum.%s", name), Value: cfg.ToolChecksums[name]})
+			metadata.Properties = append(metadata.Properties, Property{
+				Name:  fmt.Sprintf("tool.checksum.%s", name),
+				Value: cfg.ToolChecksums[name],
+			})
 		}
 	}
-	sbom := &SBOM{
+	return &SBOM{
 		BomFormat:   "CycloneDX",
 		SpecVersion: "1.4",
 		Version:     1,
 		Metadata:    metadata,
 		Components:  components,
-	}
-	return sbom, nil
+	}, nil
 }
 
 func Marshal(sbom *SBOM) ([]byte, error) {
@@ -120,59 +122,75 @@ func Marshal(sbom *SBOM) ([]byte, error) {
 func scanVendorComponents(root, vendorDir string) ([]Component, error) {
 	rootAbs := filepath.Clean(root)
 	vendorPath := filepath.Join(root, vendorDir)
-	info, err := os.Stat(vendorPath)
+	if err := utils.EnsureInsideRoot(rootAbs, vendorPath); err != nil {
+		return nil, fmt.Errorf("vendor path: %w", err)
+	}
+	resolvedVendor, err := utils.ResolveSecurePath(vendorPath)
+	if err != nil {
+		return nil, fmt.Errorf("resolve vendor: %w", err)
+	}
+	info, err := utils.StatResolved(resolvedVendor)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("stat vendor: %w", err)
 	}
 	if !info.IsDir() {
 		return nil, fmt.Errorf("vendor path is not a directory: %s", vendorPath)
 	}
-	entries, err := os.ReadDir(vendorPath)
+	entries, err := utils.ReadDirResolved(resolvedVendor)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read vendor: %w", err)
 	}
-	var components []Component
+	components := make([]Component, 0, len(entries))
 	for _, entry := range entries {
-		path := filepath.Join(vendorPath, entry.Name())
-		var hash string
-
-		if info, lerr := os.Lstat(path); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
-			resolved, rerr := filepath.EvalSymlinks(path)
-			if rerr != nil {
-				return nil, rerr
-			}
-			if st, serr := os.Stat(resolved); serr == nil && st.IsDir() {
-				hash, err = utils.HashDirWithRoot(rootAbs, resolved)
-			} else {
-				hash, err = utils.HashFile(resolved)
-			}
-		} else if entry.IsDir() {
-			hash, err = utils.HashDirWithRoot(rootAbs, path)
-		} else {
-			hash, err = utils.HashFile(path)
-		}
-
+		path := filepath.Join(resolvedVendor, entry.Name())
+		hash, err := hashVendorEntry(rootAbs, path, entry)
 		if err != nil {
 			return nil, err
 		}
-		component := Component{
+		components = append(components, Component{
 			Type:       "library",
 			Name:       entry.Name(),
-			Version:    "",
 			Hashes:     []Hash{{Algorithm: "BLAKE3", Content: hash}},
-			Properties: []Property{{Name: "path", Value: filepath.ToSlash(strings.TrimPrefix(path, root+string(filepath.Separator)))}},
-		}
-		components = append(components, component)
+			Properties: []Property{{Name: "path", Value: filepath.ToSlash(strings.TrimPrefix(path, rootAbs+string(filepath.Separator)))}},
+		})
 	}
 	sort.Slice(components, func(i, j int) bool { return components[i].Name < components[j].Name })
 	return components, nil
 }
 
+func hashVendorEntry(rootAbs, path string, entry os.DirEntry) (string, error) {
+	info, lerr := utils.LstatPath(path)
+	if lerr != nil {
+		return "", fmt.Errorf("lstat %s: %w", path, lerr)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		resolved, rerr := utils.EvalSymlinksPath(path)
+		if rerr != nil {
+			return "", fmt.Errorf("eval symlink %s: %w", path, rerr)
+		}
+		if err := utils.EnsureInsideRoot(rootAbs, resolved); err != nil {
+			fmt.Fprintf(os.Stderr, "SECURITY WARNING: vendor symlink %s outside project root %s\n", path, rootAbs)
+			return utils.HashDirWithRoot(rootAbs, path)
+		}
+		st, serr := utils.StatResolved(resolved)
+		if serr != nil {
+			return "", fmt.Errorf("stat %s: %w", resolved, serr)
+		}
+		if st.IsDir() {
+			return utils.HashDirWithRoot(rootAbs, resolved)
+		}
+		return utils.HashFile(resolved)
+	}
+	if entry.IsDir() {
+		return utils.HashDirWithRoot(rootAbs, path)
+	}
+	return utils.HashFile(path)
+}
+
 func detectToolchainVersions(target string) []Tool {
-	tools := []Tool{}
 	if target == "" {
 		target = "x86_64-linux-gnu"
 	}
@@ -186,12 +204,13 @@ func detectToolchainVersions(target string) []Tool {
 		{name: "nasm", args: []string{"-v"}},
 		{name: "wasm-ld", args: []string{"--version"}},
 	}
-	for _, candidate := range candidates {
-		version, ok := queryToolVersion(candidate.name, candidate.args...)
+	var tools []Tool
+	for _, c := range candidates {
+		version, ok := queryToolVersion(c.name, c.args...)
 		if !ok {
 			continue
 		}
-		tools = append(tools, Tool{Vendor: "GNU", Name: candidate.name, Version: version})
+		tools = append(tools, Tool{Vendor: "GNU", Name: c.name, Version: version})
 	}
 	if strings.Contains(target, "wasm") || strings.Contains(target, "wasm32") {
 		tools = append(tools, Tool{Vendor: "WebAssembly", Name: "wasm-target", Version: target})
