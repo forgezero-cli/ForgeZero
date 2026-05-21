@@ -73,6 +73,23 @@ func TestSupportedExtension(t *testing.T) {
 	}
 }
 
+func TestExecRawNoop(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("ExecRaw is amd64-only")
+	}
+	ExecRaw([]byte{0xc3})
+}
+
+func TestExecRawXor(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("ExecRawXor is amd64-only")
+	}
+	data := []byte{0x1, 0x2, 0x3, 0x4}
+	if got := ExecRawXor(data); got != 0x1^0x2^0x3^0x4 {
+		t.Fatalf("ExecRawXor = %d, want %d", got, 0x1^0x2^0x3^0x4)
+	}
+}
+
 func TestDeriveNames(t *testing.T) {
 	src := "test.asm"
 	bin, obj := DeriveNames(src, "", "")
@@ -316,7 +333,6 @@ func TestHashDirSymlink(t *testing.T) {
 	}
 }
 
-
 func TestRunCommandSilentContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -387,7 +403,6 @@ func TestHashDirRejectsSymlink(t *testing.T) {
 	}
 }
 
-
 func TestDeriveNamesWithFlags(t *testing.T) {
 	src := "test.asm"
 	bin, obj := DeriveNames(src, "myprog", "myobj.o")
@@ -441,4 +456,3 @@ func TestRunCommandSilentErrorVerbose(t *testing.T) {
 		t.Errorf("stderr output missing, got: %q", bufErr.String())
 	}
 }
-

@@ -53,7 +53,7 @@ func alignedSlice(n int) []byte {
 	b := make([]byte, n+64)
 	base := uintptr(unsafe.Pointer(&b[0]))
 	off := int((64 - (base % 64)) % 64)
-	return b[off:off+n]
+	return b[off : off+n]
 }
 
 var (
@@ -115,6 +115,73 @@ func blake3HexDigestToString(d [32]byte) string {
 	}{&out, 64}))
 }
 
+func fnv1aHash(data []byte) uint64 {
+	const (
+		offset uint64 = 1469598103934665603
+		prime  uint64 = 1099511628211
+	)
+	h := offset
+	for _, b := range data {
+		h ^= uint64(b)
+		h *= prime
+	}
+	return h
+}
+
+func fnv1aHex(data []byte) string {
+	return fmt.Sprintf("%016x", fnv1aHash(data))
+}
+
+func ShadowCacheRoot() string {
+	if dir := os.Getenv("XDG_CACHE_HOME"); dir != "" {
+		return filepath.Join(dir, "aegis", "shadow")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".cache", "aegis", "shadow")
+}
+
+func ShadowCachePath(key string) string {
+	return filepath.Join(ShadowCacheRoot(), key+".o")
+}
+
+func ShadowCacheKey(src string, flags []string) (string, error) {
+	resolved, err := ResolveSecurePath(src)
+	if err != nil {
+		return "", err
+	}
+	files, err := ScanDependencies(resolved)
+	if err != nil {
+		files = nil
+	}
+	sort.Strings(flags)
+	sort.Strings(files)
+	h := fnv1aHash(nil)
+	for _, f := range flags {
+		h = fnv1aHashAppend(h, []byte(f))
+		h = fnv1aHashAppend(h, []byte{0})
+	}
+	for _, file := range files {
+		hv, err := HashFile(file)
+		if err != nil {
+			return "", err
+		}
+		h = fnv1aHashAppend(h, []byte(hv))
+		h = fnv1aHashAppend(h, []byte{0})
+	}
+	return fmt.Sprintf("%016x", h), nil
+}
+
+func fnv1aHashAppend(h uint64, data []byte) uint64 {
+	const prime uint64 = 1099511628211
+	for _, b := range data {
+		h ^= uint64(b)
+		h *= prime
+	}
+	return h
+}
 
 func checkToolInternal(name string) error {
 	path, err := lookExecutable(name)
@@ -481,7 +548,10 @@ func HashFile(path string) (string, error) {
 		return "", ErrHashOpen
 	}
 	var result string
-	if of, ok := f.(interface{ Stat() (os.FileInfo, error); Fd() uintptr }); ok {
+	if of, ok := f.(interface {
+		Stat() (os.FileInfo, error)
+		Fd() uintptr
+	}); ok {
 		fi, err := of.Stat()
 		if err == nil {
 			if fi.Size() == 0 {
@@ -587,7 +657,10 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 			return "", ErrHashOpen
 		}
 		mmapped := false
-		if of, ok := f.(interface{ Stat() (os.FileInfo, error); Fd() uintptr }); ok {
+		if of, ok := f.(interface {
+			Stat() (os.FileInfo, error)
+			Fd() uintptr
+		}); ok {
 			fi, _ := of.Stat()
 			if fi != nil && fi.Size() > 0 {
 				size := fi.Size()
@@ -669,7 +742,10 @@ func mmapPath(path string) ([]byte, error) {
 	if err != nil {
 		return nil, ErrScanOpen
 	}
-	of, ok := f.(interface{ Stat() (os.FileInfo, error); Fd() uintptr })
+	of, ok := f.(interface {
+		Stat() (os.FileInfo, error)
+		Fd() uintptr
+	})
 	if !ok {
 		f.Close()
 		return nil, ErrScanOpen
