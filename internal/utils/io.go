@@ -64,11 +64,15 @@ func atomicWrite(resolved string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp %s: %w", tmpName, err)
 	}
-	if err := fileSystem().Rename(tmpName, resolved); err != nil {
+	if err := renameResolved(tmpName, resolved); err != nil {
 		return fmt.Errorf("rename %s to %s: %w", tmpName, resolved, err)
 	}
 	cleanup = false
 	return fileSystem().Chmod(resolved, FilePerm)
+}
+
+func renameResolved(oldpath, newpath string) error {
+	return fileSystem().Rename(oldpath, newpath)
 }
 
 func resolveDest(path string) (string, error) {
