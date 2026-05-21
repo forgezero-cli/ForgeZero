@@ -276,7 +276,7 @@ func TestGetExecutionRootEmpty(t *testing.T) {
 }
 
 func TestBuildCommandRejectsShellMetachar(t *testing.T) {
-	_, _, err := buildCommand(context.Background(), "echo", "bad;cmd")
+	_, err := buildCommand(context.Background(), "echo", "bad;cmd")
 	if err == nil {
 		t.Error("expected invalid arg error")
 	}
@@ -394,7 +394,7 @@ func TestHashDirWithRootSymlinkRead(t *testing.T) {
 }
 
 func TestBuildCommandEmptyName(t *testing.T) {
-	_, _, err := buildCommand(context.Background(), "")
+	_, err := buildCommand(context.Background(), "")
 	if err == nil {
 		t.Error("expected empty name error")
 	}
@@ -404,7 +404,7 @@ func TestBuildCommandShDashC(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh missing")
 	}
-	cmd, _, err := buildCommand(context.Background(), "sh", "-c", "echo ok")
+	cmd, err := buildCommand(context.Background(), "sh", "-c", "echo ok")
 	if err != nil {
 		t.Fatal(err)
 	}
