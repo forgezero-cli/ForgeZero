@@ -1,5 +1,3 @@
-// Copyright (c) 2026 Alex Voste. MIT License.
-// PROPERTY OF FORGEZERO CORE TEAM.
 package bench
 
 import (
