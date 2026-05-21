@@ -99,7 +99,41 @@ func cacheEntryPath(dir, key string) string {
 	return pb.String()
 }
 
+func RunHooks(ctx context.Context, hooks []config.Hook) error {
+	for _, h := range hooks {
+		out, err := utils.RunCommand(ctx, false, nil, nil, "sh", "-c", h.Cmd)
+		_ = out
+		if err != nil {
+			if h.Critical {
+				return fmt.Errorf("hook failed (critical): %w", err)
+			}
+			return fmt.Errorf("hook failed: %w", err)
+		}
+	}
+	return nil
+}
+
 func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int, buildType string) (*BuildResult, error) {
+	cfg := utils.ConfigFromContext(ctx)
+	if cfg != nil && len(cfg.Hooks.PreBuild) > 0 {
+		if err := RunHooks(ctx, cfg.Hooks.PreBuild); err != nil {
+			return nil, err
+		}
+	}
+	var res *BuildResult
+	var err error
+	if cfg != nil && cfg.Hooks.OnFailure != "" {
+		defer func() {
+			if err != nil {
+				_, _ = utils.RunCommand(context.Background(), false, nil, nil, "sh", "-c", cfg.Hooks.OnFailure)
+			}
+		}()
+	}
+	res, err = buildDirInner(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude, sourceFiles, ignoreMatcher, includes, libs, jobs, buildType)
+	return res, err
+}
+
+func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int, buildType string) (*BuildResult, error) {
 	if len(dirs) == 0 {
 		dirs = []string{"."}
 	}
