@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/zeebo/blake3"
 )
@@ -23,10 +25,22 @@ var (
 )
 
 var (
-	ExecutionRoot string
-	ToolChecksums                         = map[string]string{}
-	CheckToolFunc func(name string) error = checkToolInternal
+	executionRoot atomic.Value
+	ToolChecksums  sync.Map
+	CheckToolFunc  func(name string) error = checkToolInternal
 )
+
+func SetExecutionRoot(v string) {
+	executionRoot.Store(v)
+}
+
+func GetExecutionRoot() string {
+	v := executionRoot.Load()
+	if v == nil {
+		return ""
+	}
+	return v.(string)
+}
 
 type mutexBufferWriter struct {
 	mu  sync.Mutex
@@ -44,13 +58,15 @@ func checkToolInternal(name string) error {
 	if err != nil {
 		return fmt.Errorf("required tool not found in PATH: %s", name)
 	}
-	if expected, ok := ToolChecksums[name]; ok && expected != "" {
-		actual, err := HashFile(path)
-		if err != nil {
-			return fmt.Errorf("cannot verify checksum for %s: %w", path, err)
-		}
-		if actual != expected {
-			return fmt.Errorf("tool checksum mismatch for %s: expected %s got %s", name, expected, actual)
+	if v, ok := ToolChecksums.Load(name); ok {
+		if expected, ok2 := v.(string); ok2 && expected != "" {
+			actual, err := HashFile(path)
+			if err != nil {
+				return fmt.Errorf("cannot verify checksum for %s: %w", path, err)
+			}
+			if actual != expected {
+				return fmt.Errorf("tool checksum mismatch for %s: expected %s got %s", name, expected, actual)
+			}
 		}
 	}
 	return nil
@@ -210,9 +226,35 @@ func IsWindows() bool {
 }
 
 func RunCommandSilent(ctx context.Context, verbose bool, name string, args ...string) (output string, err error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	if ExecutionRoot != "" {
-		cmd.Dir = ExecutionRoot
+	if name == "" {
+		return "", errors.New("command name required")
+	}
+	if err := ValidateCLIArg(name); err != nil {
+		return "", fmt.Errorf("invalid command name: %w", err)
+	}
+	resolved, err := exec.LookPath(name)
+	if err != nil {
+		return "", fmt.Errorf("executable not found: %s", name)
+	}
+	base := filepath.Base(resolved)
+	if base == "sh" || base == "bash" {
+		if len(args) >= 1 {
+			if err := ValidateCLIArg(args[0]); err != nil {
+				return "", fmt.Errorf("invalid arg: %w", err)
+			}
+		}
+	}
+	for i, a := range args {
+		if (base == "sh" || base == "bash") && i == 1 && args[0] == "-c" {
+			continue
+		}
+		if err := ValidateCLIArg(a); err != nil {
+			return "", fmt.Errorf("invalid arg: %w", err)
+		}
+	}
+	cmd := exec.CommandContext(ctx, resolved, args...)
+	if dir := GetExecutionRoot(); dir != "" {
+		cmd.Dir = dir
 	}
 	cmd.Env = deterministicEnv()
 
