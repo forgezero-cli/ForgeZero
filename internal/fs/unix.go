@@ -1,3 +1,5 @@
+//go:build !windows
+
 package fs
 
 import (
@@ -61,7 +63,7 @@ func (Unix) RemoveAll(path string) error {
 }
 
 func (Unix) Rename(oldpath, newpath string) error {
-	return os.Rename(oldpath, newpath)
+	return renameAtomic(oldpath, newpath)
 }
 
 func (Unix) Stat(name string) (os.FileInfo, error) {
