@@ -76,7 +76,7 @@ func Generate(root, vendorDir, buildVersion string, cfg *config.Config, target s
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
-	utils.ExecutionRoot = rootAbs
+	utils.SetExecutionRoot(rootAbs)
 	tools := detectToolchainVersions(target)
 	components, err := scanVendorComponents(rootAbs, vendorDir)
 	if err != nil {
