@@ -784,7 +784,7 @@ dup: ret
 `)
 	obj1 := filepath.Join(dir, "dup1.o")
 	obj2 := filepath.Join(dir, "dup2.o")
-	err := CheckDuplicateSymbols([]string{obj1, obj2}, true)
+	err := CheckDuplicateSymbols(context.Background(), []string{obj1, obj2}, true)
 	if err == nil {
 		t.Error("expected duplicate symbol error")
 	}
