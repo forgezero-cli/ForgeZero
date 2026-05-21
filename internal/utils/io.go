@@ -115,6 +115,26 @@ func EvalSymlinksPath(path string) (string, error) {
 	return fileSystem().EvalSymlinks(abs)
 }
 
+func RemovePath(path string) error {
+	resolved, err := ResolveSecurePath(path)
+	if err != nil {
+		abs, absErr := resolveOrAbs(path)
+		if absErr != nil {
+			return fmt.Errorf("remove %s: %w", path, err)
+		}
+		resolved = abs
+	}
+	return fileSystem().Remove(resolved)
+}
+
+func OpenVerifiedRead(path string) (io.ReadCloser, error) {
+	resolved, err := ResolveSecurePath(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	return openVerified(resolved)
+}
+
 func ReadFileSecure(path string) ([]byte, error) {
 	resolved, err := ResolveSecurePath(path)
 	if err != nil {
