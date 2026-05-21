@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"fz/internal/config"
 )
 
 func writeASM(t *testing.T, dir, name, content string) string {
@@ -190,5 +192,59 @@ void %s(void) { printf("%%s\\n", __FILE__); }
 	}
 	if _, err := os.Stat(outBin); err != nil {
 		t.Error("binary not created")
+	}
+}
+
+func TestMatchExcludePatterns(t *testing.T) {
+	if !matchExclude("foo.o", []string{"*.o"}) {
+		t.Fatal("expected foo.o to match exclude")
+	}
+	if !matchExclude("bar/test.s", []string{"bar/*"}) {
+		t.Fatal("expected path to match exclude pattern")
+	}
+	if matchExclude("src/main.c", []string{"*.o"}) {
+		t.Fatal("unexpected exclude match")
+	}
+}
+
+func TestCollectSourceFilesUsesConfigSourceFiles(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{SourceFiles: []string{"a.c", "b.c"}}
+	files, err := CollectSourceFiles(cfg, []string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(files))
+	}
+}
+
+func TestCleanDirRemovesExecutablesAndObjects(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "app.out")
+	if err := os.WriteFile(out, []byte("exe"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	obj := filepath.Join(dir, "a.o")
+	if err := os.WriteFile(obj, []byte("obj"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CleanDir(dir, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatalf("expected %s removed", out)
+	}
+	if _, err := os.Stat(obj); !os.IsNotExist(err) {
+		t.Fatalf("expected %s removed", obj)
+	}
+}
+
+func TestBuildDirNoSupportedFiles(t *testing.T) {
+	dir := t.TempDir()
+	outBin := filepath.Join(t.TempDir(), "app")
+	_, err := BuildDir(context.Background(), []string{dir}, outBin, false, false, "auto", false, true, false, false, false, nil, nil, nil, nil, nil, 1, "executable")
+	if err == nil || !strings.Contains(err.Error(), "no supported files found") {
+		t.Fatalf("expected no supported files error, got %v", err)
 	}
 }
