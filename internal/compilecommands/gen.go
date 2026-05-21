@@ -2,13 +2,13 @@ package compilecommands
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"fz/internal/assembler"
 	"fz/internal/builder"
 	"fz/internal/config"
+	"fz/internal/utils"
 )
 
 type CompileCommand struct {
@@ -58,5 +58,5 @@ func Generate(cfg *config.Config, rootDir string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile("compile_commands.json", data, 0o644)
+	return utils.SecureWriteFile("compile_commands.json", data)
 }
