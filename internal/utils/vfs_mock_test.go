@@ -34,7 +34,7 @@ func TestMockSecureWriteFailures(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.op, func(t *testing.T) {
-			m := fzvfs.NewMock(fzvfs.Unix{})
+			m := fzvfs.NewMock(fzvfs.Default)
 			m.SetFailOp(tc.op, tc.err)
 			withMock(t, m)
 			if err := SecureWriteFile(path, []byte("x")); err == nil {
@@ -50,7 +50,7 @@ func TestMockOpenVerifiedFailures(t *testing.T) {
 	if err := os.WriteFile(file, []byte("z"), FilePerm); err != nil {
 		t.Fatal(err)
 	}
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFail("OpenVerified", file, fzvfs.ErrPathChanged)
 	withMock(t, m)
 	if _, err := HashFile(file); err == nil {
@@ -64,7 +64,7 @@ func TestMockHashFileOpen(t *testing.T) {
 	if err := os.WriteFile(file, []byte("data"), FilePerm); err != nil {
 		t.Fatal(err)
 	}
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFail("OpenVerified", file, fzvfs.ErrTimeout)
 	withMock(t, m)
 	if _, err := HashFile(file); err == nil {
@@ -79,7 +79,7 @@ func TestMockCopyFileCreateTemp(t *testing.T) {
 	if err := os.WriteFile(src, []byte("a"), FilePerm); err != nil {
 		t.Fatal(err)
 	}
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFailOp("CreateTemp", fzvfs.ErrDiskFull)
 	withMock(t, m)
 	if err := CopyFile(src, dst); err == nil {
@@ -88,7 +88,7 @@ func TestMockCopyFileCreateTemp(t *testing.T) {
 }
 
 func TestMockMkdirAll(t *testing.T) {
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFailOp("MkdirAll", fzvfs.ErrPermission)
 	withMock(t, m)
 	if err := SecureMkdirAll(filepath.Join(t.TempDir(), "x", "y", "f")); err == nil {
@@ -98,7 +98,7 @@ func TestMockMkdirAll(t *testing.T) {
 
 func TestMockEvalSymlinks(t *testing.T) {
 	dir := t.TempDir()
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFail("EvalSymlinks", filepath.Clean(dir), errors.New("eval fail"))
 	withMock(t, m)
 	_, err := ResolveSecurePath(dir)
@@ -113,7 +113,7 @@ func TestMockReadFileSecure(t *testing.T) {
 	if err := os.WriteFile(file, []byte("ok"), FilePerm); err != nil {
 		t.Fatal(err)
 	}
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFail("OpenVerified", file, fzvfs.ErrPermission)
 	withMock(t, m)
 	if _, err := ReadFileSecure(file); err == nil {
@@ -127,7 +127,7 @@ func TestMockEvalSymlinksResolved(t *testing.T) {
 	if err := os.WriteFile(target, []byte("1"), FilePerm); err != nil {
 		t.Fatal(err)
 	}
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFailOp("EvalSymlinks", fzvfs.ErrInterrupted)
 	withMock(t, m)
 	if _, err := EvalSymlinksPath(target); err == nil {
@@ -161,7 +161,7 @@ func TestCheckToolChecksumMismatch(t *testing.T) {
 func TestSecureWriteWriteFail(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "w.dat")
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	withMock(t, m)
 	f, err := os.Create(filepath.Join(dir, ".fz_write_manual.tmp"))
 	if err != nil {
@@ -223,7 +223,7 @@ func TestConstantTimeEqualExported(t *testing.T) {
 }
 
 func TestResetFileSystem(t *testing.T) {
-	m := fzvfs.NewMock(fzvfs.Unix{})
+	m := fzvfs.NewMock(fzvfs.Default)
 	SetFileSystem(m)
 	ResetFileSystem()
 	if fileSystem() == nil {
