@@ -88,3 +88,59 @@ func TestScanProjectConfigFileRisk(t *testing.T) {
 		t.Fatalf("expected Configuration finding, got %#v", result.Findings)
 	}
 }
+
+func TestScanProjectVendorLicenseRisk(t *testing.T) {
+	tmp := t.TempDir()
+	vendorDir := filepath.Join(tmp, "vendor", "openssl")
+	if err := os.MkdirAll(vendorDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vendorDir, "license"), []byte("GPL license"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := ScanProject(context.Background(), tmp, "vendor", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Findings) == 0 {
+		t.Fatal("expected license findings")
+	}
+	found := false
+	for _, f := range result.Findings {
+		if f.Package == "License" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected License finding, got %#v", result.Findings)
+	}
+}
+
+func TestScanProjectSecretDetection(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmp, "secret.txt"), []byte("aws_secret_access_key = AKIAABCDEFGHIJKLMNOPQRSTUVWXYSZ1234567890"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := ScanProject(context.Background(), tmp, "vendor", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected one secret finding, got %#v", result.Findings)
+	}
+	if result.Findings[0].Package != "HardcodedSecret" {
+		t.Fatalf("expected HardcodedSecret, got %s", result.Findings[0].Package)
+	}
+}
+
+func TestScanProjectMissingVendorPathReturnsNoError(t *testing.T) {
+	tmp := t.TempDir()
+	result, err := ScanProject(context.Background(), tmp, "vendor", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Findings) != 0 {
+		t.Fatalf("expected no findings, got %#v", result.Findings)
+	}
+}
