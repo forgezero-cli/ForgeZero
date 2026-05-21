@@ -16,6 +16,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var httpClient = &http.Client{}
+
 const (
 	vendorDir = "vendor"
 )
@@ -225,8 +227,7 @@ func fetchCatalogFromURL(url string) (*Catalog, error) {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "fz/2.0.0")
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

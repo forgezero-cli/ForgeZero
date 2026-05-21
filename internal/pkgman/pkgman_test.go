@@ -2,6 +2,9 @@ package pkgman
 
 import (
 	"bytes"
+	"context"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -211,5 +214,65 @@ func TestFetchCatalogFromURLInvalid(t *testing.T) {
 	_, err := fetchCatalogFromURL("http://localhost:9999/nonexistent")
 	if err == nil {
 		t.Error("expected error for invalid URL")
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestListCatalogWithMockHTTP(t *testing.T) {
+	oldClient := httpClient
+	defer func() { httpClient = oldClient }()
+	httpClient = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{"version":1,"packages":[{"name":"pkg","description":"desc","category":"cat"}]}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	defer func() { os.Stdout = oldStdout }()
+
+	err := ListCatalog(context.Background())
+	w.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "Available packages") {
+		t.Fatal("expected catalog output")
+	}
+}
+
+func TestSearchCatalogWithMockHTTP(t *testing.T) {
+	oldClient := httpClient
+	defer func() { httpClient = oldClient }()
+	httpClient = &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{"version":1,"packages":[{"name":"pkg","description":"desc","category":"category"}]}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	defer func() { os.Stdout = oldStdout }()
+
+	err := SearchCatalog(context.Background(), "pkg")
+	w.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "pkg (category)") {
+		t.Fatal("expected search result output")
 	}
 }
