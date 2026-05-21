@@ -79,14 +79,14 @@ func TestLinkReturnsErrorWhenZigUnavailable(t *testing.T) {
 }
 
 func TestCompileCommandInvoked(t *testing.T) {
-	oldRun := runCommand
+	oldRun := RunCommand
 	oldFunc := utils.CheckToolFunc
-	defer func() { runCommand = oldRun; utils.CheckToolFunc = oldFunc }()
+	defer func() { RunCommand = oldRun; utils.CheckToolFunc = oldFunc }()
 	utils.CheckToolFunc = func(name string) error { return nil }
 	ZigEnabled = true
 	defer func() { ZigEnabled = false }()
 	invoked := false
-	runCommand = func(ctx context.Context, verbose bool, args ...string) (string, error) {
+	RunCommand = func(ctx context.Context, verbose bool, args ...string) (string, error) {
 		invoked = true
 		if args[0] != "cc" {
 			t.Fatalf("expected zig cc path, got %v", args)

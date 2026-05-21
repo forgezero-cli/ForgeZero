@@ -12,7 +12,7 @@ import (
 var (
 	ZigRequested bool
 	ZigEnabled   bool
-	runCommand   = func(ctx context.Context, verbose bool, args ...string) (string, error) {
+	RunCommand   = func(ctx context.Context, verbose bool, args ...string) (string, error) {
 		return utils.RunCommandSilent(ctx, verbose, "zig", args...)
 	}
 )
@@ -67,7 +67,7 @@ func Compile(ctx context.Context, src, obj string, debug, verbose bool, target, 
 	if verbose {
 		fmt.Printf("Running: zig %s\n", strings.Join(args, " "))
 	}
-	output, err := runCommand(ctx, verbose, args...)
+	output, err := RunCommand(ctx, verbose, args...)
 	if err != nil {
 		if !verbose {
 			return fmt.Errorf("zig compile failed (use -verbose for details)")
@@ -121,7 +121,7 @@ func Link(ctx context.Context, objs []string, bin string, verbose bool, target s
 	if verbose {
 		fmt.Printf("Running: zig %s\n", strings.Join(args, " "))
 	}
-	output, err := runCommand(ctx, verbose, args...)
+	output, err := RunCommand(ctx, verbose, args...)
 	if err != nil {
 		if !verbose {
 			return fmt.Errorf("zig link failed (use -verbose for details)")
