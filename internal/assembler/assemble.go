@@ -22,6 +22,10 @@ var (
 	CcFlags      string
 )
 
+var (
+	runCommand = utils.RunCommandSilent
+)
+
 func isWasmTarget() bool {
 	return strings.Contains(Target, "wasm") || strings.Contains(Target, "wasm32")
 }
@@ -159,7 +163,7 @@ func assembleNASM(ctx context.Context, src, obj string, debug, verbose bool) err
 	if verbose {
 		fmt.Printf("Running: %s %s\n", cmd, strings.Join(args, " "))
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, cmd, args...)
+	output, err := runCommand(ctx, verbose, cmd, args...)
 	if err != nil {
 		if !verbose {
 			return fmt.Errorf("%s failed (use -verbose for details)", cmd)
@@ -184,7 +188,7 @@ func assembleGAS(ctx context.Context, src, obj string, debug, verbose bool) erro
 	if verbose {
 		fmt.Printf("Running: %s %s\n", cmd, strings.Join(args, " "))
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, cmd, args...)
+	output, err := runCommand(ctx, verbose, cmd, args...)
 	if err != nil {
 		if !verbose {
 			return fmt.Errorf("%s failed (use -verbose for details)", cmd)
@@ -247,7 +251,7 @@ func assembleFASM(ctx context.Context, src, obj string, debug, verbose bool) err
 			fmt.Fprintln(os.Stderr, "note: FASM debug flag")
 		}
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, "fasm", args...)
+	output, err := runCommand(ctx, verbose, "fasm", args...)
 	if err != nil {
 		if !verbose {
 			return fmt.Errorf("fasm failed (use -verbose for details)")
@@ -285,7 +289,7 @@ func assembleC(ctx context.Context, src, obj string, debug, verbose bool) error 
 	if verbose {
 		fmt.Printf("Running: %s %s\n", compiler, strings.Join(args, " "))
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, compiler, args...)
+	output, err := runCommand(ctx, verbose, compiler, args...)
 	if err != nil {
 		if !verbose {
 			return fmt.Errorf("%s compilation failed (use -verbose for details)", compiler)
@@ -315,7 +319,7 @@ func assembleCpp(ctx context.Context, src, obj string, debug, verbose bool) erro
 	if verbose {
 		fmt.Printf("Running: %s %s\n", compiler, strings.Join(args, " "))
 	}
-	output, err := utils.RunCommandSilent(ctx, verbose, compiler, args...)
+	output, err := runCommand(ctx, verbose, compiler, args...)
 	if err != nil {
 		if !verbose {
 			return fmt.Errorf("%s compilation failed (use -verbose for details)", compiler)
