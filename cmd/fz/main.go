@@ -124,7 +124,7 @@ func auditMain(args []string) {
 		fmt.Fprintf(os.Stderr, "audit failed: %v\n", err)
 		os.Exit(1)
 	}
-	utils.ExecutionRoot = root
+	utils.SetExecutionRoot(root)
 	var cfg *config.Config
 	if *configPath != "" {
 		cfg, err = config.Load(*configPath)
@@ -136,7 +136,9 @@ func auditMain(args []string) {
 		os.Exit(1)
 	}
 	if cfg != nil {
-		utils.ToolChecksums = cfg.ToolChecksums
+		for k, v := range cfg.ToolChecksums {
+			utils.ToolChecksums.Store(k, v)
+		}
 	}
 	if *verbose {
 		fmt.Fprintf(os.Stderr, "audit: scanning project root %s using vendor dir %s\n", root, *vendorDir)
@@ -185,7 +187,7 @@ func sbomMain(args []string) {
 		fmt.Fprintf(os.Stderr, "sbom failed: %v\n", err)
 		os.Exit(1)
 	}
-	utils.ExecutionRoot = root
+	utils.SetExecutionRoot(root)
 	var cfg *config.Config
 	if *configPath != "" {
 		cfg, err = config.Load(*configPath)
@@ -197,7 +199,9 @@ func sbomMain(args []string) {
 		os.Exit(1)
 	}
 	if cfg != nil {
-		utils.ToolChecksums = cfg.ToolChecksums
+		for k, v := range cfg.ToolChecksums {
+			utils.ToolChecksums.Store(k, v)
+		}
 	}
 	if *verbose {
 		fmt.Fprintf(os.Stderr, "sbom: generating SBOM for project root %s using vendor dir %s\n", root, *vendorDir)
@@ -358,7 +362,7 @@ func benchMain(args []string) {
 		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
 		os.Exit(1)
 	}
-	utils.ExecutionRoot = root
+	utils.SetExecutionRoot(root)
 	if *toolchain == "zig" {
 		assembler.ZigRequested = true
 		linker.ZigRequested = true
@@ -734,7 +738,7 @@ func main() {
 	}
 	root, err := os.Getwd()
 	if err == nil {
-		utils.ExecutionRoot = root
+		utils.SetExecutionRoot(root)
 	}
 	if watch && jsonOutput {
 		fmt.Fprintln(os.Stderr, "error: -watch and -json cannot be used together")
@@ -790,7 +794,9 @@ func main() {
 		os.Exit(2)
 	}
 	if cfg != nil {
-		utils.ToolChecksums = cfg.ToolChecksums
+		for k, v := range cfg.ToolChecksums {
+			utils.ToolChecksums.Store(k, v)
+		}
 		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode, toolchain)
 		if verbose && !jsonOutput {
 			fmt.Printf("Loaded config from %s\n", func() string {
