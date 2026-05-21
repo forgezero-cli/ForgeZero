@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-func TestUnixMkdirWriteRead(t *testing.T) {
+func TestDefaultMkdirWriteRead(t *testing.T) {
 	dir := t.TempDir()
-	u := Unix{}
+	u := Default
 	sub := filepath.Join(dir, "nested")
 	if err := u.MkdirAll(sub, 0o700); err != nil {
 		t.Fatal(err)
@@ -44,9 +44,9 @@ func TestDefaultFilesystem(t *testing.T) {
 	}
 }
 
-func TestUnixCreateTempRename(t *testing.T) {
+func TestDefaultCreateTempRename(t *testing.T) {
 	dir := t.TempDir()
-	u := Unix{}
+	u := Default
 	f, err := u.CreateTemp(dir, "fz_*.tmp")
 	if err != nil {
 		t.Fatal(err)
