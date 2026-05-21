@@ -15,26 +15,27 @@ type Flags struct {
 }
 
 type Config struct {
-	Name          string            `yaml:"name"`
-	SourceDir     string            `yaml:"source_dir"`
-	SourceDirs    []string          `yaml:"source_dirs"`
-	SourceFiles   []string          `yaml:"source_files"`
-	SourceFile    string            `yaml:"source_file"`
-	Output        string            `yaml:"output"`
-	OutObj        string            `yaml:"out_obj"`
-	Mode          string            `yaml:"mode"`
-	Toolchain     string            `yaml:"toolchain"`
-	Debug         bool              `yaml:"debug"`
-	Verbose       bool              `yaml:"verbose"`
-	KeepObj       bool              `yaml:"keep_obj"`
-	NoCache       bool              `yaml:"no_cache"`
-	Exclude       []string          `yaml:"exclude"`
-	Include       []string          `yaml:"include"`
-	Libs          []string          `yaml:"libs"`
-	IgnoreFile    string            `yaml:"ignore_file"`
-	AuditIgnore   []string          `yaml:"audit_ignore"`
-	ToolChecksums map[string]string `yaml:"tool_checksums"`
-	Flags         Flags             `yaml:"flags"`
+	Name              string            `yaml:"name"`
+	SourceDir         string            `yaml:"source_dir"`
+	SourceDirs        []string          `yaml:"source_dirs"`
+	SourceFiles       []string          `yaml:"source_files"`
+	SourceFile        string            `yaml:"source_file"`
+	Output            string            `yaml:"output"`
+	OutObj            string            `yaml:"out_obj"`
+	Mode              string            `yaml:"mode"`
+	Toolchain         string            `yaml:"toolchain"`
+	Debug             bool              `yaml:"debug"`
+	Verbose           bool              `yaml:"verbose"`
+	KeepObj           bool              `yaml:"keep_obj"`
+	NoCache           bool              `yaml:"no_cache"`
+	OptimizationLevel int               `yaml:"optimization_level"`
+	Exclude           []string          `yaml:"exclude"`
+	Include           []string          `yaml:"include"`
+	Libs              []string          `yaml:"libs"`
+	IgnoreFile        string            `yaml:"ignore_file"`
+	AuditIgnore       []string          `yaml:"audit_ignore"`
+	ToolChecksums     map[string]string `yaml:"tool_checksums"`
+	Flags             Flags             `yaml:"flags"`
 }
 
 func Load(path string) (*Config, error) {
@@ -197,6 +198,9 @@ func (c *Config) Merge(other *Config) {
 	}
 	if len(other.Flags.Ld) > 0 {
 		c.Flags.Ld = other.Flags.Ld
+	}
+	if other.OptimizationLevel > 0 {
+		c.OptimizationLevel = other.OptimizationLevel
 	}
 }
 
