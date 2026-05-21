@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -46,22 +45,16 @@ func Add(ctx context.Context, pkgURL, version string) error {
 		tag = version
 	}
 	dest := filepath.Join(vendorDir, repo)
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
+	if err := utils.SecureMkdirAll(dest); err != nil {
+		return fmt.Errorf("prepare vendor dir: %w", err)
 	}
 	cloneURL := fmt.Sprintf("https://%s", repo)
-	cmd := exec.CommandContext(ctx, "git", "clone", cloneURL, dest)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return err
+	if _, err := utils.RunCommand(ctx, false, os.Stdout, os.Stderr, "git", "clone", cloneURL, dest); err != nil {
+		return fmt.Errorf("git clone %s: %w", repo, err)
 	}
 	if tag != "" {
-		cmd = exec.CommandContext(ctx, "git", "-C", dest, "checkout", tag)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return err
+		if _, err := utils.RunCommand(ctx, false, os.Stdout, os.Stderr, "git", "-C", dest, "checkout", tag); err != nil {
+			return fmt.Errorf("git checkout %s@%s: %w", repo, tag, err)
 		}
 	}
 	if err := updateConfig(dest, true); err != nil {
@@ -148,7 +141,7 @@ func cleanConfig(pkgPath string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(".fz.yaml", newData, 0o644)
+	return utils.SecureWriteFile(".fz.yaml", newData)
 }
 
 func List() error {
@@ -196,10 +189,7 @@ func Update(ctx context.Context) error {
 	}
 	for _, entry := range entries {
 		pkgPath := filepath.Join(vendorDir, entry.Name())
-		cmd := exec.CommandContext(ctx, "git", "-C", pkgPath, "pull")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		if _, err := utils.RunCommand(ctx, false, os.Stdout, os.Stderr, "git", "-C", pkgPath, "pull"); err != nil {
 			fmt.Printf("Warning: failed to update %s: %v\n", entry.Name(), err)
 		} else {
 			fmt.Printf("Updated %s\n", entry.Name())
@@ -396,7 +386,7 @@ func updateConfig(pkgPath string, add bool) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(".fz.yaml", newData, 0o644)
+	return utils.SecureWriteFile(".fz.yaml", newData)
 }
 
 func findPackagePath(name string) (string, error) {
