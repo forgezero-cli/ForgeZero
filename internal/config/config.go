@@ -14,29 +14,47 @@ type Flags struct {
 	Ld  []string `yaml:"ld"`
 }
 
-type Config struct {
-	Name              string            `yaml:"name"`
-	SourceDir         string            `yaml:"source_dir"`
-	SourceDirs        []string          `yaml:"source_dirs"`
-	SourceFiles       []string          `yaml:"source_files"`
-	SourceFile        string            `yaml:"source_file"`
-	Output            string            `yaml:"output"`
-	OutObj            string            `yaml:"out_obj"`
-	Mode              string            `yaml:"mode"`
-	Toolchain         string            `yaml:"toolchain"`
-	Debug             bool              `yaml:"debug"`
-	Verbose           bool              `yaml:"verbose"`
-	KeepObj           bool              `yaml:"keep_obj"`
-	NoCache           bool              `yaml:"no_cache"`
-	OptimizationLevel int               `yaml:"optimization_level"`
-	Exclude           []string          `yaml:"exclude"`
-	Include           []string          `yaml:"include"`
-	Libs              []string          `yaml:"libs"`
-	IgnoreFile        string            `yaml:"ignore_file"`
-	AuditIgnore       []string          `yaml:"audit_ignore"`
-	ToolChecksums     map[string]string `yaml:"tool_checksums"`
-	Flags             Flags             `yaml:"flags"`
+type Hook struct {
+	Cmd      string `yaml:"cmd"`
+	Critical bool   `yaml:"critical"`
 }
+
+type Hooks struct {
+	PreBuild []Hook `yaml:"pre_build"`
+	OnFailure string `yaml:"on_failure"`
+}
+
+type Config struct {
+	Name                 string            `yaml:"name"`
+	SourceDir            string            `yaml:"source_dir"`
+	SourceDirs           []string          `yaml:"source_dirs"`
+	SourceFiles          []string          `yaml:"source_files"`
+	SourceFile           string            `yaml:"source_file"`
+	Output               string            `yaml:"output"`
+	OutObj               string            `yaml:"out_obj"`
+	Mode                 string            `yaml:"mode"`
+	Toolchain            string            `yaml:"toolchain"`
+	Debug                bool              `yaml:"debug"`
+	Verbose              bool              `yaml:"verbose"`
+	KeepObj              bool              `yaml:"keep_obj"`
+	NoCache              bool              `yaml:"no_cache"`
+	OptimizationLevel    int               `yaml:"optimization_level"`
+	Exclude              []string          `yaml:"exclude"`
+	Include              []string          `yaml:"include"`
+	Libs                 []string          `yaml:"libs"`
+	IgnoreFile           string            `yaml:"ignore_file"`
+	AuditIgnore          []string          `yaml:"audit_ignore"`
+	ToolChecksums        map[string]string `yaml:"tool_checksums"`
+	Flags                Flags             `yaml:"flags"`
+	Isolation            bool              `yaml:"isolation"`
+	DeterministicStrip  bool              `yaml:"deterministic_strip"`
+	ToolchainSettings    struct {
+		SearchPriority []string `yaml:"search_priority"`
+		EnvAllow       []string `yaml:"env_allow"`
+	} `yaml:"toolchain_opts"`
+	Hooks                Hooks             `yaml:"hooks"`
+}
+
 
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
