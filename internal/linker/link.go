@@ -54,11 +54,33 @@ func createResponseFile(args []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	// ensure the file is only readable/writable by the current user
+	_ = f.Chmod(0o600)
 	for _, arg := range args {
+		if strings.ContainsAny(arg, "\n\r\x00") {
+			f.Close()
+			os.Remove(f.Name())
+			return "", fmt.Errorf("invalid argument for response file")
+		}
+		if err := utils.ValidateCLIArg(arg); err != nil {
+			f.Close()
+			os.Remove(f.Name())
+			return "", fmt.Errorf("invalid argument for response file: %w", err)
+		}
 		if _, err := f.WriteString(arg + "\n"); err != nil {
+			f.Close()
+			os.Remove(f.Name())
 			return "", err
 		}
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(f.Name())
+		return "", err
 	}
 	return f.Name(), nil
 }
@@ -69,6 +91,18 @@ func runLinkerCommand(ctx context.Context, verbose bool, name string, args []str
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	// only resolve the executable when running through the real runner
+	if _, isReal := runner.(*RealCmdRunner); isReal {
+		if err := utils.ValidateCLIArg(name); err != nil {
+			return "", fmt.Errorf("invalid linker name: %w", err)
+		}
+		// resolve the executable to an absolute path to avoid PATH injection surprises
+		resolved, err := lookPathFunc(name)
+		if err != nil {
+			return "", fmt.Errorf("linker not found: %w", err)
+		}
+		name = resolved
 	}
 	if shouldUseResponseFile(args) {
 		path, err := createResponseFile(args)
@@ -87,6 +121,9 @@ func validateLinkCall(ctx context.Context, output string) error {
 	}
 	if output == "" {
 		return fmt.Errorf("output file name is required")
+	}
+	if err := utils.ValidateCLIPath(output); err != nil {
+		return fmt.Errorf("invalid output path: %w", err)
 	}
 	return nil
 }
