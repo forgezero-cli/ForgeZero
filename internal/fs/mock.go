@@ -14,7 +14,7 @@ type Mock struct {
 
 func NewMock(base FileSystem) *Mock {
 	if base == nil {
-		base = Unix{}
+		base = Default
 	}
 	return &Mock{Base: base, failures: make(map[string]error)}
 }
