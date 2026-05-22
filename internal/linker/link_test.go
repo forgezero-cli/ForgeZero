@@ -1645,7 +1645,7 @@ func TestParanoidLinker(t *testing.T) {
 	resetMocks()
 	lookPathFunc = func(name string) (string, error) {
 		if name == "clang" {
-			return "/usr/bin/clang", nil
+			return "clang", nil
 		}
 		return "", fmt.Errorf("not found")
 	}
@@ -1666,7 +1666,7 @@ func TestParanoidLinker(t *testing.T) {
 		if name == "clang" {
 			return "", fmt.Errorf("not found")
 		}
-		return "/usr/bin/gcc", nil
+		return "gcc", nil
 	}
 	runner = &MockRunner{RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
 		if name == "gcc" {
