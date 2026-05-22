@@ -373,6 +373,31 @@ func TestHashFile(t *testing.T) {
 	}
 }
 
+func TestShadowCacheKeyDifferentFiles(t *testing.T) {
+	dir := t.TempDir()
+	file1 := filepath.Join(dir, "a.c")
+	file2 := filepath.Join(dir, "b.c")
+	if err := os.WriteFile(file1, []byte(`#include <stdio.h>
+void a(void) {}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file2, []byte(`#include <stdio.h>
+void b(void) {}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	key1, err := ShadowCacheKey(file1, []string{"debug=false", "mode=c"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key2, err := ShadowCacheKey(file2, []string{"debug=false", "mode=c"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key1 == key2 {
+		t.Fatalf("expected different shadow cache keys for different source contents: %s == %s", key1, key2)
+	}
+}
+
 func TestHashFileEmpty(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "empty.txt")
