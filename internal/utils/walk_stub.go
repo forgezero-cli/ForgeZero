@@ -3,10 +3,10 @@
 package utils
 
 import (
-    "os"
-    "path/filepath"
+	"os"
+	"path/filepath"
 )
 
 func Walk(root string, fn func(path string, info os.FileInfo, err error) error) error {
-    return filepath.Walk(root, fn)
+	return filepath.Walk(root, fn)
 }
