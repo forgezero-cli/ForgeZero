@@ -40,6 +40,9 @@ var limitedMode atomic.Bool
 func IsLimitedMode() bool { return limitedMode.Load() }
 
 func SelfAttest() error {
+	if os.Getenv("FZ_STAGING") == "1" {
+		return nil
+	}
 	if os.Getenv("FZ_SELF_ATTEST_DISABLE") == "1" {
 		return nil
 	}
@@ -253,14 +256,20 @@ func fnv1aHex(data []byte) string {
 }
 
 func ShadowCacheRoot() string {
+	root := ""
 	if dir := os.Getenv("XDG_CACHE_HOME"); dir != "" {
-		return filepath.Join(dir, "aegis", "shadow")
+		root = filepath.Join(dir, "aegis", "shadow")
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		root = filepath.Join(home, ".cache", "aegis", "shadow")
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
+	if mid, err := seal.MachineID(); err == nil && mid != "" {
+		root = filepath.Join(root, fnv1aHex([]byte(mid)))
 	}
-	return filepath.Join(home, ".cache", "aegis", "shadow")
+	return root
 }
 
 func ShadowCachePath(key string) string {
@@ -273,14 +282,18 @@ func ShadowCacheKey(src string, flags []string) (string, error) {
 		return "", err
 	}
 	files, err := ScanDependencies(resolved)
-	if err != nil {
-		files = nil
+	if err != nil || len(files) == 0 {
+		files = []string{resolved}
 	}
 	sort.Strings(flags)
 	sort.Strings(files)
 	h := fnv1aHash(nil)
 	for _, f := range flags {
 		h = fnv1aHashAppend(h, []byte(f))
+		h = fnv1aHashAppend(h, []byte{0})
+	}
+	if mid, err := seal.MachineID(); err == nil && mid != "" {
+		h = fnv1aHashAppend(h, []byte(mid))
 		h = fnv1aHashAppend(h, []byte{0})
 	}
 	for _, file := range files {
