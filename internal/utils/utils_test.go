@@ -25,15 +25,6 @@ func (m *MockRunner) Run(ctx context.Context, verbose bool, name string, args ..
 	return "", nil
 }
 
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
-
 func TestIsWindows(t *testing.T) {
 	got := IsWindows()
 	expected := runtime.GOOS == "windows"
@@ -189,8 +180,12 @@ func TestHashDir(t *testing.T) {
 	dir := t.TempDir()
 	sub1 := filepath.Join(dir, "a")
 	sub2 := filepath.Join(dir, "b")
-	os.MkdirAll(sub1, 0o755)
-	os.MkdirAll(sub2, 0o755)
+	if err := os.MkdirAll(sub1, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(sub2, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	file1 := filepath.Join(sub1, "f1.txt")
 	file2 := filepath.Join(sub2, "f2.txt")
 	if err := os.WriteFile(file1, []byte("hello"), 0o644); err != nil {
@@ -296,7 +291,7 @@ func TestHashDirPermissionDenied(t *testing.T) {
 	if err := os.Mkdir(sub, 0o000); err != nil {
 		t.Skip("cannot set permission")
 	}
-	defer os.Chmod(sub, 0o755)
+	defer func() { _ = os.Chmod(sub, 0o755) }()
 	_, err := HashDir(sub)
 	if err == nil {
 		t.Error("expected error due to permission denied")

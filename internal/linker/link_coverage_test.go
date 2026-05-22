@@ -194,7 +194,9 @@ func TestTryAutoLinkMultipleStrict(t *testing.T) {
 	}}
 	dir := t.TempDir()
 	obj := filepath.Join(dir, "a.o")
-	os.WriteFile(obj, []byte{0x7f, 'E', 'L', 'F', 1, 2, 3}, 0o644)
+	if err := os.WriteFile(obj, []byte{0x7f, 'E', 'L', 'F', 1, 2, 3}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	bin := filepath.Join(dir, "out")
 	err := tryAutoLinkMultiple(context.Background(), []string{obj}, bin, true, false, true, nil)
 	if err != nil {
@@ -211,7 +213,9 @@ func TestReadSymbolsWithObjdumpIntegration(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "a.c")
-	os.WriteFile(src, []byte("int f(void){return 0;}"), 0o644)
+	if err := os.WriteFile(src, []byte("int f(void){return 0;}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	obj := filepath.Join(dir, "a.o")
 	if out, err := exec.Command("gcc", "-c", src, "-o", obj).CombinedOutput(); err != nil {
 		t.Skip(string(out))
@@ -234,7 +238,9 @@ func TestReadSymbolsWithReadelfIntegration(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "b.c")
-	os.WriteFile(src, []byte("int g(void){return 1;}"), 0o644)
+	if err := os.WriteFile(src, []byte("int g(void){return 1;}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	obj := filepath.Join(dir, "b.o")
 	if out, err := exec.Command("gcc", "-c", src, "-o", obj).CombinedOutput(); err != nil {
 		t.Skip(string(out))
@@ -261,7 +267,7 @@ func TestLinkWithLdVerboseFail(t *testing.T) {
 }
 
 func TestValidateLinkCallErrorsCoverage(t *testing.T) {
-	if err := validateLinkCall(nil, "out"); err == nil {
+	if err := validateLinkCall(nil, "out"); err == nil { //nolint:staticcheck
 		t.Fatal("expected nil ctx error")
 	}
 	if err := validateLinkCall(context.Background(), ""); err == nil {
@@ -282,7 +288,9 @@ func TestLinkWindowsImplMock(t *testing.T) {
 	}}
 	dir := t.TempDir()
 	obj := filepath.Join(dir, "a.o")
-	os.WriteFile(obj, []byte{1, 2, 3}, 0o644)
+	if err := os.WriteFile(obj, []byte{1, 2, 3}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := linkWindowsImpl(context.Background(), obj, filepath.Join(dir, "out.exe"), false, "c", false, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +309,9 @@ func TestLinkMultipleWindowsImplMock(t *testing.T) {
 	}}
 	dir := t.TempDir()
 	obj := filepath.Join(dir, "a.o")
-	os.WriteFile(obj, []byte{1, 2, 3}, 0o644)
+	if err := os.WriteFile(obj, []byte{1, 2, 3}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := linkMultipleWindowsImpl(context.Background(), []string{obj}, filepath.Join(dir, "out.exe"), true, "c", true, []string{"m"}); err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +331,9 @@ func TestReadSymbolsFallbackObjdump(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "a.c")
-	os.WriteFile(src, []byte("int f(void){return 0;}"), 0o644)
+	if err := os.WriteFile(src, []byte("int f(void){return 0;}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	obj := filepath.Join(dir, "a.o")
 	if out, err := exec.Command("gcc", "-c", src, "-o", obj).CombinedOutput(); err != nil {
 		t.Skip(string(out))

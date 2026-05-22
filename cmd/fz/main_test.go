@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,32 +31,6 @@ func (fakeCmdRunner) Run(ctx context.Context, verbose bool, name string, args ..
 		}
 	}
 	return "", nil
-}
-
-func captureOutput(t *testing.T, f func()) string {
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldStdout := os.Stdout
-	oldStderr := os.Stderr
-	os.Stdout = w
-	os.Stderr = w
-	defer func() {
-		os.Stdout = oldStdout
-		os.Stderr = oldStderr
-	}()
-
-	outC := make(chan string)
-	go func() {
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, r)
-		outC <- buf.String()
-	}()
-
-	f()
-	_ = w.Close()
-	return <-outC
 }
 
 func runFzArgs(t *testing.T, args []string) string {

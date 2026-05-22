@@ -593,7 +593,7 @@ func TestLinkWithLdMissingLib(t *testing.T) {
 }
 
 func TestValidateLinkCallErrors(t *testing.T) {
-	if err := validateLinkCall(nil, "out"); err == nil {
+	if err := validateLinkCall(nil, "out"); err == nil { //nolint:staticcheck
 		t.Error("expected invalid linking context error")
 	}
 	if err := validateLinkCall(context.Background(), ""); err == nil {
@@ -1472,8 +1472,12 @@ func TestParanoidLinker(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		f.Write([]byte("dummy object content"))
-		f.Close()
+		if _, err := f.Write([]byte("dummy object content")); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
 		return f.Name()
 	}
 	objPath := objFile()
@@ -1731,7 +1735,9 @@ func TestParanoidLinker(t *testing.T) {
 	err = Link(context.Background(), objPath, "out", true, "raw", false, false, false, nil)
 	w.Close()
 	os.Stdout = oldStdout
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(buf.String(), "Running: ld") {
 		t.Error("verbose mode did not print command")
 	}

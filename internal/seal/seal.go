@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"unsafe"
 
-
 	"github.com/zeebo/blake3"
 	"golang.org/x/sys/unix"
 )
