@@ -961,7 +961,10 @@ func main() {
 			}
 		case "list":
 			if len(os.Args) == 3 {
-				pkgman.List()
+				if err := pkgman.List(); err != nil {
+					writeFmt(2, "error: %v\n", err)
+					os.Exit(1)
+				}
 			} else if os.Args[3] == "catalog" {
 				if err := pkgman.ListCatalog(ctx); err != nil {
 					writeFmt(2, "error: %v\n", err)

@@ -311,8 +311,14 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 					return
 				}
 				if !noCache {
-					storeCache(p.src, p.obj, cacheDir, debug, verbose, mode)
-					storeShadowCache(p.src, p.obj, debug, mode)
+					if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil {
+						recordError(fmt.Errorf("cache %s: %w", p.src, err))
+						return
+					}
+					if err := storeShadowCache(p.src, p.obj, debug, mode); err != nil {
+						recordError(fmt.Errorf("shadow cache %s: %w", p.src, err))
+						return
+					}
 					seal.UpdateGlobalState([]byte("cache:store:" + p.src))
 				}
 			}
