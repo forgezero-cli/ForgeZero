@@ -41,7 +41,9 @@ func TestNormalizeAbs(t *testing.T) {
 func TestOpenVerifiedSymlinkRejection(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "t")
-	os.WriteFile(target, []byte("x"), 0o600)
+	if err := os.WriteFile(target, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	link := filepath.Join(dir, "l")
 	if err := os.Symlink(target, link); err != nil {
 		t.Skip("symlink")
@@ -55,7 +57,9 @@ func TestOpenVerifiedSymlinkRejection(t *testing.T) {
 func TestOpenVerifiedRacePathChanged(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "f")
-	os.WriteFile(path, []byte("x"), 0o600)
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	f, err := Default.OpenVerified(path)
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +70,9 @@ func TestOpenVerifiedRacePathChanged(t *testing.T) {
 func TestMockReadlinkEvalDefaultBase(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "t")
-	os.WriteFile(target, []byte("1"), 0o600)
+	if err := os.WriteFile(target, []byte("1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	link := filepath.Join(dir, "l")
 	if err := os.Symlink(target, link); err != nil {
 		t.Skip("symlink")

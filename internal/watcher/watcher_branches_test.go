@@ -10,7 +10,9 @@ import (
 func TestWatcherAddFile(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "single.txt")
-	os.WriteFile(file, []byte("x"), 0o644)
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	w, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -24,7 +26,9 @@ func TestWatcherAddFile(t *testing.T) {
 func TestWatcherAddRecursiveNotDir(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "f.txt")
-	os.WriteFile(file, []byte("x"), 0o644)
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	w, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +57,9 @@ func TestWatcherHandlerError(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer w.Close()
-	w.AddRecursive(dir)
+	if err := w.AddRecursive(dir); err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan struct{})
 	go func() {
 		w.Watch(20*time.Millisecond, func(string) error {

@@ -9,13 +9,25 @@ import (
 	"fz/internal/config"
 )
 
+func chdirTemp(t *testing.T, dir string) func() {
+	t.Helper()
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	return func() { _ = os.Chdir(oldWd) }
+}
+
 func TestGenerateNilConfig(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, dir)()
 	c := filepath.Join(dir, "main.c")
-	os.WriteFile(c, []byte("int main(){}"), 0o644)
+	if err := os.WriteFile(c, []byte("int main(){}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := Generate(nil, dir); err != nil {
 		t.Fatal(err)
 	}
@@ -23,15 +35,18 @@ func TestGenerateNilConfig(t *testing.T) {
 
 func TestGenerateSkipsAsm(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(oldWd)
-	os.WriteFile(filepath.Join(dir, "a.asm"), []byte("nop"), 0o644)
+	defer chdirTemp(t, dir)()
+	if err := os.WriteFile(filepath.Join(dir, "a.asm"), []byte("nop"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cfg := &config.Config{SourceFiles: []string{filepath.Join(dir, "a.asm")}}
 	if err := Generate(cfg, dir); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := os.ReadFile("compile_commands.json")
+	data, err := os.ReadFile("compile_commands.json")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if string(data) != "[]\n" && string(data) != "[]" && string(data) != "null\n" && string(data) != "null" {
 		t.Fatalf("expected empty commands: %s", data)
 	}
@@ -39,11 +54,11 @@ func TestGenerateSkipsAsm(t *testing.T) {
 
 func TestGenerateDedup(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, dir)()
 	c := filepath.Join(dir, "x.c")
-	os.WriteFile(c, []byte("int x;"), 0o644)
+	if err := os.WriteFile(c, []byte("int x;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cfg := &config.Config{SourceFiles: []string{c, c}}
 	if err := Generate(cfg, dir); err != nil {
 		t.Fatal(err)
@@ -52,11 +67,11 @@ func TestGenerateDedup(t *testing.T) {
 
 func TestGenerateWithDebug(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, dir)()
 	c := filepath.Join(dir, "main.c")
-	os.WriteFile(c, []byte("int main(){}"), 0o644)
+	if err := os.WriteFile(c, []byte("int main(){}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cfg := &config.Config{SourceFiles: []string{c}, Debug: true}
 	if err := Generate(cfg, dir); err != nil {
 		t.Fatal(err)

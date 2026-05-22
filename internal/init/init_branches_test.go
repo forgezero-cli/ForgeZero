@@ -10,9 +10,14 @@ import (
 
 func TestRunWriteFzYamlFail(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(oldWd)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
 	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFailOp("CreateTemp", fzvfs.ErrDiskFull)
 	utils.SetFileSystem(m)
@@ -24,9 +29,14 @@ func TestRunWriteFzYamlFail(t *testing.T) {
 
 func TestRunWriteReadmeFail(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(oldWd)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
 	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFailOp("CreateTemp", fzvfs.ErrPermission)
 	utils.SetFileSystem(m)

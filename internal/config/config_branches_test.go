@@ -52,7 +52,9 @@ func TestLoadMergedExplicitInvalid(t *testing.T) {
 func TestLoadMergedExplicitOK(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cfg.yaml")
-	os.WriteFile(path, []byte("source_dir: ./x\noutput: bin\n"), 0o644)
+	if err := os.WriteFile(path, []byte("source_dir: ./x\noutput: bin\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cfg, err := LoadMerged(path)
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +75,9 @@ func TestMergeFromFlagsSourceDirs(t *testing.T) {
 func TestLoadInvalidYAML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.yaml")
-	os.WriteFile(path, []byte(":\n\tbad"), 0o644)
+	if err := os.WriteFile(path, []byte(":\n\tbad"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	_, err := Load(path)
 	if err == nil {
 		t.Fatal("expected yaml error")

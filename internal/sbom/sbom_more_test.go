@@ -14,8 +14,10 @@ import (
 func TestGenerateMalformedVendorWalk(t *testing.T) {
 	root := t.TempDir()
 	vendor := filepath.Join(root, "vendor")
-	os.Mkdir(vendor, 0o000)
-	defer os.Chmod(vendor, 0o755)
+	if err := os.Mkdir(vendor, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(vendor, 0o755) }()
 	_, err := Generate(root, "vendor", "1", nil, "")
 	if err == nil {
 		t.Fatal("expected walk error")
@@ -37,8 +39,12 @@ func TestMarshalRoundTrip(t *testing.T) {
 func TestScanVendorComponentsWithGit(t *testing.T) {
 	root := t.TempDir()
 	vendor := filepath.Join(root, "vendor", "github.com", "u", "lib")
-	os.MkdirAll(filepath.Join(vendor, ".git"), 0o755)
-	os.WriteFile(filepath.Join(vendor, "README"), []byte("lib"), 0o644)
+	if err := os.MkdirAll(filepath.Join(vendor, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vendor, "README"), []byte("lib"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	comps, err := scanVendorComponents(root, "vendor")
 	if err != nil {
 		t.Fatal(err)
@@ -65,8 +71,12 @@ func TestQueryToolVersionUnknown(t *testing.T) {
 func TestGenerateWithVendorHash(t *testing.T) {
 	root := t.TempDir()
 	vendor := filepath.Join(root, "vendor", "pkg")
-	os.MkdirAll(vendor, utils.DirPerm)
-	os.WriteFile(filepath.Join(vendor, "data.txt"), []byte("payload"), utils.FilePerm)
+	if err := os.MkdirAll(vendor, utils.DirPerm); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vendor, "data.txt"), []byte("payload"), utils.FilePerm); err != nil {
+		t.Fatal(err)
+	}
 	sb, err := Generate(root, "vendor", "3.1", nil, "x86_64-linux-gnu")
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +92,9 @@ func TestGenerateWithVendorHash(t *testing.T) {
 func TestScanVendorComponentsContextCancel(t *testing.T) {
 	root := t.TempDir()
 	vendor := filepath.Join(root, "vendor", "deep", "nested")
-	os.MkdirAll(vendor, 0o755)
+	if err := os.MkdirAll(vendor, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	_, err := scanVendorComponents(root, "vendor")
 	if err != nil {
 		t.Fatal(err)

@@ -64,7 +64,9 @@ func TestAssembleWasmNASM(t *testing.T) {
 	Target = "wasm32-unknown-unknown"
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.asm")
-	os.WriteFile(src, []byte("nop"), 0o644)
+	if err := os.WriteFile(src, []byte("nop"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	obj := filepath.Join(dir, "t.o")
 	err := Assemble(context.Background(), src, obj, false, false, "auto")
 	if err == nil || !strings.Contains(err.Error(), "wasm") {
@@ -78,7 +80,9 @@ func TestAssembleWasmFASM(t *testing.T) {
 	Target = "wasm32-unknown-unknown"
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.fasm")
-	os.WriteFile(src, []byte("nop"), 0o644)
+	if err := os.WriteFile(src, []byte("nop"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, false, "auto")
 	if err == nil || !strings.Contains(err.Error(), "wasm") {
 		t.Fatalf("got %v", err)
@@ -95,7 +99,9 @@ func TestAssembleNASMVerboseFail(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.asm")
-	os.WriteFile(src, []byte("nop"), 0o644)
+	if err := os.WriteFile(src, []byte("nop"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, true, "auto")
 	if err == nil {
 		t.Fatal("expected error")
@@ -112,7 +118,9 @@ func TestAssembleNASMNonVerboseFail(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.asm")
-	os.WriteFile(src, []byte("nop"), 0o644)
+	if err := os.WriteFile(src, []byte("nop"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, false, "auto")
 	if err == nil || !strings.Contains(err.Error(), "verbose") {
 		t.Fatalf("got %v", err)
@@ -127,7 +135,9 @@ func TestAssembleNASMInvalidAsmFlags(t *testing.T) {
 	utils.CheckToolFunc = func(string) error { return nil }
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.asm")
-	os.WriteFile(src, []byte("nop"), 0o644)
+	if err := os.WriteFile(src, []byte("nop"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, false, "auto")
 	if err == nil {
 		t.Fatal("expected asm flags error")
@@ -150,7 +160,9 @@ func TestAssembleCMocked(t *testing.T) {
 	CcFlags = "-O2"
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.c")
-	os.WriteFile(src, []byte("int x;"), 0o644)
+	if err := os.WriteFile(src, []byte("int x;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	obj := filepath.Join(dir, "t.o")
 	if err := Assemble(context.Background(), src, obj, true, true, "auto"); err != nil {
 		t.Fatal(err)
@@ -167,7 +179,9 @@ func TestAssembleCMockedFail(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.c")
-	os.WriteFile(src, []byte("int x;"), 0o644)
+	if err := os.WriteFile(src, []byte("int x;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, false, "auto")
 	if err == nil {
 		t.Fatal("expected error")
@@ -182,7 +196,9 @@ func TestAssembleCppInvalidCcFlags(t *testing.T) {
 	utils.CheckToolFunc = func(string) error { return nil }
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.cpp")
-	os.WriteFile(src, []byte("int x;"), 0o644)
+	if err := os.WriteFile(src, []byte("int x;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, false, "auto")
 	if err == nil {
 		t.Fatal("expected error")
@@ -205,7 +221,9 @@ func TestAssembleWasmClangC(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.c")
-	os.WriteFile(src, []byte("int main(){}"), 0o644)
+	if err := os.WriteFile(src, []byte("int main(){}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, true, "auto"); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +245,9 @@ func TestAssembleForceFASMOnAsm(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.asm")
-	os.WriteFile(src, []byte("nop"), 0o644)
+	if err := os.WriteFile(src, []byte("nop"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, false, "auto"); err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +263,9 @@ func TestAssembleFASMNonVerboseFail(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.fasm")
-	os.WriteFile(src, []byte("format ELF64\n_start:\n"), 0o644)
+	if err := os.WriteFile(src, []byte("format ELF64\n_start:\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, false, "auto")
 	if err == nil {
 		t.Fatal("expected error")
@@ -260,7 +282,9 @@ func TestAssembleFASMVerboseParseErrorLine(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.fasm")
-	os.WriteFile(src, []byte("format ELF64\n_start:\n"), 0o644)
+	if err := os.WriteFile(src, []byte("format ELF64\n_start:\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, true, "auto")
 	if err == nil || !strings.Contains(err.Error(), "fasm error") {
 		t.Fatalf("got %v", err)
@@ -283,7 +307,9 @@ func TestAssembleCppZigEnabled(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.cpp")
-	os.WriteFile(src, []byte("int main(){}"), 0o644)
+	if err := os.WriteFile(src, []byte("int main(){}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, false, "auto"); err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +331,9 @@ func TestAssembleGASWasm(t *testing.T) {
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "t.s")
-	os.WriteFile(src, []byte(".globl _start\n_start:\n"), 0o644)
+	if err := os.WriteFile(src, []byte(".globl _start\n_start:\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), true, true, "auto"); err != nil {
 		t.Fatal(err)
 	}

@@ -12,11 +12,18 @@ import (
 
 func TestGenerateSecureWriteFail(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(oldWd)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
 	c := filepath.Join(dir, "m.c")
-	os.WriteFile(c, []byte("int main(){}"), 0o644)
+	if err := os.WriteFile(c, []byte("int main(){}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	m := fzvfs.NewMock(fzvfs.Default)
 	m.SetFailOp("Rename", fzvfs.ErrDiskFull)
 	utils.SetFileSystem(m)
