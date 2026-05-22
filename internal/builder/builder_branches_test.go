@@ -77,7 +77,7 @@ func TestStoreShadowCacheHardLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shadowObj := filepath.Join(dir, "aegis", "shadow", key+".o")
+	shadowObj := utils.ShadowCachePath(key)
 	info1, err := os.Stat(obj)
 	if err != nil {
 		t.Fatal(err)

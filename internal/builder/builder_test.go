@@ -81,19 +81,30 @@ _start:
 }
 
 func TestUniqueObjectNames(t *testing.T) {
-	if _, err := exec.LookPath("nasm"); err != nil {
-		t.Skip("nasm not installed")
-	}
 	dir := t.TempDir()
-	t.Logf("Source dir: %s", dir)
-	writeASM(t, dir, "hello.asm", "")
-	writeASM(t, dir, "hello.s", "")
-	writeASM(t, dir, "sub/hello.asm", "")
+	writeASM(t, dir, "hello.asm", `section .text
+global main
+main:
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+`)
+	writeASM(t, dir, "hello.s", `.text
+.globl hello_s
+hello_s:
+    ret
+`)
+	writeASM(t, dir, "sub/hello.asm", `section .text
+global helper_func
+helper_func:
+    ret
+`)
 	outBin := filepath.Join(t.TempDir(), "app")
-	t.Logf("Output binary: %s", outBin)
-	_, _ = BuildDir(context.Background(), []string{dir}, outBin, false, true, "auto", true, true, true, true, false, nil, nil, nil, nil, nil, 1, "executable")
+	_, err := BuildDir(context.Background(), []string{dir}, outBin, false, true, "raw", true, true, true, false, false, nil, nil, nil, nil, nil, 1, "executable")
+	if err != nil {
+		t.Fatal(err)
+	}
 	objDir := filepath.Join(filepath.Dir(outBin), ".fz_objs")
-	t.Logf("Object dir: %s", objDir)
 	entries, err := os.ReadDir(objDir)
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +113,6 @@ func TestUniqueObjectNames(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	t.Logf("Object files: %v", names)
 	expectedPatterns := []string{"hello_asm", "hello_s", "sub_hello_asm"}
 	for _, pattern := range expectedPatterns {
 		found := false
