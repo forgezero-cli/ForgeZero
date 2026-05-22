@@ -25,7 +25,7 @@ func (Windows) WriteFile(path string, data []byte, perm os.FileMode) error {
 }
 
 func (Windows) ReadFile(path string) ([]byte, error) {
-	return readFileBytes(CleanPath(path))
+	return os.ReadFile(CleanPath(path))
 }
 
 func (Windows) Open(path string) (io.ReadCloser, error) {

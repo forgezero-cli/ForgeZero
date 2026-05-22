@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"sync"
 	"sync/atomic"
 )
 
@@ -33,33 +32,6 @@ func GetIsolationMode() string {
 
 func IsStrictIsolation() bool {
 	return GetIsolationMode() == "strict"
-}
-
-var readBufferPool = sync.Pool{New: func() any { b := make([]byte, 32*1024); return &b }}
-
-func readFileBytes(path string) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	bufp := readBufferPool.Get().(*[]byte)
-	buf := *bufp
-	defer readBufferPool.Put(bufp)
-	var result []byte
-	for {
-		n, err := f.Read(buf)
-		if n > 0 {
-			result = append(result, buf[:n]...)
-		}
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, err
-		}
-	}
-	return result, nil
 }
 
 var (
