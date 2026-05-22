@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	fzvfs "fz/internal/fs"
 	"fz/internal/config"
+	fzvfs "fz/internal/fs"
 	"fz/internal/utils"
 )
 
