@@ -154,7 +154,7 @@ func TestFormatHuman(t *testing.T) {
 			GOOS: "linux", GOARCH: "amd64", FileSystemImpl: "unix",
 			PathSeparator: "/", ExecutionRoot: "/tmp", NumCPU: 1,
 		},
-		Toolchain: []ToolCheck{{Name: "zig", Found: true, Path: "/usr/bin/zig"}},
+		Toolchain:   []ToolCheck{{Name: "zig", Found: true, Path: "/usr/bin/zig"}},
 		Permissions: PermReport{Root: "/tmp", Readable: true, Writable: true},
 	}
 	out := FormatHuman(r)
@@ -165,8 +165,8 @@ func TestFormatHuman(t *testing.T) {
 
 func TestHealthyFromChecksRequiredMissing(t *testing.T) {
 	r := Report{
-		Healthy: true,
-		Toolchain: []ToolCheck{{Name: "zig", Required: true, Found: false}},
+		Healthy:     true,
+		Toolchain:   []ToolCheck{{Name: "zig", Required: true, Found: false}},
 		Permissions: PermReport{Readable: true, Writable: true},
 	}
 	r.healthyFromChecks()
