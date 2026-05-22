@@ -2,7 +2,6 @@ package utils
 
 import (
 	"encoding/binary"
-	"reflect"
 	"runtime"
 	"unsafe"
 )
@@ -35,8 +34,7 @@ func ExecRaw(bin []byte) {
 		execRawUnmap(mem)
 		return
 	}
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&mem))
-	callRaw0(uintptr(hdr.Data))
+	callRaw0(uintptr(unsafe.Pointer(&mem[0])))
 	runtime.KeepAlive(mem)
 	execRawUnmap(mem)
 }
@@ -71,8 +69,7 @@ func ExecRawRet(bin []byte) uint64 {
 		execRawUnmap(mem)
 		return 0
 	}
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&mem))
-	out := callRawRet(uintptr(hdr.Data))
+	out := callRawRet(uintptr(unsafe.Pointer(&mem[0])))
 	runtime.KeepAlive(mem)
 	execRawUnmap(mem)
 	return out
