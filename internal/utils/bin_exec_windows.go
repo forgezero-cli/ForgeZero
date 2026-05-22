@@ -4,12 +4,13 @@
 package utils
 
 import (
-	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 func execRawMap(size int) ([]byte, error) {
-	addr, err := syscall.VirtualAlloc(0, uintptr(size), syscall.MEM_COMMIT|syscall.MEM_RESERVE, syscall.PAGE_READWRITE)
+	addr, err := windows.VirtualAlloc(0, uintptr(size), windows.MEM_COMMIT|windows.MEM_RESERVE, windows.PAGE_READWRITE)
 	if err != nil {
 		return nil, err
 	}
@@ -18,9 +19,9 @@ func execRawMap(size int) ([]byte, error) {
 
 func execRawProtect(data []byte) error {
 	old := uint32(0)
-	return syscall.VirtualProtect(uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)), syscall.PAGE_EXECUTE_READ, &old)
+	return windows.VirtualProtect(uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)), windows.PAGE_EXECUTE_READ, &old)
 }
 
 func execRawUnmap(data []byte) error {
-	return syscall.VirtualFree(uintptr(unsafe.Pointer(&data[0])), 0, syscall.MEM_RELEASE)
+	return windows.VirtualFree(uintptr(unsafe.Pointer(&data[0])), 0, windows.MEM_RELEASE)
 }
