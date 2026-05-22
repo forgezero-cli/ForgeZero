@@ -9,6 +9,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var supportedToolchains = map[string]struct{}{
+	"auto":  {},
+	"zig":   {},
+	"fasm":  {},
+	"nasm":  {},
+	"gas":   {},
+	"gcc":   {},
+	"clang": {},
+	"ld":    {},
+}
+
 type IsolationMode string
 
 const (
@@ -62,41 +73,41 @@ type Hook struct {
 }
 
 type Hooks struct {
-	PreBuild []Hook `yaml:"pre_build"`
+	PreBuild  []Hook `yaml:"pre_build"`
 	OnFailure string `yaml:"on_failure"`
 }
 
 type Config struct {
-	Name                 string            `yaml:"name"`
-	SourceDir            string            `yaml:"source_dir"`
-	SourceDirs           []string          `yaml:"source_dirs"`
-	SourceFiles          []string          `yaml:"source_files"`
-	SourceFile           string            `yaml:"source_file"`
-	Output               string            `yaml:"output"`
-	OutObj               string            `yaml:"out_obj"`
-	Mode                 string            `yaml:"mode"`
-	Toolchain            string            `yaml:"toolchain"`
-	Debug                bool              `yaml:"debug"`
-	Verbose              bool              `yaml:"verbose"`
-	KeepObj              bool              `yaml:"keep_obj"`
-	NoCache              bool              `yaml:"no_cache"`
-	OptimizationLevel    int               `yaml:"optimization_level"`
-	Exclude              []string          `yaml:"exclude"`
-	Include              []string          `yaml:"include"`
-	Libs                 []string          `yaml:"libs"`
-	IgnoreFile           string            `yaml:"ignore_file"`
-	AuditIgnore          []string          `yaml:"audit_ignore"`
-	ToolChecksums        map[string]string `yaml:"tool_checksums"`
-	Flags                Flags             `yaml:"flags"`
-	Isolation            IsolationMode     `yaml:"isolation"`
-	DeterministicStrip  bool              `yaml:"deterministic_strip"`
-	ToolchainSettings    struct {
-		SearchPriority []string `yaml:"search_priority"`
-		EnvAllow       []string `yaml:"env_allow"`
+	Name               string            `yaml:"name"`
+	SourceDir          string            `yaml:"source_dir"`
+	SourceDirs         []string          `yaml:"source_dirs"`
+	SourceFiles        []string          `yaml:"source_files"`
+	SourceFile         string            `yaml:"source_file"`
+	Output             string            `yaml:"output"`
+	OutObj             string            `yaml:"out_obj"`
+	Mode               string            `yaml:"mode"`
+	Toolchain          string            `yaml:"toolchain"`
+	Debug              bool              `yaml:"debug"`
+	Verbose            bool              `yaml:"verbose"`
+	KeepObj            bool              `yaml:"keep_obj"`
+	NoCache            bool              `yaml:"no_cache"`
+	OptimizationLevel  int               `yaml:"optimization_level"`
+	Exclude            []string          `yaml:"exclude"`
+	Include            []string          `yaml:"include"`
+	Libs               []string          `yaml:"libs"`
+	IgnoreFile         string            `yaml:"ignore_file"`
+	AuditIgnore        []string          `yaml:"audit_ignore"`
+	ToolChecksums      map[string]string `yaml:"tool_checksums"`
+	Flags              Flags             `yaml:"flags"`
+	Isolation          IsolationMode     `yaml:"isolation"`
+	DeterministicStrip bool              `yaml:"deterministic_strip"`
+	ToolchainSettings  struct {
+		SearchPriority []string          `yaml:"search_priority"`
+		EnvAllow       []string          `yaml:"env_allow"`
+		ToolPaths      map[string]string `yaml:"tool_paths"`
 	} `yaml:"toolchain_opts"`
-	Hooks                Hooks             `yaml:"hooks"`
+	Hooks Hooks `yaml:"hooks"`
 }
-
 
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
@@ -132,7 +143,8 @@ func (c *Config) Validate() error {
 	if c.Toolchain == "" {
 		c.Toolchain = "auto"
 	}
-	if c.Toolchain != "auto" && c.Toolchain != "zig" {
+	c.Toolchain = strings.TrimSpace(strings.ToLower(c.Toolchain))
+	if _, ok := supportedToolchains[c.Toolchain]; !ok {
 		return fmt.Errorf("invalid toolchain: %s", c.Toolchain)
 	}
 	if c.Isolation == "" {
@@ -202,6 +214,12 @@ func (c *Config) MergeFromFlags(srcPath, dirPath, outBin, outObj string, debug, 
 			c.Isolation = IsolationNone
 		}
 	}
+}
+
+func IsValidToolchain(name string) bool {
+	name = strings.TrimSpace(strings.ToLower(name))
+	_, ok := supportedToolchains[name]
+	return ok
 }
 
 func (c *Config) Merge(other *Config) {
