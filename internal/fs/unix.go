@@ -3,6 +3,7 @@
 package fs
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,56 +13,92 @@ import (
 type Unix struct{}
 
 func (Unix) MkdirAll(path string, perm os.FileMode) error {
-	return os.MkdirAll(path, perm)
+	if path == "" || path == "." {
+		return nil
+	}
+	err := syscall.Mkdir(path, uint32(perm))
+	if err == nil || errors.Is(err, syscall.EEXIST) {
+		return nil
+	}
+	if !errors.Is(err, syscall.ENOENT) {
+		return err
+	}
+	if err := (Unix{}).MkdirAll(filepath.Dir(path), perm); err != nil {
+		return err
+	}
+	return syscall.Mkdir(path, uint32(perm))
 }
 
 func (Unix) WriteFile(path string, data []byte, perm os.FileMode) error {
-	return os.WriteFile(path, data, perm)
+	fd, err := syscall.Open(path, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC|syscall.O_CLOEXEC, uint32(perm))
+	if err != nil {
+		return err
+	}
+	defer syscall.Close(fd)
+	for len(data) > 0 {
+		n, err := syscall.Write(fd, data)
+		if err != nil {
+			return err
+		}
+		data = data[n:]
+	}
+	return syscall.Fchmod(fd, uint32(perm))
 }
 
 func (Unix) ReadFile(path string) ([]byte, error) {
-	return readFileBytes(path)
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer syscall.Close(fd)
+	var st syscall.Stat_t
+	if err := syscall.Fstat(fd, &st); err != nil {
+		return nil, err
+	}
+	if st.Size == 0 {
+		return []byte{}, nil
+	}
+	if st.Size < 0 || st.Size > 1<<31 {
+		return nil, errors.New("invalid file size")
+	}
+	size := int(st.Size)
+	data, err := syscall.Mmap(fd, 0, size, syscall.PROT_READ, syscall.MAP_PRIVATE)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, size)
+	copy(out, data)
+	_ = syscall.Munmap(data)
+	return out, nil
 }
 
 func (Unix) Open(path string) (io.ReadCloser, error) {
-	return os.Open(path)
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), path), nil
 }
 
 func (Unix) OpenVerified(path string) (io.ReadCloser, error) {
-	pre, err := os.Lstat(path)
-	if err != nil {
+	var pre syscall.Stat_t
+	if err := syscall.Lstat(path, &pre); err != nil {
 		return nil, err
 	}
-	if pre.Mode()&os.ModeSymlink != 0 {
+	if pre.Mode&syscall.S_IFMT == syscall.S_IFLNK {
 		return nil, ErrSymlink
 	}
-	if IsStrictIsolation() {
-		fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
-		if err != nil {
-			return nil, err
-		}
-		f := os.NewFile(uintptr(fd), path)
-		post, err := f.Stat()
-		if err != nil {
-			f.Close()
-			return nil, err
-		}
-		if !os.SameFile(pre, post) {
-			f.Close()
-			return nil, ErrPathChanged
-		}
-		return f, nil
-	}
-	f, err := os.Open(path)
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, err
 	}
-	post, err := f.Stat()
-	if err != nil {
+	f := os.NewFile(uintptr(fd), path)
+	var post syscall.Stat_t
+	if err := syscall.Fstat(fd, &post); err != nil {
 		f.Close()
 		return nil, err
 	}
-	if !os.SameFile(pre, post) {
+	if pre.Dev != post.Dev || pre.Ino != post.Ino || pre.Mode != post.Mode {
 		f.Close()
 		return nil, ErrPathChanged
 	}
