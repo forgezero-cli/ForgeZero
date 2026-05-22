@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"fz/internal/config"
+	"fz/internal/seal"
 	"fz/internal/utils"
 )
 
@@ -117,6 +118,27 @@ func Generate(root, vendorDir, buildVersion string, cfg *config.Config, target s
 
 func Marshal(sbom *SBOM) ([]byte, error) {
 	return json.MarshalIndent(sbom, "", "  ")
+}
+
+func ExportEncryptedSBOM(root, vendorDir, buildVersion string, cfg *config.Config, target string) ([]byte, error) {
+	sbomDoc, err := Generate(root, vendorDir, buildVersion, cfg, target)
+	if err != nil {
+		return nil, err
+	}
+	plain, err := Marshal(sbomDoc)
+	if err != nil {
+		return nil, err
+	}
+	mid, err := seal.MachineID()
+	if err != nil || mid == "" {
+		mid = "forgezero"
+	}
+	key := []byte(mid)
+	out := make([]byte, len(plain))
+	for i := range plain {
+		out[i] = plain[i] ^ key[i%len(key)]
+	}
+	return out, nil
 }
 
 func scanVendorComponents(root, vendorDir string) ([]Component, error) {
