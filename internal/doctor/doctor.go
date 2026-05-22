@@ -18,11 +18,11 @@ type Options struct {
 }
 
 type ToolCheck struct {
-	Name      string `json:"name"`
-	Required  bool   `json:"required"`
-	Found     bool   `json:"found"`
-	Path      string `json:"path,omitempty"`
-	Error     string `json:"error,omitempty"`
+	Name     string `json:"name"`
+	Required bool   `json:"required"`
+	Found    bool   `json:"found"`
+	Path     string `json:"path,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 type PermReport struct {
