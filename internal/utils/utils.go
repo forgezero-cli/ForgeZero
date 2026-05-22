@@ -21,19 +21,19 @@ import (
 	"time"
 	"unsafe"
 
-	fzvfs "fz/internal/fs"
 	"fz/internal/config"
+	fzvfs "fz/internal/fs"
 	"fz/internal/seal"
 
 	"github.com/zeebo/blake3"
 )
 
 var (
-	hashKey                  = [32]byte{0x9d, 0x74, 0x31, 0x6f, 0xd5, 0x23, 0x1b, 0xe4, 0xa1, 0x8f, 0x03, 0x71, 0x42, 0x5d, 0x6b, 0x9a, 0x3c, 0xf4, 0x75, 0x28, 0x0d, 0x62, 0x8a, 0x19, 0xbf, 0x4e, 0x50, 0x33, 0x13, 0x21, 0x97, 0x6c}
-	bufferPool               = sync.Pool{New: func() any { return new(bytes.Buffer) }}
-	copyBufferPool           = sync.Pool{New: func() any { b := make([]byte, 32*1024); return &b }}
-	hasherPool               = sync.Pool{New: func() any { h, _ := blake3.NewKeyed(hashKey[:]); return h }}
-	hashSep = []byte{0}
+	hashKey        = [32]byte{0x9d, 0x74, 0x31, 0x6f, 0xd5, 0x23, 0x1b, 0xe4, 0xa1, 0x8f, 0x03, 0x71, 0x42, 0x5d, 0x6b, 0x9a, 0x3c, 0xf4, 0x75, 0x28, 0x0d, 0x62, 0x8a, 0x19, 0xbf, 0x4e, 0x50, 0x33, 0x13, 0x21, 0x97, 0x6c}
+	bufferPool     = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+	copyBufferPool = sync.Pool{New: func() any { b := make([]byte, 32*1024); return &b }}
+	hasherPool     = sync.Pool{New: func() any { h, _ := blake3.NewKeyed(hashKey[:]); return h }}
+	hashSep        = []byte{0}
 )
 
 var limitedMode atomic.Bool
@@ -790,39 +790,6 @@ func hashEmptyDigest() ([32]byte, error) {
 	return out, nil
 }
 
-func hashStreamDigest(r io.Reader) ([32]byte, error) {
-	var out [32]byte
-	hasher := hasherPool.Get().(*blake3.Hasher)
-	var buf [65536]byte
-	for {
-		n, err := r.Read(buf[:])
-		if n > 0 {
-			if _, err := hasher.Write(buf[:n]); err != nil {
-				hasher.Reset()
-				hasherPool.Put(hasher)
-				return out, err
-			}
-		}
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			hasher.Reset()
-			hasherPool.Put(hasher)
-			return out, err
-		}
-	}
-	digest := hasher.Digest()
-	if _, err := digest.Read(out[:]); err != nil {
-		hasher.Reset()
-		hasherPool.Put(hasher)
-		return out, err
-	}
-	hasher.Reset()
-	hasherPool.Put(hasher)
-	return out, nil
-}
-
 func fileIsStable(of interface {
 	Stat() (os.FileInfo, error)
 }, delay time.Duration,
@@ -839,43 +806,6 @@ func fileIsStable(of interface {
 		return false
 	}
 	return fi1.Size() == fi2.Size() && fi1.ModTime() == fi2.ModTime()
-}
-
-func hashMappedDigest(of interface {
-	Stat() (os.FileInfo, error)
-	Fd() uintptr
-}, f io.ReadCloser, size int64,
-) ([32]byte, error) {
-	var out [32]byte
-	if size <= 0 {
-		return hashEmptyDigest()
-	}
-	fd := getFileDescriptor(of)
-	if err := lockFileShared(fd); err != nil {
-		return hashStreamDigest(f)
-	}
-	defer unlockFile(fd)
-	if !fileIsStable(of, 1*time.Millisecond) {
-		return hashStreamDigest(f)
-	}
-	data, err := mmapFile(fd, size)
-	if err != nil {
-		return hashStreamDigest(f)
-	}
-	if fi, err := of.Stat(); err != nil || fi.Size() != size {
-		_ = unmapFile(data)
-		return hashStreamDigest(f)
-	}
-	madviseNormal(data)
-	out, err = HashDataDigest(data)
-	_ = unmapFile(data)
-	if err != nil {
-		return out, err
-	}
-	if fi, err := of.Stat(); err != nil || fi.Size() != size {
-		return hashStreamDigest(f)
-	}
-	return out, nil
 }
 
 func HashDataDigest(data []byte) ([32]byte, error) {
@@ -1167,14 +1097,6 @@ func hashPath(path string) uint64 {
 	return h
 }
 
-
-func resolveIncludePath(currentDir, include string) (string, error) {
-	if filepath.IsAbs(include) {
-		return ResolveSecurePath(include)
-	}
-	return ResolveSecurePath(filepath.Join(currentDir, include))
-}
-
 func resolveIncludePathBytes(currentDir string, include []byte) (string, error) {
 	var tmp [4096]byte
 	n := copy(tmp[:], currentDir)
@@ -1243,7 +1165,7 @@ func scanFileIncludes(path string) ([]string, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
-	defer unmapFile(data)
+	defer func() { _ = unmapFile(data) }()
 	currentDir := filepath.Dir(path)
 	list := make([]string, 0, 8)
 	for i := 0; i < len(data); i++ {

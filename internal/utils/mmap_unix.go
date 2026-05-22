@@ -4,7 +4,6 @@ package utils
 
 import (
 	"syscall"
-	"unsafe"
 )
 
 func mmapFile(fd int, size int64) ([]byte, error) {
@@ -25,7 +24,7 @@ func unmapFile(data []byte) error {
 
 func madviseNormal(data []byte) {
 	if len(data) > 0 {
-		syscall.Madvise(data, syscall.MADV_NORMAL)
+		_ = syscall.Madvise(data, syscall.MADV_NORMAL)
 	}
 }
 
@@ -41,8 +40,4 @@ func lockFileShared(fd int) error {
 
 func unlockFile(fd int) error {
 	return syscall.Flock(fd, syscall.LOCK_UN)
-}
-
-func unsafeByteSlice(ptr unsafe.Pointer, len int) []byte {
-	return unsafe.Slice((*byte)(ptr), len)
 }
