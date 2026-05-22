@@ -1,12 +1,17 @@
 package seal
 
 import (
+	"bytes"
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
-	"bytes"
+	"sync/atomic"
+	"syscall"
+	"unsafe"
+
 
 	"github.com/zeebo/blake3"
 	"golang.org/x/sys/unix"
@@ -16,6 +21,22 @@ var sealed bool
 var combinedSeal [32]byte
 var allowed map[string]struct{}
 var allowedMu sync.RWMutex
+var journalBuf []byte
+var journalPos uint32
+var journalMu sync.Mutex
+var stateMu sync.RWMutex
+var globalState [32]byte
+var decoy atomic.Bool
+var machineIDPath = "/etc/machine-id"
+
+func init() {
+	buf, err := syscall.Mmap(-1, 0, 1<<20, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
+	if err == nil {
+		journalBuf = buf
+	} else {
+		journalBuf = make([]byte, 1<<20)
+	}
+}
 
 func getExecPath() (string, error) {
 	var buf [4096]byte
@@ -27,7 +48,7 @@ func getExecPath() (string, error) {
 }
 
 func getMachineIDZeroAlloc() (string, error) {
-	fd, err := unix.Open("/etc/machine-id", unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	fd, err := unix.Open(machineIDPath, unix.O_RDONLY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return "", err
 	}
@@ -49,15 +70,27 @@ func computeFileHash(path string) ([32]byte, error) {
 		return out, err
 	}
 	defer unix.Close(fd)
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		return out, err
+	}
 	hasher := blake3.New()
-	var buf [32768]byte
-	for {
-		n, err := unix.Read(fd, buf[:])
-		if n > 0 {
-			hasher.Write(buf[:n])
-		}
-		if err != nil {
-			break
+	if st.Size > 0 {
+		data, err := syscall.Mmap(int(fd), 0, int(st.Size), syscall.PROT_READ, syscall.MAP_PRIVATE)
+		if err == nil {
+			_, _ = hasher.Write(data)
+			_ = syscall.Munmap(data)
+		} else {
+			var buf [32768]byte
+			for {
+				n, err := unix.Read(fd, buf[:])
+				if n > 0 {
+					hasher.Write(buf[:n])
+				}
+				if err != nil {
+					break
+				}
+			}
 		}
 	}
 	sum := hasher.Sum(nil)
@@ -86,7 +119,178 @@ func setImmutable(path string) error {
 	return unix.IoctlSetInt(fd, unix.FS_IOC_SETFLAGS, FS_IMMUTABLE_FL)
 }
 
+func isStagingMode() bool {
+	return os.Getenv("FZ_STAGING") == "1"
+}
+
+func MachineID() (string, error) {
+	return getMachineIDZeroAlloc()
+}
+
+func debuggerPresent() bool {
+	if os.Getenv("FZ_DEBUGGER_SIMULATE") == "1" {
+		return true
+	}
+	fd, err := unix.Open("/proc/self/status", unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return false
+	}
+	defer unix.Close(fd)
+	var buf [512]byte
+	n, err := unix.Read(fd, buf[:])
+	if n <= 0 {
+		return false
+	}
+	if err != nil && err != unix.EINTR {
+		return false
+	}
+	for _, line := range strings.Split(string(buf[:n]), "\n") {
+		if strings.HasPrefix(line, "TracerPid:") {
+			return strings.TrimSpace(line[10:]) != "0"
+		}
+	}
+	return false
+}
+
+func walkProjectFiles(root string, visit func(path string, info os.FileInfo, err error) error) error {
+	root = filepath.Clean(root)
+	info, err := os.Lstat(root)
+	if err != nil {
+		return visit(root, nil, err)
+	}
+	if err := visit(root, info, nil); err != nil {
+		return err
+	}
+	var stack []string
+	stack = append(stack, root)
+	var buf [8192]byte
+	for len(stack) > 0 {
+		dir := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		fd, err := syscall.Open(dir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
+		if err != nil {
+			return err
+		}
+		for {
+			n, _, errno := syscall.Syscall(syscall.SYS_GETDENTS64, uintptr(fd), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+			if errno != 0 {
+				syscall.Close(fd)
+				if errno == syscall.EINTR {
+					continue
+				}
+				return os.NewSyscallError("getdents64", errno)
+			}
+			if n == 0 {
+				break
+			}
+			_, _, names := syscall.ParseDirent(buf[:n], -1, nil)
+			for _, name := range names {
+				if name == "." || name == ".." {
+					continue
+				}
+				path := filepath.Join(dir, name)
+				info, err := os.Lstat(path)
+				if err != nil {
+					if err := visit(path, nil, err); err != nil {
+						syscall.Close(fd)
+						return err
+					}
+					continue
+				}
+				if err := visit(path, info, nil); err != nil {
+					syscall.Close(fd)
+					return err
+				}
+				if info.IsDir() {
+					stack = append(stack, path)
+				}
+			}
+		}
+		syscall.Close(fd)
+	}
+	return nil
+}
+
+func zeroizeRegion(data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&data))
+	ptr := unsafe.Pointer(hdr.Data)
+	for i := 0; i < len(data); i++ {
+		*(*byte)(unsafe.Add(ptr, uintptr(i))) = 0
+	}
+}
+
+func triggerDecoy() {
+	if decoy.Load() {
+		return
+	}
+	decoy.Store(true)
+	journalMu.Lock()
+	atomic.StoreUint32(&journalPos, 0)
+	if len(journalBuf) > 0 {
+		zeroizeRegion(journalBuf)
+	}
+	journalMu.Unlock()
+	stateMu.Lock()
+	zeroizeRegion(globalState[:])
+	zeroizeRegion(combinedSeal[:])
+	stateMu.Unlock()
+}
+
+func resetSealState() {
+	journalMu.Lock()
+	atomic.StoreUint32(&journalPos, 0)
+	if len(journalBuf) > 0 {
+		zeroizeRegion(journalBuf)
+	}
+	journalMu.Unlock()
+	stateMu.Lock()
+	sealed = false
+	zeroizeRegion(globalState[:])
+	zeroizeRegion(combinedSeal[:])
+	stateMu.Unlock()
+	allowedMu.Lock()
+	allowed = nil
+	allowedMu.Unlock()
+	decoy.Store(false)
+}
+
+func UpdateGlobalState(data []byte) {
+	stateMu.Lock()
+	hasher := blake3.New()
+	hasher.Write(globalState[:])
+	hasher.Write(data)
+	sum := hasher.Sum(nil)
+	copy(globalState[:], sum[:32])
+	stateMu.Unlock()
+}
+
+func JournalEvent(data []byte) {
+	if len(journalBuf) == 0 {
+		return
+	}
+	journalMu.Lock()
+	pos := int(atomic.LoadUint32(&journalPos))
+	if pos+len(data) <= len(journalBuf) {
+		copy(journalBuf[pos:], data)
+		pos += len(data)
+	} else {
+		n := copy(journalBuf[pos:], data)
+		copy(journalBuf, data[n:])
+		pos = len(data) - n
+	}
+	atomic.StoreUint32(&journalPos, uint32(pos))
+	journalMu.Unlock()
+	UpdateGlobalState(data)
+}
+
 func Seal() error {
+	if debuggerPresent() && !isStagingMode() {
+		triggerDecoy()
+		return nil
+	}
 	execPath, err := getExecPath()
 	if err != nil {
 		return err
@@ -100,7 +304,9 @@ func Seal() error {
 	hasher.Write(execHash[:])
 	hasher.Write([]byte(mid))
 	sum := hasher.Sum(nil)
+	stateMu.Lock()
 	copy(combinedSeal[:], sum[:32])
+	stateMu.Unlock()
 	dir := filepath.Dir(execPath)
 	sealPath := filepath.Join(dir, ".fz_seal")
 	fd, err := unix.Open(sealPath, unix.O_WRONLY|unix.O_CREAT|unix.O_TRUNC|unix.O_CLOEXEC, 0600)
@@ -115,7 +321,7 @@ func Seal() error {
 		return err
 	}
 	root := filepath.Dir(execPath)
-	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	walkProjectFiles(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -126,6 +332,7 @@ func Seal() error {
 		if err != nil {
 			return nil
 		}
+		JournalEvent(h[:])
 		hb := make([]byte, hex.EncodedLen(len(h)))
 		hex.Encode(hb, h[:])
 		hb = append(hb, '\t')
@@ -134,14 +341,24 @@ func Seal() error {
 		_ = writeAll(fd, hb)
 		return nil
 	})
-	if err := setImmutable(sealPath); err == nil {
+	if !isStagingMode() {
+		_ = setImmutable(sealPath)
 	}
+	stateMu.Lock()
 	sealed = true
+	stateMu.Unlock()
 	return nil
 }
 
 func Verify() (bool, error) {
+	stateMu.RLock()
 	if sealed {
+		stateMu.RUnlock()
+		return true, nil
+	}
+	stateMu.RUnlock()
+	if debuggerPresent() && !isStagingMode() {
+		triggerDecoy()
 		return true, nil
 	}
 	execPath, err := getExecPath()
@@ -194,9 +411,16 @@ func Verify() (bool, error) {
 	var local [32]byte
 	copy(local[:], sum[:32])
 	if !bytes.Equal(local[:], data[:32]) {
+		if debuggerPresent() && !isStagingMode() {
+			triggerDecoy()
+			return true, nil
+		}
 		return false, nil
 	}
+	stateMu.Lock()
 	copy(combinedSeal[:], local[:])
+	sealed = true
+	stateMu.Unlock()
 	allowedMu.Lock()
 	allowed = make(map[string]struct{})
 	for i := 1; i < len(lines); i++ {
@@ -215,7 +439,21 @@ func Verify() (bool, error) {
 }
 
 func GetCombined() [32]byte {
-	return combinedSeal
+	stateMu.RLock()
+	out := combinedSeal
+	stateMu.RUnlock()
+	return out
+}
+
+func getGlobalState() [32]byte {
+	stateMu.RLock()
+	out := globalState
+	stateMu.RUnlock()
+	return out
+}
+
+func IsDecoyMode() bool {
+	return decoy.Load()
 }
 
 func IsAllowedHex(h string) bool {
