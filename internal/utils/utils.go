@@ -21,6 +21,7 @@ import (
 	"time"
 	"unsafe"
 
+	fzvfs "fz/internal/fs"
 	"fz/internal/config"
 	"fz/internal/seal"
 
@@ -30,7 +31,7 @@ import (
 var (
 	hashKey                  = [32]byte{0x9d, 0x74, 0x31, 0x6f, 0xd5, 0x23, 0x1b, 0xe4, 0xa1, 0x8f, 0x03, 0x71, 0x42, 0x5d, 0x6b, 0x9a, 0x3c, 0xf4, 0x75, 0x28, 0x0d, 0x62, 0x8a, 0x19, 0xbf, 0x4e, 0x50, 0x33, 0x13, 0x21, 0x97, 0x6c}
 	bufferPool               = sync.Pool{New: func() any { return new(bytes.Buffer) }}
-	copyBufferPool           = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
+	copyBufferPool           = sync.Pool{New: func() any { b := make([]byte, 32*1024); return &b }}
 	hasherPool               = sync.Pool{New: func() any { h, _ := blake3.NewKeyed(hashKey[:]); return h }}
 	hashSep = []byte{0}
 )
@@ -748,17 +749,18 @@ func CopyFile(src, dst string) error {
 		_ = fileSystem().Remove(tmpName)
 		return fmt.Errorf("chmod temp %s: %w", tmpName, err)
 	}
-	buf := copyBufferPool.Get().([]byte)
+	bufp := copyBufferPool.Get().(*[]byte)
+	buf := *bufp
 	if _, err := io.CopyBuffer(tmp, in, buf); err != nil {
 		ZeroizeBytes(buf)
-		copyBufferPool.Put(buf)
+		copyBufferPool.Put(bufp)
 		in.Close()
 		tmp.Close()
 		_ = fileSystem().Remove(tmpName)
 		return fmt.Errorf("copy data to %s: %w", tmpName, err)
 	}
 	ZeroizeBytes(buf)
-	copyBufferPool.Put(buf)
+	copyBufferPool.Put(bufp)
 	if err := in.Close(); err != nil {
 		tmp.Close()
 		_ = fileSystem().Remove(tmpName)
@@ -895,42 +897,79 @@ func HashDataDigest(data []byte) ([32]byte, error) {
 	return out, nil
 }
 
+func openRawPath(path string) (int, error) {
+	const atFDCWD = ^uintptr(0) - 99
+	var buf [4096]byte
+	if len(path) >= len(buf) {
+		return -1, syscall.ENAMETOOLONG
+	}
+	n := copy(buf[:], path)
+	buf[n] = 0
+	r0, _, errno := syscall.Syscall(syscall.SYS_OPENAT, atFDCWD, uintptr(unsafe.Pointer(&buf[0])), uintptr(syscall.O_RDONLY|syscall.O_CLOEXEC))
+	if errno != 0 {
+		return -1, errno
+	}
+	return int(r0), nil
+}
+
 func hashRawFileDigest(path string) ([32]byte, error) {
 	var out [32]byte
-	f, err := openVerified(path)
-	if err != nil {
-		return out, ErrHashOpen
-	}
-	defer f.Close()
-	hasher := hasherPool.Get().(*blake3.Hasher)
-	var buf [65536]byte
-	if of, ok := f.(interface{ Fd() uintptr }); ok {
-		fd := int(of.Fd())
-		for {
-			n, err := syscall.Read(fd, buf[:])
-			if n > 0 {
-				if _, err := hasher.Write(buf[:n]); err != nil {
-					hasher.Reset()
-					hasherPool.Put(hasher)
-					return out, err
-				}
-			}
-			if err != nil {
-				hasher.Reset()
-				hasherPool.Put(hasher)
-				return out, ErrHashRead
-			}
-			if n == 0 {
-				break
-			}
+	if fileSystem() != fzvfs.Default {
+		f, err := openVerified(path)
+		if err != nil {
+			return out, ErrHashOpen
 		}
-	} else {
+		hasher := hasherPool.Get().(*blake3.Hasher)
+		var buf [65536]byte
 		if _, err := io.CopyBuffer(hasher, f, buf[:]); err != nil {
+			hasher.Reset()
+			hasherPool.Put(hasher)
+			f.Close()
+			return out, err
+		}
+		if cerr := f.Close(); cerr != nil {
+			hasher.Reset()
+			hasherPool.Put(hasher)
+			return out, cerr
+		}
+		digest := hasher.Digest()
+		if _, err := digest.Read(out[:]); err != nil {
 			hasher.Reset()
 			hasherPool.Put(hasher)
 			return out, err
 		}
+		hasher.Reset()
+		hasherPool.Put(hasher)
+		return out, nil
 	}
+
+	fd, err := openRawPath(path)
+	if err != nil {
+		return out, ErrHashOpen
+	}
+	hasher := hasherPool.Get().(*blake3.Hasher)
+	var buf [65536]byte
+	for {
+		n, readErr := syscall.Read(fd, buf[:])
+		if n > 0 {
+			if _, err := hasher.Write(buf[:n]); err != nil {
+				syscall.Close(fd)
+				hasher.Reset()
+				hasherPool.Put(hasher)
+				return out, err
+			}
+		}
+		if readErr != nil {
+			syscall.Close(fd)
+			hasher.Reset()
+			hasherPool.Put(hasher)
+			return out, ErrHashRead
+		}
+		if n == 0 {
+			break
+		}
+	}
+	syscall.Close(fd)
 	digest := hasher.Digest()
 	if _, err := digest.Read(out[:]); err != nil {
 		hasher.Reset()

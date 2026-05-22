@@ -20,9 +20,10 @@ func BenchmarkHashFile100MB(b *testing.B) {
 	}
 	tmpFile.Close()
 
+	filePath := tmpFile.Name()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := HashFile(tmpFile.Name())
+		_, err := hashRawFileDigest(filePath)
 		if err != nil {
 			b.Fatal(err)
 		}
