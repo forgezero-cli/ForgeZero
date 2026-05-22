@@ -30,7 +30,7 @@ func TestEnterpriseIsolation(t *testing.T) {
 	}
 
 	cfg := &config.Config{}
-	cfg.Isolation = true
+	cfg.Isolation = config.IsolationStandard
 	cfg.DeterministicStrip = true
 	cfg.ToolchainSettings.SearchPriority = []string{"local", "system"}
 
