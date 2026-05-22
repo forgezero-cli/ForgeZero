@@ -65,21 +65,6 @@ func asmCmdForTarget() string {
 	}
 }
 
-func formatFlagForTarget() string {
-	switch {
-	case isWasmTarget():
-		return ""
-	case strings.Contains(Target, "x86_64"):
-		return "-felf64"
-	case strings.Contains(Target, "i386") || strings.Contains(Target, "i686"):
-		return "-felf32"
-	case strings.Contains(Target, "arm"):
-		return "-march=armv7-a"
-	default:
-		return "-felf64"
-	}
-}
-
 func ccForTarget() string {
 	switch {
 	case isWasmTarget():
@@ -140,6 +125,12 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 			}
 			return assembleFASM(ctx, src, obj, debug, verbose)
 		}
+		if IsBinFormat() {
+			if err := utils.CheckTool("nasm"); err != nil {
+				return err
+			}
+			return assembleNASMHot(ctx, src, obj, debug, verbose)
+		}
 		if err := utils.CheckTool(asmCmdForTarget()); err != nil {
 			return err
 		}
@@ -180,6 +171,13 @@ func assembleNASM(ctx context.Context, src, obj string, debug, verbose bool) err
 	if isWasmTarget() {
 		return fmt.Errorf("cannot assemble .asm files for wasm target")
 	}
+	if IsBinFormat() {
+		return assembleNASMHot(ctx, src, obj, debug, verbose)
+	}
+	return assembleNASMSlow(ctx, src, obj, debug, verbose)
+}
+
+func assembleNASMSlow(ctx context.Context, src, obj string, debug, verbose bool) error {
 	cmd := asmCmdForTarget()
 	format := formatFlagForTarget()
 	args := []string{format, src, "-o", obj}
@@ -240,7 +238,11 @@ func assembleFASM(ctx context.Context, src, obj string, debug, verbose bool) err
 	if err != nil {
 		return fmt.Errorf("cannot read source: %w", err)
 	}
-	if !bytes.Contains(data, []byte("format ELF64")) {
+	inject := "format ELF64\n"
+	if IsBinFormat() {
+		inject = "format binary\n"
+	}
+	if !bytes.Contains(data, []byte("format ELF64")) && !bytes.Contains(data, []byte("format binary")) {
 		tmpFile, err = os.CreateTemp(filepath.Dir(src), "fz_fasm_*.asm")
 		if err != nil {
 			return fmt.Errorf("cannot create temp file: %w", err)
@@ -253,7 +255,7 @@ func assembleFASM(ctx context.Context, src, obj string, debug, verbose bool) err
 			}
 			os.Remove(tmpName)
 		}()
-		if _, err := tmpFile.WriteString("format ELF64\n"); err != nil {
+		if _, err := tmpFile.WriteString(inject); err != nil {
 			return err
 		}
 		if _, err := tmpFile.Write(data); err != nil {
