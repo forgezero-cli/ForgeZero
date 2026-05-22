@@ -16,6 +16,11 @@ var promptNew = func(executor func(string), completer func(prompt.Document) []pr
 func Run() {
 	state := DefaultState()
 
+	status := "SEALED"
+	if os.Getenv("FZ_STAGING") == "1" {
+		status = "STAGING"
+	}
+	fmt.Println("FORGEZERO 4.0 ZERO [MIL-SPEC] // STATUS: " + status + " // AUTONOMY: ACTIVE")
 	fmt.Println("┌─────────────────────────────────┐")
 	fmt.Println("│  fz interactive shell           │")
 	fmt.Println("│  Type 'help' for commands       │")
