@@ -106,6 +106,7 @@ Options:
   -no-sanitize           Disable sanitizers
   -strict                Enable aggressive sanitizers (use-after-return, use-after-scope) – prefers clang
   -toolchain <auto|zig>  Select toolchain: auto or zig
+  -isolation <none|standard|strict>  File system isolation mode for build inputs
   -clean                 Remove all build artifacts (.fz_objs, .fz_cache, binaries)
   -watch                 Watch files and auto‑rebuild
   -json                  Output build report in JSON (for CI/CD)
@@ -579,6 +580,7 @@ func main() {
 		libMode            bool
 		target             string
 		toolchain          string
+		isolation          string
 		genCompileCommands bool
 		shared             bool
 		ccFlags            string
@@ -622,6 +624,7 @@ func main() {
 	flag.BoolVar(&libMode, "lib", false, "build static library (archive)")
 	flag.StringVar(&target, "target", "x86_64-linux-gnu", "target triple (e.g., x86_64-linux-gnu, arm-linux-gnueabihf, riscv64-unknown-elf)")
 	flag.StringVar(&toolchain, "toolchain", "auto", "toolchain to use: auto or zig")
+	flag.StringVar(&isolation, "isolation", "none", "isolation level: none, standard, strict")
 	flag.BoolVar(&genCompileCommands, "compile-commands", false, "generate compile_commands.json for LSP and exit")
 	flag.BoolVar(&shared, "shared", false, "build shared library instead of executable")
 	flag.StringVar(&ccFlags, "cc-flag", "", "additional C compiler flags (space-separated)")
@@ -676,6 +679,14 @@ func main() {
 	}
 	if err := utils.ValidateCLIArg(toolchain); err != nil {
 		fmt.Fprintf(os.Stderr, "invalid toolchain: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIArg(isolation); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid isolation: %v\n", err)
+		os.Exit(2)
+	}
+	if isolation != "none" && isolation != "standard" && isolation != "strict" {
+		fmt.Fprintln(os.Stderr, "error: -isolation must be none, standard, or strict")
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIArg(buildType); err != nil {
@@ -896,7 +907,7 @@ func main() {
 		for k, v := range cfg.ToolChecksums {
 			utils.ToolChecksums.Store(k, v)
 		}
-		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode, toolchain)
+		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode, toolchain, isolation)
 		if verbose && !jsonOutput {
 			fmt.Printf("Loaded config from %s\n", func() string {
 				if configPath != "" {
@@ -918,6 +929,7 @@ func main() {
 			assembler.ZigRequested = true
 			linker.ZigRequested = true
 		}
+		fzvfs.SetIsolationMode(cfg.Isolation.String())
 	}
 	if utils.CheckTool("zig") == nil {
 		assembler.ZigEnabled = true
