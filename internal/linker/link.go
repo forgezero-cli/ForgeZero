@@ -188,6 +188,9 @@ func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSym
 	if err := utils.EnsureDir(bin); err != nil {
 		return err
 	}
+	if shouldSkipLinker() {
+		return linkFlatBinary(ctx, obj, bin)
+	}
 	if !noSymbolCheck {
 		if err := CheckDuplicateSymbols(ctx, []string{obj}, verbose); err != nil {
 			return err
@@ -229,6 +232,12 @@ func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSym
 }
 
 func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool, libs []string) error {
+	if shouldSkipLinker() {
+		if len(objFiles) != 1 {
+			return fmt.Errorf("flat binary link requires exactly one object")
+		}
+		return linkFlatBinary(ctx, objFiles[0], bin)
+	}
 	if len(objFiles) == 0 {
 		return fmt.Errorf("no object files to link")
 	}
