@@ -64,9 +64,6 @@ MIT
 ---
 `
 
-
-
-
 const yamlTemplate = `# fz configuration file
 
 # Copyright (c) 2026 ForgeZero
