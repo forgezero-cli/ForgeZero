@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	fzvfs "fz/internal/fs"
 )
 
 func resolveOrAbs(path string) (string, error) {
@@ -23,6 +25,15 @@ func ResolveSecurePath(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if fzvfs.IsStrictIsolation() {
+		root := GetExecutionRoot()
+		if root != "" {
+			rootAbs, rootErr := resolveOrAbs(root)
+			if rootErr == nil && !pathWithinRoot(rootAbs, abs) {
+				return "", fmt.Errorf("strict isolation outside root: %s", path)
+			}
+		}
+	}
 	eval, err := fileSystem().EvalSymlinks(abs)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -30,12 +41,25 @@ func ResolveSecurePath(path string) (string, error) {
 		}
 		return "", fmt.Errorf("eval symlinks %s: %w", abs, err)
 	}
+	if fzvfs.IsStrictIsolation() {
+		root := GetExecutionRoot()
+		if root != "" {
+			rootAbs, rootErr := resolveOrAbs(root)
+			if rootErr == nil && !pathWithinRoot(rootAbs, eval) {
+				return "", fmt.Errorf("strict isolation outside root: %s", path)
+			}
+		}
+	}
 	return eval, nil
 }
 
 func openVerified(resolved string) (io.ReadCloser, error) {
 	f, err := fileSystem().OpenVerified(resolved)
 	if err != nil {
+		if fzvfs.IsStrictIsolation() {
+			os.Stderr.WriteString("strict isolation file integrity failure\n")
+			os.Exit(1)
+		}
 		return nil, fmt.Errorf("open verified %s: %w", resolved, err)
 	}
 	return f, nil
