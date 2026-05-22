@@ -208,7 +208,7 @@ func TestReadDirResolved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) < 0 {
+	if entries == nil {
 		t.Fatal("invalid entries")
 	}
 }
