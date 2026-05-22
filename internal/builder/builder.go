@@ -15,6 +15,7 @@ import (
 	"fz/internal/assembler"
 	"fz/internal/config"
 	"fz/internal/linker"
+	"fz/internal/seal"
 	"fz/internal/utils"
 )
 
@@ -174,7 +175,7 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 		srcFiles = append(srcFiles, sourceFiles...)
 	} else {
 		for _, dir := range dirs {
-			err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			err := utils.Walk(dir, func(path string, info os.FileInfo, err error) error {
 				if err != nil {
 					return err
 				}
@@ -286,6 +287,7 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 				}
 				if restored {
 					needAssemble = false
+					seal.UpdateGlobalState([]byte("shadow:restore:" + p.src))
 				} else {
 					cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
 					if err == nil && cachedObj != "" {
@@ -294,6 +296,7 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 						}
 						if err := utils.CopyFile(cachedObj, p.obj); err == nil {
 							needAssemble = false
+							seal.UpdateGlobalState([]byte("cache:hit:" + p.src))
 						}
 					}
 				}
@@ -302,6 +305,7 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 				if verbose {
 					fmt.Printf("Assembling %s -> %s\n", p.src, p.obj)
 				}
+				seal.UpdateGlobalState([]byte("assemble:" + p.src))
 				if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
 					recordError(fmt.Errorf("assemble %s: %w", p.src, err))
 					return
@@ -309,6 +313,7 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 				if !noCache {
 					storeCache(p.src, p.obj, cacheDir, debug, verbose, mode)
 					storeShadowCache(p.src, p.obj, debug, mode)
+					seal.UpdateGlobalState([]byte("cache:store:" + p.src))
 				}
 			}
 		}
@@ -394,10 +399,8 @@ func restoreShadowCache(src, obj string, debug bool, mode string) (bool, error) 
 	if err := utils.EnsureDir(obj); err != nil {
 		return false, err
 	}
-	if err := os.Link(shadowObj, obj); err != nil {
-		if !os.IsExist(err) {
-			return false, utils.CopyFile(shadowObj, obj)
-		}
+	if err := utils.LinkOrClone(shadowObj, obj); err != nil {
+		return false, err
 	}
 	if err := os.Chmod(obj, utils.FilePerm); err != nil {
 		return false, err
@@ -425,17 +428,14 @@ func storeShadowCache(src, obj string, debug bool, mode string) error {
 		return err
 	}
 	shadowObj := utils.ShadowCachePath(key)
-	if _, err := os.Stat(shadowObj); err == nil {
-		return nil
-	}
-	if err := utils.EnsureDir(shadowObj); err != nil {
+	if err := os.MkdirAll(filepath.Dir(shadowObj), 0o755); err != nil {
 		return err
 	}
-	if err := os.Link(obj, shadowObj); err != nil {
+	if err := utils.LinkOrClone(obj, shadowObj); err != nil {
 		if os.IsExist(err) {
 			return nil
 		}
-		return utils.CopyFile(obj, shadowObj)
+		return err
 	}
 	return nil
 }
