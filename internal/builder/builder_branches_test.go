@@ -14,8 +14,12 @@ import (
 
 func TestCollectSourceFilesWalk(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.c"), []byte("x"), 0o644)
-	os.WriteFile(filepath.Join(dir, "b.txt"), []byte("x"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "a.c"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	files, err := CollectSourceFiles(nil, []string{dir})
 	if err != nil {
 		t.Fatal(err)
@@ -35,11 +39,17 @@ func TestCollectSourceFilesWalkError(t *testing.T) {
 func TestCheckCacheHit(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.c")
-	os.WriteFile(src, []byte("int x;"), 0o644)
+	if err := os.WriteFile(src, []byte("int x;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cacheDir := filepath.Join(dir, ".fz_cache")
-	os.MkdirAll(cacheDir, 0o755)
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	obj := filepath.Join(dir, "obj.o")
-	os.WriteFile(obj, []byte{1, 2, 3}, 0o644)
+	if err := os.WriteFile(obj, []byte{1, 2, 3}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := storeCache(src, obj, cacheDir, false, false, "auto"); err != nil {
 		t.Fatal(err)
 	}
@@ -134,16 +144,22 @@ func TestRestoreShadowCache(t *testing.T) {
 func TestCheckCacheEmptyFile(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.c")
-	os.WriteFile(src, []byte("x"), 0o644)
+	if err := os.WriteFile(src, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cacheDir := filepath.Join(dir, ".fz_cache")
-	os.MkdirAll(cacheDir, 0o755)
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := storeCache(src, src, cacheDir, false, false, "auto"); err != nil {
 		t.Fatal(err)
 	}
 	entries, _ := os.ReadDir(cacheDir)
 	for _, e := range entries {
 		p := filepath.Join(cacheDir, e.Name())
-		os.WriteFile(p, nil, 0o644)
+		if err := os.WriteFile(p, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
 		_, err := checkCache(src, cacheDir, false, false, "auto")
 		if err == nil || !strings.Contains(err.Error(), "empty") {
 			t.Fatalf("got %v", err)
@@ -206,7 +222,9 @@ skip:
 func TestCleanDirVerboseExecutableNoExt(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "mybin")
-	os.WriteFile(bin, []byte{0x7f, 'E', 'L', 'F'}, 0o755)
+	if err := os.WriteFile(bin, []byte{0x7f, 'E', 'L', 'F'}, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := CleanDir(dir, true); err != nil {
 		t.Fatal(err)
 	}
@@ -217,8 +235,10 @@ func TestCleanDirVerboseExecutableNoExt(t *testing.T) {
 
 func TestCleanDirReadDirFail(t *testing.T) {
 	dir := t.TempDir()
-	os.Chmod(dir, 0o000)
-	defer os.Chmod(dir, 0o755)
+	if err := os.Chmod(dir, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(dir, 0o755) }()
 	if err := CleanDir(dir, false); err == nil {
 		t.Fatal("expected readdir error")
 	}

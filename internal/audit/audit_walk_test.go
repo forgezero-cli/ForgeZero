@@ -10,10 +10,14 @@ import (
 func TestScanVendorWalkPermission(t *testing.T) {
 	root := t.TempDir()
 	vendor := filepath.Join(root, "vendor")
-	os.MkdirAll(vendor, 0o755)
+	if err := os.MkdirAll(vendor, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	blocked := filepath.Join(vendor, "blocked")
-	os.Mkdir(blocked, 0o000)
-	defer os.Chmod(blocked, 0o755)
+	if err := os.Mkdir(blocked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(blocked, 0o755) }()
 	findings := []Finding{}
 	seen := map[string]bool{}
 	err := scanVendor(context.Background(), root, vendor, nil, &findings, seen)
@@ -25,8 +29,10 @@ func TestScanVendorWalkPermission(t *testing.T) {
 func TestScanSecretsWalkError(t *testing.T) {
 	root := t.TempDir()
 	blocked := filepath.Join(root, "blocked")
-	os.Mkdir(blocked, 0o000)
-	defer os.Chmod(blocked, 0o755)
+	if err := os.Mkdir(blocked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(blocked, 0o755) }()
 	findings := []Finding{}
 	seen := map[string]bool{}
 	err := scanSecrets(context.Background(), root, nil, &findings, seen)

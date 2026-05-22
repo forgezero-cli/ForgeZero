@@ -24,9 +24,13 @@ func TestHasHighSeverity(t *testing.T) {
 func TestScanFileContentGoMod(t *testing.T) {
 	tmp := t.TempDir()
 	vendor := filepath.Join(tmp, "vendor")
-	os.MkdirAll(vendor, 0o755)
+	if err := os.MkdirAll(vendor, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	gomod := filepath.Join(vendor, "go.mod")
-	os.WriteFile(gomod, []byte("require openssl v1"), 0o644)
+	if err := os.WriteFile(gomod, []byte("require openssl v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	findings := []Finding{}
 	seen := map[string]bool{}
 	if err := scanFileContent(gomod, &findings, seen); err != nil {
@@ -63,7 +67,9 @@ func TestScanVendorNotExist(t *testing.T) {
 func TestScanVendorNotDirectory(t *testing.T) {
 	tmp := t.TempDir()
 	f := filepath.Join(tmp, "file")
-	os.WriteFile(f, []byte("x"), 0o644)
+	if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	findings := []Finding{}
 	seen := map[string]bool{}
 	err := scanVendor(context.Background(), tmp, f, nil, &findings, seen)
@@ -75,8 +81,12 @@ func TestScanVendorNotDirectory(t *testing.T) {
 func TestScanProjectPackageJSON(t *testing.T) {
 	tmp := t.TempDir()
 	vendor := filepath.Join(tmp, "vendor", "pkg")
-	os.MkdirAll(vendor, 0o755)
-	os.WriteFile(filepath.Join(vendor, "package.json"), []byte(`{"dep":"libcurl"}`), 0o644)
+	if err := os.MkdirAll(vendor, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vendor, "package.json"), []byte(`{"dep":"libcurl"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	result, err := ScanProject(context.Background(), tmp, "vendor", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +105,9 @@ func TestScanProjectPackageJSON(t *testing.T) {
 func TestScanProjectCancelledContext(t *testing.T) {
 	tmp := t.TempDir()
 	vendor := filepath.Join(tmp, "vendor", "deep")
-	os.MkdirAll(vendor, 0o755)
+	if err := os.MkdirAll(vendor, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := ScanProject(ctx, tmp, "vendor", nil)
@@ -107,7 +119,9 @@ func TestScanProjectCancelledContext(t *testing.T) {
 func TestScanSecretsPrivateKey(t *testing.T) {
 	tmp := t.TempDir()
 	secret := filepath.Join(tmp, "config.env")
-	os.WriteFile(secret, []byte("api_key=abcdefghijklmnopqrst"), 0o644)
+	if err := os.WriteFile(secret, []byte("api_key=abcdefghijklmnopqrst"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cfg := &config.Config{}
 	findings := []Finding{}
 	seen := map[string]bool{}
@@ -118,7 +132,9 @@ func TestScanSecretsPrivateKey(t *testing.T) {
 
 func TestScanConfigFilesIgnored(t *testing.T) {
 	tmp := t.TempDir()
-	os.WriteFile(filepath.Join(tmp, ".fz.yaml"), []byte("curl http://evil"), 0o644)
+	if err := os.WriteFile(filepath.Join(tmp, ".fz.yaml"), []byte("curl http://evil"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cfg := &config.Config{AuditIgnore: []string{".fz.yaml"}}
 	findings := []Finding{}
 	seen := map[string]bool{}
@@ -133,8 +149,12 @@ func TestScanConfigFilesIgnored(t *testing.T) {
 func TestScanVendorLicensesGPL(t *testing.T) {
 	tmp := t.TempDir()
 	vendor := filepath.Join(tmp, "vendor", "lib")
-	os.MkdirAll(vendor, 0o755)
-	os.WriteFile(filepath.Join(vendor, "COPYING"), []byte("GNU General Public License"), 0o644)
+	if err := os.MkdirAll(vendor, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vendor, "COPYING"), []byte("GNU General Public License"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	findings := []Finding{}
 	seen := map[string]bool{}
 	if err := scanVendorLicenses(context.Background(), filepath.Join(tmp, "vendor"), nil, &findings, seen); err != nil {
