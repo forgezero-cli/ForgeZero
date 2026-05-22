@@ -364,13 +364,13 @@ func auditMain(args []string) {
 		return
 	}
 	for _, finding := range result.Findings {
-		writeFmt(1,"[%s] %s\n", finding.Package, finding.Summary)
-		writeFmt(1,"  path: %s\n", finding.Path)
+		writeFmt(1, "[%s] %s\n", finding.Package, finding.Summary)
+		writeFmt(1, "  path: %s\n", finding.Path)
 		if finding.Version != "" {
-			writeFmt(1,"  version: %s\n", finding.Version)
+			writeFmt(1, "  version: %s\n", finding.Version)
 		}
 		if finding.URL != "" {
-			writeFmt(1,"  url: %s\n", finding.URL)
+			writeFmt(1, "  url: %s\n", finding.URL)
 		}
 	}
 	os.Exit(1)
@@ -501,7 +501,7 @@ func verifyMain(args []string) {
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "updated", "manifest": manifest})
 			return
 		}
-		writeFmt(1,"manifest updated: %s\n", manifest)
+		writeFmt(1, "manifest updated: %s\n", manifest)
 		return
 	}
 	result, err := verify.VerifyRoot(root, manifest)
@@ -524,19 +524,19 @@ func verifyMain(args []string) {
 	if len(result.Missing) > 0 {
 		writeFmt(1, "%s\n", "missing files:")
 		for _, path := range result.Missing {
-			writeFmt(1,"  %s\n", path)
+			writeFmt(1, "  %s\n", path)
 		}
 	}
 	if len(result.Modified) > 0 {
 		writeFmt(1, "%s\n", "modified files:")
 		for _, path := range result.Modified {
-			writeFmt(1,"  %s\n", path)
+			writeFmt(1, "  %s\n", path)
 		}
 	}
 	if len(result.Extra) > 0 {
 		writeFmt(1, "%s\n", "extra files:")
 		for _, path := range result.Extra {
-			writeFmt(1,"  %s\n", path)
+			writeFmt(1, "  %s\n", path)
 		}
 	}
 	os.Exit(1)
@@ -588,22 +588,22 @@ func benchMain(args []string) {
 		os.Exit(2)
 	}
 	if *mode != "auto" && *mode != "c" && *mode != "raw" {
-		writeFmt(2, "%s\n",  "bench failed: invalid mode")
+		writeFmt(2, "%s\n", "bench failed: invalid mode")
 		os.Exit(2)
 	}
 	if *toolchain != "auto" && *toolchain != "zig" {
-		writeFmt(2, "%s\n",  "bench failed: invalid toolchain")
+		writeFmt(2, "%s\n", "bench failed: invalid toolchain")
 		os.Exit(2)
 	}
 	if *jobs <= 0 {
 		*jobs = runtime.NumCPU()
 	}
 	if *asmPath == "" && *ccPath == "" && *dirPath == "" {
-		writeFmt(2, "%s\n",  "bench failed: missing source path")
+		writeFmt(2, "%s\n", "bench failed: missing source path")
 		os.Exit(2)
 	}
 	if *asmPath != "" && *ccPath != "" {
-		writeFmt(2, "%s\n",  "bench failed: specify only one of -asm or -cc")
+		writeFmt(2, "%s\n", "bench failed: specify only one of -asm or -cc")
 		os.Exit(2)
 	}
 	root, err := os.Getwd()
@@ -891,7 +891,7 @@ func main() {
 		os.Exit(2)
 	}
 	if isolation != "none" && isolation != "standard" && isolation != "strict" {
-		writeFmt(2, "%s\n",  "error: -isolation must be none, standard, or strict")
+		writeFmt(2, "%s\n", "error: -isolation must be none, standard, or strict")
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIArg(buildType); err != nil {
@@ -907,12 +907,12 @@ func main() {
 		os.Exit(2)
 	}
 	if mode != "" && mode != "auto" && mode != "c" && mode != "raw" {
-		writeFmt(2, "%s\n",  "error: -mode must be auto, c, or raw")
+		writeFmt(2, "%s\n", "error: -mode must be auto, c, or raw")
 		os.Exit(2)
 	}
 	if toolchain != "" {
 		if !config.IsValidToolchain(toolchain) {
-			writeFmt(2, "%s\n",  "error: -toolchain must be one of auto, zig, fasm, nasm, gas, gcc, clang, ld")
+			writeFmt(2, "%s\n", "error: -toolchain must be one of auto, zig, fasm, nasm, gas, gcc, clang, ld")
 			os.Exit(2)
 		}
 	}
@@ -999,7 +999,7 @@ func main() {
 				os.Exit(1)
 			}
 		default:
-			writeFmt(1,"Unknown pm subcommand: %s\n", subcmd)
+			writeFmt(1, "Unknown pm subcommand: %s\n", subcmd)
 		}
 		return
 	}
@@ -1064,7 +1064,7 @@ func main() {
 		utils.SetExecutionRoot(root)
 	}
 	if watch && jsonOutput {
-		writeFmt(2, "%s\n",  "error: -watch and -json cannot be used together")
+		writeFmt(2, "%s\n", "error: -watch and -json cannot be used together")
 		os.Exit(2)
 	}
 	srcProvided := 0
@@ -1083,7 +1083,7 @@ func main() {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
-			writeFmt(2, "%s\n",  errMsg)
+			writeFmt(2, "%s\n", errMsg)
 		}
 		os.Exit(2)
 	}
@@ -1123,7 +1123,7 @@ func main() {
 		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode, toolchain, isolation)
 		utils.SetToolchainPolicy(cfg.Toolchain)
 		if verbose && !jsonOutput {
-			writeFmt(1,"Loaded config from %s\n", func() string {
+			writeFmt(1, "Loaded config from %s\n", func() string {
 				if configPath != "" {
 					return configPath
 				}
@@ -1179,7 +1179,7 @@ func main() {
 				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
 				_ = json.NewEncoder(os.Stdout).Encode(report)
 			} else {
-				writeFmt(2, "%s\n",  errMsg)
+				writeFmt(2, "%s\n", errMsg)
 			}
 			os.Exit(2)
 		}
@@ -1196,7 +1196,7 @@ func main() {
 			report := BuildReport{Status: "success", ExitCode: 0, DurationMs: 0, Binary: "cleaned"}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
-			writeFmt(1,"Cleaned %s\n", targetDir)
+			writeFmt(1, "Cleaned %s\n", targetDir)
 		}
 		return
 	}
@@ -1238,7 +1238,7 @@ func main() {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
-			writeFmt(2, "%s\n",  errMsg)
+			writeFmt(2, "%s\n", errMsg)
 		}
 		os.Exit(2)
 	}
@@ -1248,7 +1248,7 @@ func main() {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
-			writeFmt(2, "%s\n",  errMsg)
+			writeFmt(2, "%s\n", errMsg)
 		}
 		os.Exit(2)
 	}
@@ -1278,35 +1278,38 @@ func main() {
 				return errorf("unsupported extension: %s", ext)
 			}
 			binName, objName := utils.DeriveNames(srcPath, outBin, outObj)
+			if format == "bin" {
+				objName = binName
+			}
 			objectFiles = append(objectFiles, objName)
 			finalBinary = binName
 			if verbose && !jsonOutput {
 				if ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" {
-					writeFmt(1,"Compiling %s -> %s\n", srcPath, objName)
+					writeFmt(1, "Compiling %s -> %s\n", srcPath, objName)
 				} else {
-					writeFmt(1,"Assembling %s -> %s\n", srcPath, objName)
+					writeFmt(1, "Assembling %s -> %s\n", srcPath, objName)
 				}
 			}
 			if err := assembler.Assemble(ctx, srcPath, objName, debug, verbose, mode); err != nil {
 				return err
 			}
 			if format == "bin" {
-				if err := utils.CopyFile(objName, binName); err != nil {
+				if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck, sanitize, strict, nil); err != nil {
 					return err
 				}
 				if !jsonOutput {
-					writeFmt(1,"Built: %s\n", binName)
+					writeFmt(1, "Built: %s\n", binName)
 				}
 				return nil
 			}
 			if verbose && !jsonOutput {
-				writeFmt(1,"Linking %s -> %s (mode: %s)\n", objName, binName, mode)
+				writeFmt(1, "Linking %s -> %s (mode: %s)\n", objName, binName, mode)
 			}
 			if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck, sanitize, strict, nil); err != nil {
 				return err
 			}
 			if !jsonOutput {
-				writeFmt(1,"Built: %s\n", binName)
+				writeFmt(1, "Built: %s\n", binName)
 			}
 			return nil
 		}
@@ -1345,7 +1348,7 @@ func main() {
 			if cfg != nil && cfg.IgnoreFile != "" {
 				if _, err := os.Stat(cfg.IgnoreFile); err == nil {
 					if ignoreMatcher, err = ignore.LoadIgnoreFile(cfg.IgnoreFile); err != nil && verbose {
-						writeFmt(1,"warning: cannot load ignore file %s: %v\n", cfg.IgnoreFile, err)
+						writeFmt(1, "warning: cannot load ignore file %s: %v\n", cfg.IgnoreFile, err)
 					}
 				}
 			}
@@ -1369,9 +1372,9 @@ func main() {
 			finalBinary = res.Binary
 			if !jsonOutput {
 				if !keepObj && verbose {
-					writeFmt(1,"Removed object dir: %s\n", res.ObjDir)
+					writeFmt(1, "Removed object dir: %s\n", res.ObjDir)
 				}
-				writeFmt(1,"Built: %s\n", res.Binary)
+				writeFmt(1, "Built: %s\n", res.Binary)
 			}
 			return nil
 		}
@@ -1449,7 +1452,7 @@ func main() {
 			_ = w.Add(cfgFile)
 		}
 		if !jsonOutput {
-			writeFmt(1,"Watching %s for changes...\n", watchTarget)
+			writeFmt(1, "Watching %s for changes...\n", watchTarget)
 		}
 		w.Watch(500*time.Millisecond, func(string) error {
 			if !jsonOutput {

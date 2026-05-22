@@ -51,6 +51,14 @@ func cmdBuild(state *BuildState) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+	if state.Format != "" {
+		if err := linker.SetOutputFormat(state.Format); err != nil {
+			return err
+		}
+	}
+	if assembler.IsBinFormat() && strings.HasSuffix(strings.ToLower(objName), ".o") {
+		objName = binName
+	}
 	if err := assembler.Assemble(ctx, state.SourcePath, objName, state.Debug, state.Verbose, state.Mode); err != nil {
 		return err
 	}
