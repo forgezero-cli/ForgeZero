@@ -25,6 +25,7 @@ import (
 	"fz/internal/man"
 	"fz/internal/pkgman"
 	"fz/internal/sbom"
+	"fz/internal/seal"
 	"fz/internal/shell"
 	"fz/internal/updater"
 	"fz/internal/utils"
@@ -43,11 +44,11 @@ type BuildReport struct {
 }
 
 const (
-	versionCore     = "3.1.0-Aegis"
-	versionCodename = "Sovereign Engineering Update"
+	versionCore     = "4.0 ZERO"
+	versionCodename = "Pentagon-Grade ZERO"
 )
 
-var version = "3.1.0 Aegis @latest"
+var version = "4.0 ZERO"
 
 func versionText() string {
 	var b strings.Builder
@@ -524,6 +525,20 @@ func benchMain(args []string) {
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	for _, a := range os.Args[1:] {
+		if a == "--seal" {
+			if err := seal.Seal(); err != nil {
+				fmt.Fprintf(os.Stderr, "seal failed: %v\n", err)
+				os.Exit(2)
+			}
+			fmt.Println("seal written")
+			return
+		}
+	}
+	if err := utils.SelfAttest(); err != nil {
+		fmt.Fprintf(os.Stderr, "self-attestation failed: %v\n", err)
+		os.Exit(1)
+	}
 	if len(os.Args) >= 2 {
 		switch os.Args[1] {
 		case "audit":
@@ -681,6 +696,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "invalid toolchain: %v\n", err)
 		os.Exit(2)
 	}
+	utils.SetToolchainPolicy(toolchain)
 	if err := utils.ValidateCLIArg(isolation); err != nil {
 		fmt.Fprintf(os.Stderr, "invalid isolation: %v\n", err)
 		os.Exit(2)
@@ -705,9 +721,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error: -mode must be auto, c, or raw")
 		os.Exit(2)
 	}
-	if toolchain != "" && toolchain != "auto" && toolchain != "zig" {
-		fmt.Fprintln(os.Stderr, "error: -toolchain must be auto or zig")
-		os.Exit(2)
+	if toolchain != "" {
+		if !config.IsValidToolchain(toolchain) {
+			fmt.Fprintln(os.Stderr, "error: -toolchain must be one of auto, zig, fasm, nasm, gas, gcc, clang, ld")
+			os.Exit(2)
+		}
 	}
 
 	if initMode {
@@ -908,6 +926,7 @@ func main() {
 			utils.ToolChecksums.Store(k, v)
 		}
 		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode, toolchain, isolation)
+		utils.SetToolchainPolicy(cfg.Toolchain)
 		if verbose && !jsonOutput {
 			fmt.Printf("Loaded config from %s\n", func() string {
 				if configPath != "" {
