@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -454,5 +456,125 @@ func TestRunCommandSilentErrorVerbose(t *testing.T) {
 	}
 	if !strings.Contains(bufErr.String(), "error") {
 		t.Errorf("stderr output missing, got: %q", bufErr.String())
+	}
+}
+
+func TestHashDataDigestZeroAllocs(t *testing.T) {
+	data := []byte("aegis zero allocations")
+	if _, err := HashDataDigest(data); err != nil {
+		t.Fatal(err)
+	}
+	allocs := testing.AllocsPerRun(100, func() {
+		_, _ = HashDataDigest(data)
+	})
+	if allocs != 0 {
+		t.Fatalf("expected 0 allocations, got %f", allocs)
+	}
+}
+
+func TestValidateCLIFuzz(t *testing.T) {
+	randSrc := rand.New(rand.NewSource(1))
+	for i := 0; i < 500; i++ {
+		n := randSrc.Intn(64)
+		buf := make([]byte, n)
+		for j := 0; j < n; j++ {
+			buf[j] = byte(randSrc.Intn(256))
+		}
+		_ = ValidateCLIArg(string(buf))
+		_ = ValidateCLIPath(string(buf))
+	}
+	if err := ValidateCLIPath("../etc/passwd"); err == nil {
+		t.Fatal("expected path traversal detection")
+	}
+}
+
+func TestHashFileTamperDetected(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tamper.bin")
+	data := []byte("initial integrity data")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := HashFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data[0] ^= 0xff
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := HashFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("hash did not change after tampering")
+	}
+}
+
+func TestHashDirTamperDetected(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("two"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := HashDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("two modified"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := HashDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("directory hash did not change after tampering")
+	}
+}
+
+func TestHashFileConcurrentResilience(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "parallel.bin")
+	if err := os.WriteFile(path, []byte("resilience"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	errCh := make(chan error, 20)
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if i%2 == 0 {
+				_ = os.WriteFile(path, []byte(fmt.Sprintf("resilience-%d", i)), 0o600)
+			}
+			_, err := HashFile(path)
+			if err != nil {
+				errCh <- err
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err == nil {
+			continue
+		}
+		if err == ErrHashOpen || err == ErrHashRead {
+			continue
+		}
+		t.Fatal(err)
+	}
+}
+
+func TestEnsureInsideRootBlocksTraversal(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureInsideRoot(root, outside); err == nil {
+		t.Fatal("expected outside root rejection")
 	}
 }
