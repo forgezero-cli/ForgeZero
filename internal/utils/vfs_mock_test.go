@@ -167,7 +167,9 @@ func TestSecureWriteWriteFail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	m.SetFailOp("CreateTemp", nil)
 	m.SetFailOp("Chmod", fzvfs.ErrPermission)
 	if err := SecureWriteFile(path, []byte("data")); err == nil {
