@@ -794,26 +794,27 @@ func hashEmptyDigest() ([32]byte, error) {
 func hashStreamDigest(r io.Reader) ([32]byte, error) {
 	var out [32]byte
 	hasher := hasherPool.Get().(*blake3.Hasher)
-	buf := copyBufferPool.Get().([]byte)
-	if _, err := io.CopyBuffer(hasher, r, buf); err != nil {
-		hasher.Reset()
-		hasherPool.Put(hasher)
-		ZeroizeBytes(buf)
-		copyBufferPool.Put(buf)
-		return out, err
+	var buf [65536]byte
+	for {
+		n, err := r.Read(buf[:])
+		if n > 0 {
+			hasher.Write(buf[:n])
+		}
+		if err != nil {
+			break
+		}
 	}
 	digest := hasher.Digest()
 	digest.Read(out[:])
 	hasher.Reset()
 	hasherPool.Put(hasher)
-	ZeroizeBytes(buf)
-	copyBufferPool.Put(buf)
 	return out, nil
 }
 
 func fileIsStable(of interface {
 	Stat() (os.FileInfo, error)
-}, delay time.Duration) bool {
+}, delay time.Duration,
+) bool {
 	fi1, err := of.Stat()
 	if err != nil {
 		return false
@@ -831,7 +832,8 @@ func fileIsStable(of interface {
 func hashMappedDigest(of interface {
 	Stat() (os.FileInfo, error)
 	Fd() uintptr
-}, f io.ReadCloser, size int64) ([32]byte, error) {
+}, f io.ReadCloser, size int64,
+) ([32]byte, error) {
 	var out [32]byte
 	if size <= 0 {
 		return hashEmptyDigest()
@@ -879,33 +881,38 @@ func HashDataDigest(data []byte) ([32]byte, error) {
 	return out, nil
 }
 
+func hashRawFileDigest(path string) ([32]byte, error) {
+	var out [32]byte
+	f, err := openVerified(path)
+	if err != nil {
+		return out, ErrHashOpen
+	}
+	defer f.Close()
+	hasher := hasherPool.Get().(*blake3.Hasher)
+	var buf [65536]byte
+	for {
+		n, err := f.Read(buf[:])
+		if n > 0 {
+			hasher.Write(buf[:n])
+		}
+		if err != nil {
+			break
+		}
+	}
+	digest := hasher.Digest()
+	digest.Read(out[:])
+	hasher.Reset()
+	hasherPool.Put(hasher)
+	return out, nil
+}
+
 func HashFileDigest(path string) ([32]byte, error) {
 	var out [32]byte
 	resolved, err := ResolveSecurePath(path)
 	if err != nil {
 		return out, ErrHashOpen
 	}
-	f, err := openVerified(resolved)
-	if err != nil {
-		return out, ErrHashOpen
-	}
-	defer f.Close()
-	if of, ok := f.(interface {
-		Stat() (os.FileInfo, error)
-		Fd() uintptr
-	}); ok {
-		fi, err := of.Stat()
-		if err == nil {
-			if fi.Size() == 0 {
-				return hashEmptyDigest()
-			}
-			out, err = hashMappedDigest(of, f, fi.Size())
-			if err == nil {
-				return out, nil
-			}
-		}
-	}
-	return hashStreamDigest(f)
+	return hashRawFileDigest(resolved)
 }
 
 func HashFile(path string) (string, error) {
@@ -1097,6 +1104,18 @@ func resolveIncludePath(currentDir, include string) (string, error) {
 	return ResolveSecurePath(joinPath(currentDir, include))
 }
 
+func resolveIncludePathBytes(currentDir string, include []byte) (string, error) {
+	var tmp [4096]byte
+	n := copy(tmp[:], currentDir)
+	if n > 0 && tmp[n-1] != os.PathSeparator {
+		tmp[n] = os.PathSeparator
+		n++
+	}
+	m := copy(tmp[n:], include)
+	resolved := filepath.Clean(string(tmp[:n+m]))
+	return ResolveSecurePath(resolved)
+}
+
 func warnOutsideRoot(path string) {
 	var tmp [4096]byte
 	n := copy(tmp[:], warnOutsideHead)
@@ -1194,8 +1213,7 @@ func scanFileIncludes(path string) ([]string, error) {
 			if k >= len(data) {
 				continue
 			}
-			inc := string(data[start:k])
-			resolved, err := resolveIncludePath(currentDir, inc)
+			resolved, err := resolveIncludePathBytes(currentDir, data[start:k])
 			if err == nil {
 				list = append(list, resolved)
 			}
@@ -1208,8 +1226,7 @@ func scanFileIncludes(path string) ([]string, error) {
 			if k >= len(data) {
 				continue
 			}
-			inc := string(data[start:k])
-			resolved, err := resolveIncludePath(currentDir, inc)
+			resolved, err := resolveIncludePathBytes(currentDir, data[start:k])
 			if err == nil {
 				list = append(list, resolved)
 			}
