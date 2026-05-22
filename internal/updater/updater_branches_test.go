@@ -89,8 +89,8 @@ func TestUpdateSelfAssetTooLarge(t *testing.T) {
 		h := make(http.Header)
 		return &http.Response{
 			StatusCode:    http.StatusOK,
-			Body:        io.NopCloser(strings.NewReader("x")),
-			Header:      h,
+			Body:          io.NopCloser(strings.NewReader("x")),
+			Header:        h,
 			ContentLength: int64(300 << 20),
 		}, nil
 	}
