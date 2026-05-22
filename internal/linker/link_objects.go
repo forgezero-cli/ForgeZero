@@ -121,7 +121,6 @@ func buildLinkCommand(objs []string, target string, cfg *config.Config) (string,
 			if toolchain == "zig" {
 				return "", nil, errors.New("zig toolchain requested but not available")
 			}
-			toolchain = "gcc"
 		} else {
 			return buildZigLinkCommand(objs, target, cfg)
 		}
