@@ -15,11 +15,11 @@ func TestCcCxxGasForAllTargets(t *testing.T) {
 	old := Target
 	defer func() { Target = old }()
 	cases := []struct {
-		target   string
-		wantCC   string
-		wantCXX  string
-		wantGas  string
-		wantFmt  string
+		target  string
+		wantCC  string
+		wantCXX string
+		wantGas string
+		wantFmt string
 	}{
 		{"x86_64-linux-gnu", "gcc", "g++", "as", "-felf64"},
 		{"i386-linux-gnu", "gcc", "g++", "as", "-felf32"},
