@@ -7,11 +7,12 @@ import (
 	"strings"
 )
 
-func symlinkAllowed(rootEval, path, targetAbs string) (bool, error) {
+func symlinkAllowed(rootEval, path, target string) (bool, error) {
 	linkTarget, err := fileSystem().Readlink(path)
 	if err != nil {
 		return false, fmt.Errorf("cannot read symlink %s: %w", path, err)
 	}
+	var targetAbs string
 	if !filepath.IsAbs(linkTarget) {
 		targetAbs = filepath.Clean(filepath.Join(filepath.Dir(path), linkTarget))
 	} else {

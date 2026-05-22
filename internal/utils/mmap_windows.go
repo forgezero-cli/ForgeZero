@@ -51,7 +51,7 @@ func mmapFile(fd int, size int64) ([]byte, error) {
 		return nil, syscall.Errno(err.(syscall.Errno))
 	}
 
-	return unsafeByteSlice(unsafe.Pointer(ptr), int(size)), nil
+	return unsafe.Slice((*byte)(unsafe.Pointer(ptr)), int(size)), nil
 }
 
 func unmapFile(data []byte) error {
