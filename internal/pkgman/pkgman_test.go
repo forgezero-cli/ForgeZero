@@ -158,11 +158,9 @@ func TestList(t *testing.T) {
 	}()
 	require.NoError(t, os.Chdir(tmpDir))
 
-
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-
 
 	List()
 	w.Close()
