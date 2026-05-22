@@ -35,6 +35,14 @@ func getFileDescriptor(f interface {
 	return int(f.Fd())
 }
 
+func lockFileShared(fd int) error {
+	return syscall.Flock(fd, syscall.LOCK_SH)
+}
+
+func unlockFile(fd int) error {
+	return syscall.Flock(fd, syscall.LOCK_UN)
+}
+
 func unsafeByteSlice(ptr unsafe.Pointer, len int) []byte {
 	return unsafe.Slice((*byte)(ptr), len)
 }
