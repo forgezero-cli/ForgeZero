@@ -4,7 +4,6 @@
 package utils
 
 import (
-	"reflect"
 	"syscall"
 	"unsafe"
 )
@@ -18,12 +17,14 @@ func execRawMap(size int) ([]byte, error) {
 }
 
 func execRawProtect(data []byte) error {
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&data))
-	page := syscall.Getpagesize()
-	if uintptr(hdr.Data)%uintptr(page) != 0 {
+	if len(data) == 0 {
 		return syscall.EINVAL
 	}
-	_, _, errno := syscall.Syscall(syscall.SYS_MSYNC, hdr.Data, uintptr(len(data)), uintptr(syscall.MS_SYNC))
+	page := syscall.Getpagesize()
+	if uintptr(unsafe.Pointer(&data[0]))%uintptr(page) != 0 {
+		return syscall.EINVAL
+	}
+	_, _, errno := syscall.Syscall(syscall.SYS_MSYNC, uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)), uintptr(syscall.MS_SYNC))
 	if errno != 0 {
 		return errno
 	}

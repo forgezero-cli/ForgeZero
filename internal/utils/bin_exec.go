@@ -10,9 +10,6 @@ import (
 func callRaw0(code uintptr)
 
 //go:noescape
-func callRaw2(code uintptr, p *byte, n uintptr) uint8
-
-//go:noescape
 func callRawRet(code uintptr) uint64
 
 func ExecRaw(bin []byte) {
@@ -25,18 +22,18 @@ func ExecRaw(bin []byte) {
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			execRawUnmap(mem)
+			_ = execRawUnmap(mem)
 			panic(r)
 		}
 	}()
 	copy(mem, bin)
 	if err := execRawProtect(mem); err != nil {
-		execRawUnmap(mem)
+		_ = execRawUnmap(mem)
 		return
 	}
 	callRaw0(uintptr(unsafe.Pointer(&mem[0])))
 	runtime.KeepAlive(mem)
-	execRawUnmap(mem)
+	_ = execRawUnmap(mem)
 }
 
 func ExecRawRet(bin []byte) uint64 {
@@ -60,18 +57,18 @@ func ExecRawRet(bin []byte) uint64 {
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			execRawUnmap(mem)
+			_ = execRawUnmap(mem)
 			panic(r)
 		}
 	}()
 	copy(mem, bin)
 	if err := execRawProtect(mem); err != nil {
-		execRawUnmap(mem)
+		_ = execRawUnmap(mem)
 		return 0
 	}
 	out := callRawRet(uintptr(unsafe.Pointer(&mem[0])))
 	runtime.KeepAlive(mem)
-	execRawUnmap(mem)
+	_ = execRawUnmap(mem)
 	return out
 }
 
