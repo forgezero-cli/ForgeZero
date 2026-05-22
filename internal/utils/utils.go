@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"fz/internal/config"
@@ -24,9 +25,10 @@ import (
 )
 
 var (
+	hashKey        = [32]byte{0x9d, 0x74, 0x31, 0x6f, 0xd5, 0x23, 0x1b, 0xe4, 0xa1, 0x8f, 0x03, 0x71, 0x42, 0x5d, 0x6b, 0x9a, 0x3c, 0xf4, 0x75, 0x28, 0x0d, 0x62, 0x8a, 0x19, 0xbf, 0x4e, 0x50, 0x33, 0x13, 0x21, 0x97, 0x6c}
 	bufferPool     = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 	copyBufferPool = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
-	hasherPool     = sync.Pool{New: func() any { return blake3.New() }}
+	hasherPool     = sync.Pool{New: func() any { h, _ := blake3.NewKeyed(hashKey[:]); return h }}
 	hashSep        = []byte{0}
 )
 
@@ -94,7 +96,7 @@ func (w *mutexBufferWriter) Write(p []byte) (int, error) {
 }
 
 func bytesToString(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
+	return string(b)
 }
 
 func constantTimeEqual(a, b string) bool {
@@ -112,10 +114,7 @@ func blake3HexDigestToString(d [32]byte) string {
 		out[i*2] = hextable[b>>4]
 		out[i*2+1] = hextable[b&0x0f]
 	}
-	return *(*string)(unsafe.Pointer(&struct {
-		data *[64]byte
-		len  int
-	}{&out, 64}))
+	return string(out[:])
 }
 
 func fnv1aHash(data []byte) uint64 {
@@ -131,8 +130,19 @@ func fnv1aHash(data []byte) uint64 {
 	return h
 }
 
+func fnv1aHexUint64(h uint64) string {
+	var out [16]byte
+	const hextable = "0123456789abcdef"
+	for i := 0; i < 8; i++ {
+		b := byte(h >> ((7 - i) * 8))
+		out[i*2] = hextable[b>>4]
+		out[i*2+1] = hextable[b&0x0f]
+	}
+	return string(out[:])
+}
+
 func fnv1aHex(data []byte) string {
-	return fmt.Sprintf("%016x", fnv1aHash(data))
+	return fnv1aHexUint64(fnv1aHash(data))
 }
 
 func ShadowCacheRoot() string {
@@ -174,7 +184,7 @@ func ShadowCacheKey(src string, flags []string) (string, error) {
 		h = fnv1aHashAppend(h, []byte(hv))
 		h = fnv1aHashAppend(h, []byte{0})
 	}
-	return fmt.Sprintf("%016x", h), nil
+	return fnv1aHexUint64(h), nil
 }
 
 func fnv1aHashAppend(h uint64, data []byte) uint64 {
@@ -426,7 +436,7 @@ func buildCommand(ctx context.Context, name string, args ...string) (*exec.Cmd, 
 	if dir := GetExecutionRoot(); dir != "" {
 		cmd.Dir = dir
 	}
-	if cfg := ConfigFromContext(ctx); cfg != nil && cfg.Isolation {
+	if cfg := ConfigFromContext(ctx); cfg != nil && cfg.Isolation != config.IsolationNone {
 		cmd.Env = SafeEnv(cfg)
 	} else {
 		cmd.Env = deterministicEnv()
@@ -498,7 +508,7 @@ func SafeEnv(cfg *config.Config) []string {
 
 func FindExecutable(ctx context.Context, name string) (string, error) {
 	if filepath.IsAbs(name) {
-		return name, nil
+		return filepath.Clean(name), nil
 	}
 	if cfg := ConfigFromContext(ctx); cfg != nil {
 		for _, p := range cfg.ToolchainSettings.SearchPriority {
@@ -651,7 +661,18 @@ func CopyFile(src, dst string) error {
 	return fileSystem().Chmod(dstResolved, FilePerm)
 }
 
-func hashStream(r io.Reader) (string, error) {
+func hashEmptyDigest() ([32]byte, error) {
+	var out [32]byte
+	hasher := hasherPool.Get().(*blake3.Hasher)
+	digest := hasher.Digest()
+	digest.Read(out[:])
+	hasher.Reset()
+	hasherPool.Put(hasher)
+	return out, nil
+}
+
+func hashStreamDigest(r io.Reader) ([32]byte, error) {
+	var out [32]byte
 	hasher := hasherPool.Get().(*blake3.Hasher)
 	buf := copyBufferPool.Get().([]byte)
 	if _, err := io.CopyBuffer(hasher, r, buf); err != nil {
@@ -659,28 +680,96 @@ func hashStream(r io.Reader) (string, error) {
 		hasherPool.Put(hasher)
 		ZeroizeBytes(buf)
 		copyBufferPool.Put(buf)
-		return "", err
+		return out, err
 	}
 	digest := hasher.Digest()
-	var out [32]byte
 	digest.Read(out[:])
 	hasher.Reset()
 	hasherPool.Put(hasher)
 	ZeroizeBytes(buf)
 	copyBufferPool.Put(buf)
-	return blake3HexDigestToString(out), nil
+	return out, nil
 }
 
-func HashFile(path string) (string, error) {
+func fileIsStable(of interface {
+	Stat() (os.FileInfo, error)
+}, delay time.Duration) bool {
+	fi1, err := of.Stat()
+	if err != nil {
+		return false
+	}
+	if delay > 0 {
+		time.Sleep(delay)
+	}
+	fi2, err := of.Stat()
+	if err != nil {
+		return false
+	}
+	return fi1.Size() == fi2.Size() && fi1.ModTime() == fi2.ModTime()
+}
+
+func hashMappedDigest(of interface {
+	Stat() (os.FileInfo, error)
+	Fd() uintptr
+}, f io.ReadCloser, size int64) ([32]byte, error) {
+	var out [32]byte
+	if size <= 0 {
+		return hashEmptyDigest()
+	}
+	fd := getFileDescriptor(of)
+	if err := lockFileShared(fd); err != nil {
+		return hashStreamDigest(f)
+	}
+	defer unlockFile(fd)
+	if !fileIsStable(of, 1*time.Millisecond) {
+		return hashStreamDigest(f)
+	}
+	data, err := mmapFile(fd, size)
+	if err != nil {
+		return hashStreamDigest(f)
+	}
+	if fi, err := of.Stat(); err != nil || fi.Size() != size {
+		_ = unmapFile(data)
+		return hashStreamDigest(f)
+	}
+	madviseNormal(data)
+	out, err = HashDataDigest(data)
+	_ = unmapFile(data)
+	if err != nil {
+		return out, err
+	}
+	if fi, err := of.Stat(); err != nil || fi.Size() != size {
+		return hashStreamDigest(f)
+	}
+	return out, nil
+}
+
+func HashDataDigest(data []byte) ([32]byte, error) {
+	var out [32]byte
+	hasher := hasherPool.Get().(*blake3.Hasher)
+	if _, err := hasher.Write(data); err != nil {
+		hasher.Reset()
+		hasherPool.Put(hasher)
+		return out, err
+	}
+	digest := hasher.Digest()
+	digest.Read(out[:])
+	hasher.Reset()
+	hasherPool.Put(hasher)
+	return out, nil
+}
+
+func HashFileDigest(path string) ([32]byte, error) {
+	var out [32]byte
 	resolved, err := ResolveSecurePath(path)
 	if err != nil {
-		return "", ErrHashOpen
+		return out, ErrHashOpen
 	}
 	f, err := openVerified(resolved)
 	if err != nil {
-		return "", ErrHashOpen
+		return out, ErrHashOpen
 	}
-	var result string
+	defer f.Close()
 	if of, ok := f.(interface {
 		Stat() (os.FileInfo, error)
 		Fd() uintptr
@@ -688,28 +777,23 @@ func HashFile(path string) (string, error) {
 		fi, err := of.Stat()
 		if err == nil {
 			if fi.Size() == 0 {
-				result = blake3HexDigestToString(blake3.Sum256(nil))
-			} else {
-				size := fi.Size()
-				data, merr := mmapFile(getFileDescriptor(of), size)
-				if merr == nil {
-					madviseNormal(data)
-					result = blake3HexDigestToString(blake3.Sum256(data))
-					_ = unmapFile(data)
-				}
+				return hashEmptyDigest()
+			}
+			out, err = hashMappedDigest(of, f, fi.Size())
+			if err == nil {
+				return out, nil
 			}
 		}
 	}
-	if result != "" {
-		f.Close()
-		return result, nil
-	}
-	h, err := hashStream(f)
-	f.Close()
+	return hashStreamDigest(f)
+}
+
+func HashFile(path string) (string, error) {
+	out, err := HashFileDigest(path)
 	if err != nil {
-		return "", ErrHashRead
+		return "", err
 	}
-	return h, nil
+	return blake3HexDigestToString(out), nil
 }
 
 func HashDir(root string) (string, error) {
@@ -721,9 +805,18 @@ func HashDir(root string) (string, error) {
 }
 
 func HashDirWithRoot(rootAbs, dir string) (string, error) {
+	digest, err := HashDirDigest(rootAbs, dir)
+	if err != nil {
+		return "", err
+	}
+	return blake3HexDigestToString(digest), nil
+}
+
+func HashDirDigest(rootAbs, dir string) ([32]byte, error) {
+	var out [32]byte
 	dirAbs, err := resolveOrAbs(dir)
 	if err != nil {
-		return "", ErrHashRead
+		return out, ErrHashRead
 	}
 	rootEval, _ := ResolveSecurePath(rootAbs)
 	if rootEval == "" {
@@ -774,20 +867,21 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 		return nil
 	})
 	if walkErr != nil {
-		return "", ErrHashRead
+		return out, ErrHashRead
 	}
 	sort.Strings(files)
 	hasher := hasherPool.Get().(*blake3.Hasher)
 	buf := alignedSlice(32 * 1024)
 	for _, rel := range files {
-		hasher.Write([]byte(rel))
+		n := copy(buf, rel)
+		hasher.Write(buf[:n])
 		hasher.Write(hashSep)
 		fullPath := dirAbs + string(os.PathSeparator) + rel
 		f, err := openVerified(fullPath)
 		if err != nil {
 			hasher.Reset()
 			hasherPool.Put(hasher)
-			return "", ErrHashOpen
+			return out, ErrHashOpen
 		}
 		mmapped := false
 		if of, ok := f.(interface {
@@ -797,27 +891,46 @@ func HashDirWithRoot(rootAbs, dir string) (string, error) {
 			fi, _ := of.Stat()
 			if fi != nil && fi.Size() > 0 {
 				size := fi.Size()
-				data, merr := mmapFile(getFileDescriptor(of), size)
-				if merr == nil {
-					madviseNormal(data)
-					hasher.Write(data)
-					_ = unmapFile(data)
-					mmapped = true
+				fd := getFileDescriptor(of)
+				if err := lockFileShared(fd); err == nil {
+					if !fileIsStable(of, 1*time.Millisecond) {
+						_ = unlockFile(fd)
+					} else {
+						data, merr := mmapFile(fd, size)
+						if merr == nil {
+							if fi2, err := of.Stat(); err == nil && fi2.Size() == size {
+								madviseNormal(data)
+								if _, err := hasher.Write(data); err == nil {
+									_ = unmapFile(data)
+									mmapped = true
+								} else {
+									_ = unmapFile(data)
+								}
+							} else {
+								_ = unmapFile(data)
+							}
+						}
+						_ = unlockFile(fd)
+					}
 				}
 			}
 		}
 		if !mmapped {
-			io.CopyBuffer(hasher, f, buf)
+			if _, err := io.CopyBuffer(hasher, f, buf); err != nil {
+				f.Close()
+				hasher.Reset()
+				hasherPool.Put(hasher)
+				return out, ErrHashRead
+			}
 		}
 		f.Close()
 		hasher.Write(hashSep)
 	}
 	digest := hasher.Digest()
-	var out [32]byte
 	digest.Read(out[:])
 	hasher.Reset()
 	hasherPool.Put(hasher)
-	return blake3HexDigestToString(out), nil
+	return out, nil
 }
 
 func hashPath(path string) uint64 {
@@ -842,7 +955,7 @@ func joinPath(base, file string) string {
 		n++
 	}
 	n += copy(buf[n:], file)
-	return unsafe.String(&buf[0], n)
+	return string(buf[:n])
 }
 
 func resolveIncludePath(currentDir, include string) (string, error) {
@@ -949,7 +1062,7 @@ func scanFileIncludes(path string) ([]string, error) {
 			if k >= len(data) {
 				continue
 			}
-			inc := unsafe.String(&data[start], k-start)
+			inc := string(data[start:k])
 			resolved, err := resolveIncludePath(currentDir, inc)
 			if err == nil {
 				list = append(list, resolved)
@@ -963,7 +1076,7 @@ func scanFileIncludes(path string) ([]string, error) {
 			if k >= len(data) {
 				continue
 			}
-			inc := unsafe.String(&data[start], k-start)
+			inc := string(data[start:k])
 			resolved, err := resolveIncludePath(currentDir, inc)
 			if err == nil {
 				list = append(list, resolved)
