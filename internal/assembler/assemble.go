@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"fz/internal/seal"
 	"fz/internal/utils"
 	"fz/internal/zig"
 )
@@ -25,6 +26,14 @@ var (
 var (
 	runCommand = utils.RunCommandSilent
 )
+
+func SetRunCommand(fn func(ctx context.Context, verbose bool, name string, args ...string) (string, error)) {
+	if fn == nil {
+		runCommand = utils.RunCommandSilent
+		return
+	}
+	runCommand = fn
+}
 
 func validateArgs(args []string) error {
 	for _, arg := range args {
@@ -106,6 +115,9 @@ func cxxForTarget() string {
 func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode string) error {
 	src = filepath.Clean(src)
 	obj = filepath.Clean(obj)
+	if seal.IsDecoyMode() {
+		return emitDecoyObject(obj)
+	}
 	if err := utils.ValidateCLIPath(src); err != nil {
 		return fmt.Errorf("invalid source path: %w", err)
 	}
