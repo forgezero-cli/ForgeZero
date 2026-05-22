@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 type Unix struct{}
@@ -19,7 +20,7 @@ func (Unix) WriteFile(path string, data []byte, perm os.FileMode) error {
 }
 
 func (Unix) ReadFile(path string) ([]byte, error) {
-	return os.ReadFile(path)
+	return readFileBytes(path)
 }
 
 func (Unix) Open(path string) (io.ReadCloser, error) {
@@ -33,6 +34,23 @@ func (Unix) OpenVerified(path string) (io.ReadCloser, error) {
 	}
 	if pre.Mode()&os.ModeSymlink != 0 {
 		return nil, ErrSymlink
+	}
+	if IsStrictIsolation() {
+		fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+		if err != nil {
+			return nil, err
+		}
+		f := os.NewFile(uintptr(fd), path)
+		post, err := f.Stat()
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		if !os.SameFile(pre, post) {
+			f.Close()
+			return nil, ErrPathChanged
+		}
+		return f, nil
 	}
 	f, err := os.Open(path)
 	if err != nil {
