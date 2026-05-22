@@ -64,7 +64,7 @@ func TestLoadMergedExplicitOK(t *testing.T) {
 
 func TestMergeFromFlagsSourceDirs(t *testing.T) {
 	cfg := &Config{SourceDirs: []string{"a"}}
-	cfg.MergeFromFlags("", "dir", "", "", false, false, false, false, "", "")
+	cfg.MergeFromFlags("", "dir", "", "", false, false, false, false, "", "", "")
 	if cfg.SourceDir != "dir" {
 		t.Fatal(cfg.SourceDir)
 	}
