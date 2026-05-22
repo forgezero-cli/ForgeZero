@@ -74,7 +74,9 @@ func TestRunExecutorBranches(t *testing.T) {
 	w.Close()
 	os.Stdout = oldStdout
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(buf.String(), "fz interactive shell") {
 		t.Fatal("missing banner")
 	}
@@ -88,7 +90,9 @@ func TestCmdBuildDirPath(t *testing.T) {
 	dir := t.TempDir()
 	writeASM := func(name, body string) {
 		p := filepath.Join(dir, name)
-		os.WriteFile(p, []byte(body), 0o644)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	writeASM("main.asm", `
 section .text
@@ -114,7 +118,9 @@ func TestCmdBuildUnsupportedExt(t *testing.T) {
 	state := DefaultState()
 	dir := t.TempDir()
 	p := filepath.Join(dir, "x.txt")
-	os.WriteFile(p, []byte("x"), 0o644)
+	if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	state.SourcePath = p
 	state.SourceType = "file"
 	err := cmdBuild(state)
@@ -130,7 +136,9 @@ func TestCmdBuildVerboseC(t *testing.T) {
 	state := DefaultState()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "main.c")
-	os.WriteFile(src, []byte("int main(){return 0;}"), 0o644)
+	if err := os.WriteFile(src, []byte("int main(){return 0;}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	state.SourcePath = src
 	state.SourceType = "file"
 	state.Out = filepath.Join(dir, "app")
@@ -169,12 +177,5 @@ func TestCmdCleanWrongSourceType(t *testing.T) {
 	state.SourceType = "file"
 	if err := cmdClean(state); err == nil {
 		t.Fatal("expected error")
-	}
-}
-
-func writeASMFile(t *testing.T, dir, name, content string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
 	}
 }

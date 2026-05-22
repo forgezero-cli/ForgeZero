@@ -48,9 +48,7 @@ func TestParsePkgURL(t *testing.T) {
 
 func TestUpdateConfig(t *testing.T) {
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmpDir)()
 
 	initialYAML := "source_dirs: []\noutput: test\n"
 	if err := os.WriteFile(".fz.yaml", []byte(initialYAML), 0o644); err != nil {
@@ -84,9 +82,7 @@ func TestUpdateConfig(t *testing.T) {
 
 func TestCleanConfig(t *testing.T) {
 	tmpDir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmpDir)()
 
 	initialYAML := `
 source_dirs:
@@ -127,7 +123,9 @@ func TestFindPackagePath(t *testing.T) {
 	}()
 	require.NoError(t, os.Chdir(tmpDir))
 	vendor := "vendor"
-	os.MkdirAll(filepath.Join(vendor, "github.com", "user", "lib"), 0o755)
+	if err := os.MkdirAll(filepath.Join(vendor, "github.com", "user", "lib"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	gitPath := filepath.Join(vendor, "github.com", "user", "lib", ".git")
 	if err := os.MkdirAll(gitPath, 0o755); err != nil {
 		t.Fatal(err)
@@ -162,27 +160,39 @@ func TestList(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	List()
+	if err := List(); err != nil {
+		t.Fatal(err)
+	}
 	w.Close()
 	os.Stdout = oldStdout
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(buf.String(), "No packages installed.") {
 		t.Error("expected 'No packages installed.'")
 	}
 	r.Close()
 
 	vendor := "vendor"
-	os.MkdirAll(filepath.Join(vendor, "github.com", "user", "lib"), 0o755)
-	os.MkdirAll(filepath.Join(vendor, "github.com", "user", "lib", ".git"), 0o755)
+	if err := os.MkdirAll(filepath.Join(vendor, "github.com", "user", "lib"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(vendor, "github.com", "user", "lib", ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	r, w, _ = os.Pipe()
 	os.Stdout = w
-	List()
+	if err := List(); err != nil {
+		t.Fatal(err)
+	}
 	w.Close()
 	os.Stdout = oldStdout
 	buf.Reset()
-	buf.ReadFrom(r)
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatal(err)
+	}
 	out := buf.String()
 	if !strings.Contains(out, "github.com/user/lib") {
 		t.Errorf("list output missing package: %s", out)

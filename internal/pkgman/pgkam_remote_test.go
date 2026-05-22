@@ -15,7 +15,10 @@ func TestFetchCatalogFromURL(t *testing.T) {
 				{Name: "test-pkg", Repo: "github.com/test/pkg"},
 			},
 		}
-		json.NewEncoder(w).Encode(cat)
+		if err := json.NewEncoder(w).Encode(cat); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}))
 	defer server.Close()
 	cat, err := fetchCatalogFromURL(server.URL)

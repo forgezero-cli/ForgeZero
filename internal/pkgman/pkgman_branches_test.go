@@ -15,6 +15,18 @@ import (
 	"fz/internal/utils"
 )
 
+func chdirTemp(t *testing.T, dir string) func() {
+	t.Helper()
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	return func() { _ = os.Chdir(oldWd) }
+}
+
 func TestAddInvalidURL(t *testing.T) {
 	err := Add(context.Background(), "invalid", "")
 	if err == nil {
@@ -46,9 +58,7 @@ func TestAddCheckoutFail(t *testing.T) {
 		return "", errors.New("checkout failed")
 	}
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	err := Add(context.Background(), "github.com/user/repo@v1", "")
 	if err == nil || !strings.Contains(err.Error(), "checkout") {
 		t.Fatalf("got %v", err)
@@ -62,9 +72,7 @@ func TestAddSuccess(t *testing.T) {
 		return "", nil
 	}
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	if err := Add(context.Background(), "github.com/user/repo", "v2"); err != nil {
 		t.Fatal(err)
 	}
@@ -79,12 +87,14 @@ func TestAddSuccess(t *testing.T) {
 
 func TestRemoveByRepoPath(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	dest := filepath.Join("vendor", "github.com", "user", "lib")
-	os.MkdirAll(dest, 0o755)
-	os.MkdirAll(filepath.Join(dest, ".git"), 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dest, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(".fz.yaml", []byte("source_dirs:\n  - "+dest+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -98,12 +108,14 @@ func TestRemoveByRepoPath(t *testing.T) {
 
 func TestRemoveViaFindPackagePath(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	dest := filepath.Join("vendor", "github.com", "user", "lib")
-	os.MkdirAll(dest, 0o755)
-	os.MkdirAll(filepath.Join(dest, ".git"), 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dest, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := Remove(context.Background(), "user/lib"); err != nil {
 		t.Fatal(err)
 	}
@@ -111,11 +123,11 @@ func TestRemoveViaFindPackagePath(t *testing.T) {
 
 func TestRemovePackagePrunesEmptyParent(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	leaf := filepath.Join("vendor", "github.com", "user", "lib")
-	os.MkdirAll(leaf, 0o755)
+	if err := os.MkdirAll(leaf, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := removePackage(leaf); err != nil {
 		t.Fatal(err)
 	}
@@ -128,9 +140,7 @@ func TestRemovePackagePrunesEmptyParent(t *testing.T) {
 
 func TestUpdateNoVendor(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
@@ -138,7 +148,9 @@ func TestUpdateNoVendor(t *testing.T) {
 	w.Close()
 	os.Stdout = oldStdout
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,11 +166,13 @@ func TestUpdateWithPackages(t *testing.T) {
 		return "", nil
 	}
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
-	os.MkdirAll(filepath.Join("vendor", "pkg-a"), 0o755)
-	os.MkdirAll(filepath.Join("vendor", "pkg-b"), 0o755)
+	defer chdirTemp(t, tmp)()
+	if err := os.MkdirAll(filepath.Join("vendor", "pkg-a"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join("vendor", "pkg-b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := Update(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -171,18 +185,20 @@ func TestUpdateGitPullFail(t *testing.T) {
 		return "", errors.New("pull failed")
 	}
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
-	os.MkdirAll(filepath.Join("vendor", "broken"), 0o755)
+	defer chdirTemp(t, tmp)()
+	if err := os.MkdirAll(filepath.Join("vendor", "broken"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	Update(context.Background())
+	_ = Update(context.Background())
 	w.Close()
 	os.Stdout = oldStdout
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(buf.String(), "Warning") {
 		t.Fatal(buf.String())
 	}
@@ -234,7 +250,7 @@ func TestInstallFromCatalogSuccess(t *testing.T) {
 	runGit = func(ctx context.Context, args ...string) (string, error) {
 		if len(args) >= 2 && args[0] == "clone" {
 			dest := args[len(args)-1]
-			os.MkdirAll(dest, 0o755)
+			_ = os.MkdirAll(dest, 0o755)
 		}
 		return "", nil
 	}
@@ -245,9 +261,7 @@ func TestInstallFromCatalogSuccess(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(body)), Header: make(http.Header)}, nil
 	})}
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	if err := InstallFromCatalog(context.Background(), "pkg"); err != nil {
 		t.Fatal(err)
 	}
@@ -260,8 +274,8 @@ func TestInstallFromCatalogHashMismatch(t *testing.T) {
 	runGit = func(ctx context.Context, args ...string) (string, error) {
 		if len(args) >= 2 && args[0] == "clone" {
 			dest := args[len(args)-1]
-			os.MkdirAll(filepath.Join(dest, "src"), 0o755)
-			os.WriteFile(filepath.Join(dest, "src", "f.txt"), []byte("data"), 0o644)
+			_ = os.MkdirAll(filepath.Join(dest, "src"), 0o755)
+			_ = os.WriteFile(filepath.Join(dest, "src", "f.txt"), []byte("data"), 0o644)
 		}
 		return "", nil
 	}
@@ -272,9 +286,7 @@ func TestInstallFromCatalogHashMismatch(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(body)), Header: make(http.Header)}, nil
 	})}
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	err := InstallFromCatalog(context.Background(), "pkg")
 	if err == nil || !strings.Contains(err.Error(), "hash mismatch") {
 		t.Fatalf("got %v", err)
@@ -283,12 +295,14 @@ func TestInstallFromCatalogHashMismatch(t *testing.T) {
 
 func TestCleanConfigReadError(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
-	os.WriteFile(".fz.yaml", []byte("source_dirs: []\n"), 0o644)
-	os.Chmod(".fz.yaml", 0o000)
-	defer os.Chmod(".fz.yaml", 0o644)
+	defer chdirTemp(t, tmp)()
+	if err := os.WriteFile(".fz.yaml", []byte("source_dirs: []\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(".fz.yaml", 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(".fz.yaml", 0o644) }()
 	err := cleanConfig("vendor/x")
 	if err == nil {
 		t.Fatal("expected read error")
@@ -297,10 +311,10 @@ func TestCleanConfigReadError(t *testing.T) {
 
 func TestUpdateConfigInvalidYAML(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
-	os.WriteFile(".fz.yaml", []byte(":\n\tbad"), 0o644)
+	defer chdirTemp(t, tmp)()
+	if err := os.WriteFile(".fz.yaml", []byte(":\n\tbad"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := updateConfig("vendor/x", true); err == nil {
 		t.Fatal("expected yaml error")
 	}
@@ -319,9 +333,7 @@ func TestAddVersionOverride(t *testing.T) {
 		return "", nil
 	}
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	if err := Add(context.Background(), "github.com/user/repo@ignored", "v9"); err != nil {
 		t.Fatal(err)
 	}
@@ -336,11 +348,17 @@ func TestRemovePackageRemoveAllFail(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "vendor", "pkg")
-	os.MkdirAll(path, 0o755)
-	os.WriteFile(filepath.Join(path, "lock"), []byte("x"), 0o444)
-	os.Chmod(path, 0o555)
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "lock"), []byte("x"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o555); err != nil {
+		t.Fatal(err)
+	}
 	err := removePackage(path)
-	os.Chmod(path, 0o755)
+	_ = os.Chmod(path, 0o755)
 	if err == nil {
 		t.Fatal("expected remove error")
 	}
@@ -373,11 +391,13 @@ func TestSearchCatalogNoMatch(t *testing.T) {
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	SearchCatalog(context.Background(), "zzznone")
+	_ = SearchCatalog(context.Background(), "zzznone")
 	w.Close()
 	os.Stdout = oldStdout
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(buf.String(), "No matching") {
 		t.Fatal(buf.String())
 	}
@@ -385,10 +405,10 @@ func TestSearchCatalogNoMatch(t *testing.T) {
 
 func TestCleanConfigNoSourceDirs(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
-	os.WriteFile(".fz.yaml", []byte("output: x\n"), 0o644)
+	defer chdirTemp(t, tmp)()
+	if err := os.WriteFile(".fz.yaml", []byte("output: x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := cleanConfig("vendor/none"); err != nil {
 		t.Fatal(err)
 	}
@@ -396,10 +416,10 @@ func TestCleanConfigNoSourceDirs(t *testing.T) {
 
 func TestCleanConfigNonStringEntry(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
-	os.WriteFile(".fz.yaml", []byte("source_dirs:\n  - 42\n"), 0o644)
+	defer chdirTemp(t, tmp)()
+	if err := os.WriteFile(".fz.yaml", []byte("source_dirs:\n  - 42\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := cleanConfig("vendor/x"); err != nil {
 		t.Fatal(err)
 	}
@@ -407,9 +427,7 @@ func TestCleanConfigNonStringEntry(t *testing.T) {
 
 func TestUpdateConfigSecureWriteFail(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	if err := updateConfig(filepath.Join(tmp, "outside"), true); err != nil {
 		return
 	}
@@ -417,11 +435,11 @@ func TestUpdateConfigSecureWriteFail(t *testing.T) {
 
 func TestListWalkError(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
-	os.Mkdir("vendor", 0o000)
-	defer os.Chmod("vendor", 0o755)
+	defer chdirTemp(t, tmp)()
+	if err := os.Mkdir("vendor", 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod("vendor", 0o755) }()
 	if err := List(); err == nil {
 		t.Fatal("expected walk error")
 	}
@@ -432,11 +450,11 @@ func TestAddMkdirFail(t *testing.T) {
 	defer func() { runGit = old }()
 	runGit = func(ctx context.Context, args ...string) (string, error) { return "", nil }
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
-	os.Mkdir("vendor", 0o444)
-	defer os.Chmod("vendor", 0o755)
+	defer chdirTemp(t, tmp)()
+	if err := os.Mkdir("vendor", 0o444); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod("vendor", 0o755) }()
 	err := Add(context.Background(), "github.com/u/r", "")
 	if err == nil {
 		t.Fatal("expected mkdir error")
@@ -449,7 +467,7 @@ func TestInstallFromCatalogHashComputeWarn(t *testing.T) {
 	defer func() { runGit = oldGit; httpClient = oldHTTP }()
 	runGit = func(ctx context.Context, args ...string) (string, error) {
 		if len(args) >= 2 && args[0] == "clone" {
-			os.MkdirAll(args[len(args)-1], 0o755)
+			_ = os.MkdirAll(args[len(args)-1], 0o755)
 		}
 		return "", nil
 	}
@@ -460,17 +478,17 @@ func TestInstallFromCatalogHashComputeWarn(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(body)), Header: make(http.Header)}, nil
 	})}
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	InstallFromCatalog(context.Background(), "pkg")
+	_ = InstallFromCatalog(context.Background(), "pkg")
 	w.Close()
 	os.Stdout = oldStdout
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(buf.String(), "Warning") {
 		t.Fatal(buf.String())
 	}
@@ -478,11 +496,11 @@ func TestInstallFromCatalogHashComputeWarn(t *testing.T) {
 
 func TestFindPackagePathWalkError(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
-	os.Mkdir("vendor", 0o000)
-	defer os.Chmod("vendor", 0o755)
+	defer chdirTemp(t, tmp)()
+	if err := os.Mkdir("vendor", 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod("vendor", 0o755) }()
 	_, err := findPackagePath("x")
 	if err == nil {
 		t.Fatal("expected error")
@@ -491,12 +509,14 @@ func TestFindPackagePathWalkError(t *testing.T) {
 
 func TestUpdateConfigReadPermError(t *testing.T) {
 	tmp := t.TempDir()
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
-	os.WriteFile(".fz.yaml", []byte("source_dirs: []\n"), 0o644)
-	os.Chmod(".fz.yaml", 0o000)
-	defer os.Chmod(".fz.yaml", 0o644)
+	defer chdirTemp(t, tmp)()
+	if err := os.WriteFile(".fz.yaml", []byte("source_dirs: []\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(".fz.yaml", 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(".fz.yaml", 0o644) }()
 	if err := updateConfig("vendor/x", true); err == nil {
 		t.Fatal("expected error")
 	}
@@ -509,9 +529,7 @@ func TestAddUsesSecureMkdir(t *testing.T) {
 	tmp := t.TempDir()
 	utils.SetExecutionRoot(tmp)
 	defer utils.SetExecutionRoot("")
-	oldWd, _ := os.Getwd()
-	os.Chdir(tmp)
-	defer os.Chdir(oldWd)
+	defer chdirTemp(t, tmp)()
 	if err := Add(context.Background(), "github.com/u/r", ""); err != nil {
 		t.Fatal(err)
 	}
