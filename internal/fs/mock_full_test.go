@@ -67,7 +67,7 @@ func TestMockAllOpsFail(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "x")
 	cases := []struct {
-		op string
+		op  string
 		run func(*Mock) error
 	}{
 		{"MkdirAll", func(m *Mock) error { return m.MkdirAll(path, 0o700) }},
