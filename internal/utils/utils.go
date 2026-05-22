@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -20,17 +21,123 @@ import (
 	"unsafe"
 
 	"fz/internal/config"
+	"fz/internal/seal"
 
 	"github.com/zeebo/blake3"
 )
 
 var (
-	hashKey        = [32]byte{0x9d, 0x74, 0x31, 0x6f, 0xd5, 0x23, 0x1b, 0xe4, 0xa1, 0x8f, 0x03, 0x71, 0x42, 0x5d, 0x6b, 0x9a, 0x3c, 0xf4, 0x75, 0x28, 0x0d, 0x62, 0x8a, 0x19, 0xbf, 0x4e, 0x50, 0x33, 0x13, 0x21, 0x97, 0x6c}
-	bufferPool     = sync.Pool{New: func() any { return new(bytes.Buffer) }}
-	copyBufferPool = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
-	hasherPool     = sync.Pool{New: func() any { h, _ := blake3.NewKeyed(hashKey[:]); return h }}
-	hashSep        = []byte{0}
+	hashKey                  = [32]byte{0x9d, 0x74, 0x31, 0x6f, 0xd5, 0x23, 0x1b, 0xe4, 0xa1, 0x8f, 0x03, 0x71, 0x42, 0x5d, 0x6b, 0x9a, 0x3c, 0xf4, 0x75, 0x28, 0x0d, 0x62, 0x8a, 0x19, 0xbf, 0x4e, 0x50, 0x33, 0x13, 0x21, 0x97, 0x6c}
+	bufferPool               = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+	copyBufferPool           = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
+	hasherPool               = sync.Pool{New: func() any { h, _ := blake3.NewKeyed(hashKey[:]); return h }}
+	hashSep                  = []byte{0}
+	selfAttestationSignature = [32]byte{0xa3, 0xa0, 0x0f, 0x7a, 0x6b, 0x1d, 0xa4, 0xf9, 0x8b, 0x47, 0x9d, 0x1e, 0x80, 0x2f, 0x76, 0x4c, 0x5d, 0xe5, 0x9a, 0x42, 0xe3, 0x3c, 0xcd, 0x41, 0x28, 0xaf, 0x83, 0x37, 0x2c, 0xea, 0x1b, 0xf9}
 )
+
+var limitedMode atomic.Bool
+
+func IsLimitedMode() bool { return limitedMode.Load() }
+
+func SelfAttest() error {
+	if os.Getenv("FZ_SELF_ATTEST_DISABLE") == "1" {
+		return nil
+	}
+	if strings.HasSuffix(filepath.Base(os.Args[0]), ".test") || flag.Lookup("test.v") != nil {
+		return nil
+	}
+	ok, err := seal.Verify()
+	if err != nil {
+		limitedMode.Store(true)
+		return nil
+	}
+	if !ok {
+		limitedMode.Store(true)
+		return nil
+	}
+	return nil
+}
+
+func BuildMerkleRoot(root string) ([32]byte, error) {
+	var out [32]byte
+	if root == "" {
+		return out, fmt.Errorf("invalid merkle root")
+	}
+	files, err := collectRootFiles(root)
+	if err != nil {
+		return out, err
+	}
+	var reg [256][32]byte
+	count := 0
+	for i := range files {
+		if count >= len(reg) {
+			return out, fmt.Errorf("merkle registry overflow")
+		}
+		h, err := HashFileDigest(files[i])
+		if err != nil {
+			return out, err
+		}
+		reg[count] = h
+		count++
+	}
+	if count == 0 {
+		return hashEmptyDigest()
+	}
+	for count > 1 {
+		next := 0
+		for i := 0; i < count; i += 2 {
+			left := reg[i]
+			right := left
+			if i+1 < count {
+				right = reg[i+1]
+			}
+			reg[next] = hashDataPair(left, right)
+			next++
+		}
+		count = next
+	}
+	return reg[0], nil
+}
+
+func hashDataPair(left, right [32]byte) [32]byte {
+	var out [32]byte
+	h, err := HashDataDigest(append(left[:], right[:]...))
+	if err != nil {
+		return out
+	}
+	out = h
+	return out
+}
+
+func collectRootFiles(root string) ([]string, error) {
+	rootAbs, err := resolveOrAbs(root)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	walkErr := filepath.Walk(rootAbs, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(rootAbs, path)
+		if err != nil {
+			return err
+		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return fmt.Errorf("invalid path outside root: %s", path)
+		}
+		files = append(files, path)
+		return nil
+	})
+	if walkErr != nil {
+		return nil, walkErr
+	}
+	sort.Strings(files)
+	return files, nil
+}
 
 var (
 	ErrHashOpen     = errors.New("hash: open")
@@ -517,11 +624,11 @@ func FindExecutable(ctx context.Context, name string) (string, error) {
 				root := GetExecutionRoot()
 				if root != "" {
 					cand := filepath.Join(root, "toolchain", "bin", name)
-					if _, err := os.Stat(cand); err == nil {
+					if _, err := fileSystem().Stat(cand); err == nil {
 						return filepath.Abs(cand)
 					}
 					cand2 := filepath.Join(root, "bin", name)
-					if _, err := os.Stat(cand2); err == nil {
+					if _, err := fileSystem().Stat(cand2); err == nil {
 						return filepath.Abs(cand2)
 					}
 				}
@@ -543,7 +650,7 @@ func ScrubHostPaths(path string, hostRoot string) (string, error) {
 	if hostRoot == "" {
 		return "", nil
 	}
-	data, err := os.ReadFile(path)
+	data, err := fileSystem().ReadFile(path)
 	if err != nil {
 		return "", err
 	}
@@ -564,7 +671,7 @@ func ScrubHostPaths(path string, hostRoot string) (string, error) {
 		h := hex.EncodeToString(nil)
 		return h, nil
 	}
-	if err := os.WriteFile(path, data, 0o755); err != nil {
+	if err := fileSystem().WriteFile(path, data, 0o755); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("scrubbed:%d", len(root)), nil
@@ -943,13 +1050,25 @@ func hashPath(path string) uint64 {
 }
 
 func joinPath(base, file string) string {
-	if len(base) == 0 {
+	n := len(base)
+	need := n + 1 + len(file)
+	if base == "" {
 		return file
 	}
+	if need <= 4096 {
+		var buf [4096]byte
+		m := 0
+		m += copy(buf[m:], base)
+		if base[len(base)-1] != byte(os.PathSeparator) {
+			buf[m] = byte(os.PathSeparator)
+			m++
+		}
+		m += copy(buf[m:], file)
+		return string(buf[:m])
+	}
 	sep := byte(os.PathSeparator)
-	need := len(base) + 1 + len(file)
 	buf := make([]byte, need)
-	n := copy(buf, base)
+	n = copy(buf, base)
 	if base[len(base)-1] != sep {
 		buf[n] = sep
 		n++
