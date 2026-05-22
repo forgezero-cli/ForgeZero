@@ -1,12 +1,14 @@
 package utils
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
 	fzvfs "fz/internal/fs"
+	"fz/internal/seal"
 )
 
 func resolveOrAbs(path string) (string, error) {
@@ -166,12 +168,25 @@ func ReadFileSecure(path string) ([]byte, error) {
 	}
 	f, err := openVerified(resolved)
 	if err != nil {
-		return nil, fmt.Errorf("read open %s: %w", path, err)
+		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	defer f.Close()
 	data, err := io.ReadAll(f)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	if fzvfs.IsStrictIsolation() {
+		h, herr := HashDataDigest(data)
+		if herr == nil {
+			hb := make([]byte, hex.EncodedLen(len(h)))
+			hex.Encode(hb, h[:])
+			if !seal.IsAllowedHex(string(hb)) {
+				for i := range data {
+					data[i] = 0
+				}
+				os.Exit(1)
+			}
+		}
 	}
 	return data, nil
 }
