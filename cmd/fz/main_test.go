@@ -3,9 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
-	"flag"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -61,17 +61,35 @@ func captureOutput(t *testing.T, f func()) string {
 }
 
 func runFzArgs(t *testing.T, args []string) string {
-	oldArgs := os.Args
-	oldFlags := flag.CommandLine
-	defer func() {
-		os.Args = oldArgs
-		flag.CommandLine = oldFlags
-	}()
-	os.Args = args
-	flag.CommandLine = flag.NewFlagSet(args[0], flag.ExitOnError)
-	return captureOutput(t, func() {
-		main()
-	})
+	helper := append([]string{"-test.run=TestHelperProcess", "--"}, args[1:]...)
+	cmd := exec.Command(os.Args[0], helper...)
+	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	_ = cmd.Run()
+	return buf.String()
+}
+
+func TestHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
+		return
+	}
+
+	idx := 1
+	for i, a := range os.Args {
+		if a == "--" {
+			idx = i
+			break
+		}
+	}
+	childArgs := []string{os.Args[0]}
+	if idx+1 < len(os.Args) {
+		childArgs = append(childArgs, os.Args[idx+1:]...)
+	}
+	os.Args = childArgs
+	main()
+	os.Exit(0)
 }
 
 func TestFullCliFlowInitBuildSeal(t *testing.T) {

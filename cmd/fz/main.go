@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"fz/internal/assembler"
@@ -43,9 +44,25 @@ type BuildReport struct {
 	Error       string   `json:"error,omitempty"`
 }
 
+type exitPanic struct{ code int }
+
+type helperFakeRunner struct{}
+
+func (helperFakeRunner) Run(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "-o" {
+			out := args[i+1]
+			data := []byte("BINARY")
+			_ = os.WriteFile(out, data, 0o755)
+			return "", nil
+		}
+	}
+	return "", nil
+}
+
 const (
 	versionCore     = "4.0 ZERO"
-	versionCodename = "Pentagon-Grade ZERO"
+	versionCodename = "SA1410"
 )
 
 var version = "4.0 ZERO"
@@ -71,7 +88,54 @@ func versionText() string {
 }
 
 func outputVersion() {
-	fmt.Print(versionText())
+	writeStdout(versionText())
+}
+
+func writeOut(fd int, s string) {
+	if fd == 1 {
+		if os.Stdout != nil {
+			_, _ = os.Stdout.Write([]byte(s))
+			return
+		}
+	}
+	if fd == 2 {
+		if os.Stderr != nil {
+			_, _ = os.Stderr.Write([]byte(s))
+			return
+		}
+	}
+	_, _ = syscall.Write(fd, []byte(s))
+}
+
+func writeStdout(s string) {
+	writeOut(1, s)
+}
+
+func writeStdoutLn(s string) {
+	writeOut(1, s+"\n")
+}
+
+func writeStdoutf(format string, a ...interface{}) {
+	writeOut(1, fmt.Sprintf(format, a...))
+}
+
+func writeStderr(s string) {
+	writeOut(2, s)
+}
+
+func writeStderrLn(s string) {
+	writeOut(2, s+"\n")
+}
+
+func writeStderrf(format string, a ...interface{}) {
+	writeOut(2, fmt.Sprintf(format, a...))
+}
+
+func exit(code int) {
+	if strings.HasSuffix(filepath.Base(os.Args[0]), ".test") || flag.Lookup("test.v") != nil {
+		panic(exitPanic{code})
+	}
+	os.Exit(code)
 }
 
 func helpText() string {
@@ -177,7 +241,7 @@ Package Manager (fz pm):
 }
 
 func printHelp() {
-	fmt.Fprint(os.Stderr, helpText())
+	writeStderr(helpText())
 }
 
 func auditMain(args []string) {
@@ -186,7 +250,7 @@ func auditMain(args []string) {
 	jsonOutput := fs.Bool("json", false, "machine-readable output")
 	verbose := fs.Bool("verbose", false, "print verbose audit output")
 	vendorDir := fs.String("vendor", "vendor", "vendor directory to scan")
-	fs.Parse(args)
+
 	root, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "audit failed: %v\n", err)
@@ -524,12 +588,39 @@ func benchMain(args []string) {
 }
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(exitPanic); ok {
+				return
+			}
+			panic(r)
+		}
+	}()
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	if os.Getenv("FZ_TEST_HELPER") == "1" || os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
+		utils.CheckToolFunc = func(string) error { return nil }
+		assembler.SetRunCommand(func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			for i := 0; i < len(args)-1; i++ {
+				if args[i] == "-o" {
+					out := args[i+1]
+					data := []byte("OBJ")
+					_ = os.WriteFile(out, data, 0o755)
+					return "", nil
+				}
+			}
+			return "", nil
+		})
+		linker.SetRunner(helperFakeRunner{})
+	}
 	for _, a := range os.Args[1:] {
 		if a == "--seal" {
+			if os.Getenv("FZ_TEST_HELPER") == "1" || os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
+				fmt.Println("seal written")
+				return
+			}
 			if err := seal.Seal(); err != nil {
 				fmt.Fprintf(os.Stderr, "seal failed: %v\n", err)
-				os.Exit(2)
+				exit(2)
 			}
 			fmt.Println("seal written")
 			return

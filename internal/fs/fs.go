@@ -35,7 +35,7 @@ func IsStrictIsolation() bool {
 	return GetIsolationMode() == "strict"
 }
 
-var readBufferPool = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
+var readBufferPool = sync.Pool{New: func() any { b := make([]byte, 32*1024); return &b }}
 
 func readFileBytes(path string) ([]byte, error) {
 	f, err := os.Open(path)
@@ -43,8 +43,9 @@ func readFileBytes(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	buf := readBufferPool.Get().([]byte)
-	defer readBufferPool.Put(buf)
+	bufp := readBufferPool.Get().(*[]byte)
+	buf := *bufp
+	defer readBufferPool.Put(bufp)
 	var result []byte
 	for {
 		n, err := f.Read(buf)
