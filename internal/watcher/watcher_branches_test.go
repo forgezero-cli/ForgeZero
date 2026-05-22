@@ -73,12 +73,12 @@ func TestWatcherHandlerError(t *testing.T) {
 
 func TestShouldIgnoreExtensions(t *testing.T) {
 	cases := map[string]bool{
-		"/p/.fz_objs":    true,
-		"/p/.fz_cache":   true,
-		"/p/a.o":         true,
-		"/p/a.out":       true,
-		"/p/a.exe":       true,
-		"/p/main.c":      false,
+		"/p/.fz_objs":  true,
+		"/p/.fz_cache": true,
+		"/p/a.o":       true,
+		"/p/a.out":     true,
+		"/p/a.exe":     true,
+		"/p/main.c":    false,
 	}
 	for path, want := range cases {
 		if shouldIgnore(path) != want {
