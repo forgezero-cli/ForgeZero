@@ -4,9 +4,51 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+type IsolationMode string
+
+const (
+	IsolationNone     IsolationMode = "none"
+	IsolationStandard IsolationMode = "standard"
+	IsolationStrict   IsolationMode = "strict"
+)
+
+func (m IsolationMode) String() string {
+	return string(m)
+}
+
+func (m *IsolationMode) UnmarshalYAML(node *yaml.Node) error {
+	var s string
+	if err := node.Decode(&s); err == nil {
+		s = strings.ToLower(strings.TrimSpace(s))
+		switch s {
+		case "", "none":
+			*m = IsolationNone
+			return nil
+		case "standard", "true":
+			*m = IsolationStandard
+			return nil
+		case "strict":
+			*m = IsolationStrict
+			return nil
+		}
+		return fmt.Errorf("invalid isolation: %s", s)
+	}
+	var b bool
+	if err := node.Decode(&b); err == nil {
+		if b {
+			*m = IsolationStandard
+			return nil
+		}
+		*m = IsolationNone
+		return nil
+	}
+	return fmt.Errorf("invalid isolation value")
+}
 
 type Flags struct {
 	Asm []string `yaml:"asm"`
@@ -46,7 +88,7 @@ type Config struct {
 	AuditIgnore          []string          `yaml:"audit_ignore"`
 	ToolChecksums        map[string]string `yaml:"tool_checksums"`
 	Flags                Flags             `yaml:"flags"`
-	Isolation            bool              `yaml:"isolation"`
+	Isolation            IsolationMode     `yaml:"isolation"`
 	DeterministicStrip  bool              `yaml:"deterministic_strip"`
 	ToolchainSettings    struct {
 		SearchPriority []string `yaml:"search_priority"`
@@ -93,13 +135,29 @@ func (c *Config) Validate() error {
 	if c.Toolchain != "auto" && c.Toolchain != "zig" {
 		return fmt.Errorf("invalid toolchain: %s", c.Toolchain)
 	}
+	if c.Isolation == "" {
+		c.Isolation = IsolationNone
+	}
+	switch c.Isolation {
+	case IsolationNone, IsolationStandard, IsolationStrict:
+	default:
+		return fmt.Errorf("invalid isolation: %s", c.Isolation)
+	}
 	if c.IgnoreFile == "" {
 		c.IgnoreFile = ".fzignore"
 	}
 	return nil
 }
 
-func (c *Config) MergeFromFlags(srcPath, dirPath, outBin, outObj string, debug, verbose, keepObj, noCache bool, mode, toolchain string) {
+func (c *Config) IsolationEnabled() bool {
+	return c.Isolation != IsolationNone
+}
+
+func (c *Config) IsStrictIsolation() bool {
+	return c.Isolation == IsolationStrict
+}
+
+func (c *Config) MergeFromFlags(srcPath, dirPath, outBin, outObj string, debug, verbose, keepObj, noCache bool, mode, toolchain, isolation string) {
 	if srcPath != "" {
 		c.SourceFile = srcPath
 		c.SourceDir = ""
@@ -135,6 +193,14 @@ func (c *Config) MergeFromFlags(srcPath, dirPath, outBin, outObj string, debug, 
 	}
 	if toolchain != "" && toolchain != "auto" {
 		c.Toolchain = toolchain
+	}
+	if isolation != "" {
+		switch isolation {
+		case "none", "standard", "strict":
+			c.Isolation = IsolationMode(strings.ToLower(isolation))
+		default:
+			c.Isolation = IsolationNone
+		}
 	}
 }
 
@@ -184,6 +250,9 @@ func (c *Config) Merge(other *Config) {
 	}
 	if other.NoCache {
 		c.NoCache = other.NoCache
+	}
+	if other.Isolation != "" {
+		c.Isolation = other.Isolation
 	}
 	if len(other.Exclude) > 0 {
 		c.Exclude = other.Exclude
