@@ -25,6 +25,14 @@ var (
 	ZigEnabled   bool
 )
 
+func SetRunner(r CmdRunner) {
+	runner = r
+}
+
+func ResetRunner() {
+	runner = &RealCmdRunner{}
+}
+
 var lookPathFunc = exec.LookPath
 
 func useZig() bool {
