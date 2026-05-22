@@ -3,9 +3,9 @@ package seal
 import (
 	"bytes"
 	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -78,17 +78,30 @@ func computeFileHash(path string) ([32]byte, error) {
 	if st.Size > 0 {
 		data, err := syscall.Mmap(int(fd), 0, int(st.Size), syscall.PROT_READ, syscall.MAP_PRIVATE)
 		if err == nil {
-			_, _ = hasher.Write(data)
-			_ = syscall.Munmap(data)
+			if _, err := hasher.Write(data); err != nil {
+				_ = syscall.Munmap(data)
+				return out, err
+			}
+			if err := syscall.Munmap(data); err != nil {
+				return out, err
+			}
 		} else {
 			var buf [32768]byte
 			for {
 				n, err := unix.Read(fd, buf[:])
 				if n > 0 {
-					hasher.Write(buf[:n])
+					if _, err := hasher.Write(buf[:n]); err != nil {
+						return out, err
+					}
 				}
 				if err != nil {
-					break
+					if err == unix.EINTR {
+						continue
+					}
+					if err == io.EOF {
+						break
+					}
+					return out, err
 				}
 			}
 		}
@@ -215,8 +228,7 @@ func zeroizeRegion(data []byte) {
 	if len(data) == 0 {
 		return
 	}
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&data))
-	ptr := unsafe.Pointer(hdr.Data)
+	ptr := unsafe.Pointer(&data[0])
 	for i := 0; i < len(data); i++ {
 		*(*byte)(unsafe.Add(ptr, uintptr(i))) = 0
 	}
@@ -260,8 +272,14 @@ func resetSealState() {
 func UpdateGlobalState(data []byte) {
 	stateMu.Lock()
 	hasher := blake3.New()
-	hasher.Write(globalState[:])
-	hasher.Write(data)
+	if _, err := hasher.Write(globalState[:]); err != nil {
+		stateMu.Unlock()
+		return
+	}
+	if _, err := hasher.Write(data); err != nil {
+		stateMu.Unlock()
+		return
+	}
 	sum := hasher.Sum(nil)
 	copy(globalState[:], sum[:32])
 	stateMu.Unlock()
@@ -299,10 +317,17 @@ func Seal() error {
 	if err != nil {
 		return err
 	}
-	mid, _ := getMachineIDZeroAlloc()
+	mid, err := getMachineIDZeroAlloc()
+	if err != nil {
+		return err
+	}
 	hasher := blake3.New()
-	hasher.Write(execHash[:])
-	hasher.Write([]byte(mid))
+	if _, err := hasher.Write(execHash[:]); err != nil {
+		return err
+	}
+	if _, err := hasher.Write([]byte(mid)); err != nil {
+		return err
+	}
 	sum := hasher.Sum(nil)
 	stateMu.Lock()
 	copy(combinedSeal[:], sum[:32])
@@ -321,16 +346,16 @@ func Seal() error {
 		return err
 	}
 	root := filepath.Dir(execPath)
-	walkProjectFiles(root, func(path string, info os.FileInfo, err error) error {
+	if err := walkProjectFiles(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			return err
 		}
 		if info.IsDir() {
 			return nil
 		}
 		h, err := computeFileHash(path)
 		if err != nil {
-			return nil
+			return err
 		}
 		JournalEvent(h[:])
 		hb := make([]byte, hex.EncodedLen(len(h)))
@@ -338,11 +363,17 @@ func Seal() error {
 		hb = append(hb, '\t')
 		hb = append(hb, []byte(path)...)
 		hb = append(hb, '\n')
-		_ = writeAll(fd, hb)
+		if err := writeAll(fd, hb); err != nil {
+			return err
+		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
 	if !isStagingMode() {
-		_ = setImmutable(sealPath)
+		if err := setImmutable(sealPath); err != nil {
+			return err
+		}
 	}
 	stateMu.Lock()
 	sealed = true
@@ -403,10 +434,17 @@ func Verify() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	mid, _ := getMachineIDZeroAlloc()
+	mid, err := getMachineIDZeroAlloc()
+	if err != nil {
+		return false, err
+	}
 	hasher := blake3.New()
-	hasher.Write(execHash[:])
-	hasher.Write([]byte(mid))
+	if _, err := hasher.Write(execHash[:]); err != nil {
+		return false, err
+	}
+	if _, err := hasher.Write([]byte(mid)); err != nil {
+		return false, err
+	}
 	sum := hasher.Sum(nil)
 	var local [32]byte
 	copy(local[:], sum[:32])
