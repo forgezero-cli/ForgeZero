@@ -147,8 +147,8 @@ func failHot(code byte) {
 	syscall.Exit(int(code))
 }
 
-func runHotNASM(ctx context.Context, vec *hotArgVec) error {
-	if vec.n == 0 {
+func runHotNASM(ctx context.Context, nasm *pathBuf, vec *hotArgVec) error {
+	if vec.n == 0 || nasm == nil || nasm.n == 0 {
 		if hotTesting() {
 			return errHotTool
 		}
@@ -158,10 +158,11 @@ func runHotNASM(ctx context.Context, vec *hotArgVec) error {
 	for i := 0; i < vec.n; i++ {
 		argv[i] = vec.args[i].string()
 	}
-	cmd := exec.CommandContext(ctx, "nasm", argv[:vec.n]...)
+	cmd := exec.CommandContext(ctx, nasm.string(), argv[:vec.n]...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
-	if err := cmd.Run(); err != nil {
+	runErr := cmd.Run()
+	if runErr != nil {
 		if hotTesting() {
 			return errHotAsm
 		}
@@ -190,17 +191,36 @@ func assembleNASMHot(ctx context.Context, src, obj string, debug, verbose bool) 
 	}
 	var srcPB pathBuf
 	var objPB pathBuf
-	if !cleanPathHot(src, &srcPB) || !cleanPathHot(obj, &objPB) {
+	if !cleanPathHot(src, &srcPB) {
 		if hotTesting() {
 			return errHotPath
 		}
 		failHot(errAsmPath)
+	}
+	if !cleanPathHot(obj, &objPB) {
+		if hotTesting() {
+			return errHotPath
+		}
+		failHot(errAsmPath)
+	}
+	if len(src) > maxPathBytes || len(obj) > maxPathBytes {
+		if hotTesting() {
+			return errHotPath
+		}
+		rejectPathLen()
 	}
 	if !statFileHot(&srcPB) {
 		if hotTesting() {
 			return errHotPath
 		}
 		failHot(errAsmPath)
+	}
+	var nasmPB pathBuf
+	if !getToolPathHot("nasm", &nasmPB) {
+		if hotTesting() {
+			return errHotTool
+		}
+		failHot(errAsmTool)
 	}
 	var vec hotArgVec
 	vec.reset()
@@ -221,5 +241,9 @@ func assembleNASMHot(ctx context.Context, src, obj string, debug, verbose bool) 
 			return errHotPath
 		}
 	}
-	return runHotNASM(ctx, &vec)
+	if err := runHotNASM(ctx, &nasmPB, &vec); err != nil {
+		return err
+	}
+	writeFlatAssembled(&objPB)
+	return nil
 }

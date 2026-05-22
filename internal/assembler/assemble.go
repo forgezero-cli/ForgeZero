@@ -120,29 +120,29 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 	switch ext {
 	case ".asm":
 		if ForceFASM {
-			if err := utils.CheckTool("fasm"); err != nil {
+			if err := CheckAssemblerTool("fasm"); err != nil {
 				return err
 			}
 			return assembleFASM(ctx, src, obj, debug, verbose)
 		}
 		if IsBinFormat() {
-			if err := utils.CheckTool("nasm"); err != nil {
+			if err := CheckAssemblerTool("nasm"); err != nil {
 				return err
 			}
 			return assembleNASMHot(ctx, src, obj, debug, verbose)
 		}
-		if err := utils.CheckTool(asmCmdForTarget()); err != nil {
+		if err := ensureAsmTool(asmCmdForTarget()); err != nil {
 			return err
 		}
 		return assembleNASM(ctx, src, obj, debug, verbose)
 
 	case ".s", ".S":
-		if err := utils.CheckTool(asmCmdForTarget()); err != nil {
+		if err := ensureAsmTool(asmCmdForTarget()); err != nil {
 			return err
 		}
 		return assembleGAS(ctx, src, obj, debug, verbose)
 	case ".fasm":
-		if err := utils.CheckTool("fasm"); err != nil {
+		if err := CheckAssemblerTool("fasm"); err != nil {
 			return err
 		}
 		return assembleFASM(ctx, src, obj, debug, verbose)
@@ -178,7 +178,10 @@ func assembleNASM(ctx context.Context, src, obj string, debug, verbose bool) err
 }
 
 func assembleNASMSlow(ctx context.Context, src, obj string, debug, verbose bool) error {
-	cmd := asmCmdForTarget()
+	cmd, err := assembleNASMSlowCmd()
+	if err != nil {
+		return err
+	}
 	format := formatFlagForTarget()
 	args := []string{format, src, "-o", obj}
 	if debug && cmd == "nasm" {
