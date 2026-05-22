@@ -209,13 +209,12 @@ func exit(code int) {
 	os.Exit(code)
 }
 
-func helpText() string {
-	var b strings.Builder
-	b.Grow(4096)
-	b.WriteString(`
-fz – assembly & C build tool (ForgeZero `)
-	b.WriteString(versionCore)
-	b.WriteString(`)
+const helpBody1 = `
+fz – assembly & C build tool (ForgeZero `
+
+const helpBody2 = `)
+
+ForgeZero includes built-in NASM/FASM backends. External dependencies: NONE.
 
 Usage:
   fz [options] (-asm <file> | -cc <file> | -dir <dir> | (no args with config))
@@ -248,7 +247,7 @@ Options:
   -json                  Output build report in JSON (for CI/CD)
   -config <file>         Config file (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)
   -man                   Generate roff man page and exit
-  -format <elf32|elf64|bin> Output format: elf64 (default), elf32, bin (flat binary)
+  -format <elf32|elf64|bin> Output format: elf64 (default), elf32, bin (flat binary / bare-metal bootloader mode)
   -T <file>              Linker script (passed to ld)
   -Ttext <addr>          Set text segment address
   -j <n>                 Number of parallel jobs (0 = auto = CPU cores)
@@ -307,8 +306,10 @@ Package Manager (fz pm):
   catalog                 List available packages from catalog
   search <keyword>        Search catalog
   install <name>          Install package from catalog (with hash verification)
-`)
-	return b.String()
+`
+
+func helpText() string {
+	return helpBody1 + versionCore + helpBody2
 }
 
 func printHelp() {
@@ -1010,7 +1011,8 @@ func main() {
 	assembler.CcFlags = ccFlags
 	linker.LdFlags = ldFlags
 	linker.Shared = shared
-	assembler.Target = target
+	assembler.Target = assembler.NormalizeTargetTriple(target)
+	target = assembler.Target
 	linker.Target = target
 	if libMode {
 		buildType = "static"
@@ -1297,10 +1299,15 @@ func main() {
 				return err
 			}
 			if format == "bin" {
-				if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck, sanitize, strict, nil); err != nil {
-					return err
+				if objName != binName {
+					if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck, sanitize, strict, nil); err != nil {
+						return err
+					}
 				}
 				if !jsonOutput {
+					if !verbose {
+						assembler.WriteFlatAssembledNotice(binName)
+					}
 					writeFmt(1, "Built: %s\n", binName)
 				}
 				return nil

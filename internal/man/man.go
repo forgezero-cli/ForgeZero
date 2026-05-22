@@ -1,21 +1,21 @@
 package man
 
-import (
-	"fmt"
-	"time"
-)
+import "time"
 
 func GenerateManPage(version string) string {
-	return fmt.Sprintf(`.TH fz 1 "%s" "fz %s" "User Commands"
-.SH NAME
+	head := ".TH fz 1 \"" + time.Now().Format("Jan 2006") + "\" \"fz " + version + "\" \"User Commands\"\n"
+	body := `.SH NAME
 fz \- assemble projects with a single command
 .SH SYNOPSIS
 fz [OPTIONS] (\-asm <file> | \-cc <file> | \-dir <dir>)
 .SH DESCRIPTION
-fz is a build tool for assembly (NASM, GAS, FASM), C/C++ projects, and Zig toolchain workflows.
-It automates assembling, compiling, linking, caching, and provides features like watch mode,
+fz is a build tool with built-in NASM/FASM backends. External dependencies: NONE.
+It automates assembling, compiling, linking, caching, and provides watch mode,
 JSON output, strict sanitizers, and deterministic builds with Zig integration.
 .SH OPTIONS
+.TP
+\fB\-\-format\fR <elf32|elf64|bin>
+Output format: elf64 (default), elf32, bin (flat binary / bare-metal bootloader mode)
 .TP
 \fB\-\-asm\fR <file>
 Assembler source file (.asm, .s, .S, .fasm)
@@ -88,9 +88,11 @@ fz -cc main.c -strict -verbose
 fz -dir ./src -out myapp -watch
 fz -json -cc test.c
 fz -dir . -clean
+fz -asm boot.asm -format bin -out boot.bin
 .SH AUTHORS
 Alex Voste <alexvoste@proton.me>
 .SH SEE ALSO
 nasm(1), gcc(1), ld(1), clang(1)
-`, time.Now().Format("Jan 2006"), version)
+`
+	return head + body
 }
