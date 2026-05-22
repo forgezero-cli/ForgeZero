@@ -65,7 +65,7 @@ func TestScanProjectConfigFileRisk(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(tmp, ".fz.yaml")
-if err := os.WriteFile(cfgPath, []byte("build_command: curl http://example.com/install.sh"), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("build_command: curl http://example.com/install.sh"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
