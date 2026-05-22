@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"fz/internal/assembler"
 	"fz/internal/audit"
@@ -92,43 +93,113 @@ func outputVersion() {
 }
 
 func writeOut(fd int, s string) {
-	if fd == 1 {
-		if os.Stdout != nil {
-			_, _ = os.Stdout.Write([]byte(s))
-			return
+	_, _ = syscall.Write(fd, unsafe.Slice(unsafe.StringData(s), len(s)))
+}
+
+func appendInt(dst []byte, v int64) []byte {
+	if v == 0 {
+		return append(dst, '0')
+	}
+	neg := v < 0
+	var u uint64
+	if neg {
+		u = uint64(-(v + 1))
+		u++
+	} else {
+		u = uint64(v)
+	}
+	var tmp [20]byte
+	i := len(tmp)
+	for u > 0 {
+		i--
+		tmp[i] = byte('0' + u%10)
+		u /= 10
+	}
+	if neg {
+		i--
+		tmp[i] = '-'
+	}
+	return append(dst, tmp[i:]...)
+}
+
+func appendAny(dst []byte, v any) []byte {
+	switch x := v.(type) {
+	case string:
+		return append(dst, x...)
+	case error:
+		return append(dst, x.Error()...)
+	case int:
+		return appendInt(dst, int64(x))
+	case int64:
+		return appendInt(dst, x)
+	case uint64:
+		return appendInt(dst, int64(x))
+	case bool:
+		if x {
+			return append(dst, "true"...)
+		}
+		return append(dst, "false"...)
+	default:
+		return append(dst, "<unsupported>"...)
+	}
+}
+
+func formatAppend(dst []byte, format string, a ...any) []byte {
+	argIndex := 0
+	for i := 0; i < len(format); i++ {
+		if format[i] != '%' || i+1 >= len(format) {
+			dst = append(dst, format[i])
+			continue
+		}
+		i++
+		switch format[i] {
+		case '%':
+			dst = append(dst, '%')
+		case 's', 'v':
+			if argIndex < len(a) {
+				dst = appendAny(dst, a[argIndex])
+				argIndex++
+			}
+		case 'd', 'x', 'X':
+			if argIndex < len(a) {
+				switch x := a[argIndex].(type) {
+				case int:
+					dst = appendInt(dst, int64(x))
+				case int64:
+					dst = appendInt(dst, x)
+				case uint64:
+					dst = appendInt(dst, int64(x))
+				default:
+					dst = appendAny(dst, a[argIndex])
+				}
+				argIndex++
+			}
+		default:
+			dst = append(dst, '%')
+			dst = append(dst, format[i])
 		}
 	}
-	if fd == 2 {
-		if os.Stderr != nil {
-			_, _ = os.Stderr.Write([]byte(s))
-			return
-		}
-	}
-	_, _ = syscall.Write(fd, []byte(s))
+	return dst
+}
+
+func writeFmt(fd int, format string, a ...any) {
+	var buf [4096]byte
+	b := formatAppend(buf[:0], format, a...)
+	_, _ = syscall.Write(fd, b)
 }
 
 func writeStdout(s string) {
-	writeOut(1, s)
-}
-
-func writeStdoutLn(s string) {
-	writeOut(1, s+"\n")
-}
-
-func writeStdoutf(format string, a ...interface{}) {
-	writeOut(1, fmt.Sprintf(format, a...))
+	writeOut(int(os.Stdout.Fd()), s)
 }
 
 func writeStderr(s string) {
-	writeOut(2, s)
+	writeOut(int(os.Stderr.Fd()), s)
 }
 
-func writeStderrLn(s string) {
-	writeOut(2, s+"\n")
-}
-
-func writeStderrf(format string, a ...interface{}) {
-	writeOut(2, fmt.Sprintf(format, a...))
+func errorf(format string, a ...any) error {
+	var buf [4096]byte
+	b := formatAppend(buf[:0], format, a...)
+	return errors.New(unsafe.String(unsafe.SliceData(b), len(b)))
 }
 
 func exit(code int) {
@@ -253,7 +324,7 @@ func auditMain(args []string) {
 
 	root, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "audit failed: %v\n", err)
+		writeFmt(2, "audit failed: %v\n", err)
 		os.Exit(1)
 	}
 	utils.SetExecutionRoot(root)
@@ -264,7 +335,7 @@ func auditMain(args []string) {
 		cfg, err = config.LoadMerged("")
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "audit failed: %v\n", err)
+		writeFmt(2, "audit failed: %v\n", err)
 		os.Exit(1)
 	}
 	if cfg != nil {
@@ -273,18 +344,18 @@ func auditMain(args []string) {
 		}
 	}
 	if *verbose {
-		fmt.Fprintf(os.Stderr, "audit: scanning project root %s using vendor dir %s\n", root, *vendorDir)
+		writeFmt(2, "audit: scanning project root %s using vendor dir %s\n", root, *vendorDir)
 	}
 	result, err := audit.ScanProject(context.Background(), root, *vendorDir, cfg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "audit failed: %v\n", err)
+		writeFmt(2, "audit failed: %v\n", err)
 		os.Exit(1)
 	}
 	if len(result.Findings) == 0 {
 		if *jsonOutput {
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "clean", "findings": []any{}})
 		} else {
-			fmt.Println("audit passed: no vulnerabilities found")
+			writeFmt(1, "%s\n", "audit passed: no vulnerabilities found")
 		}
 		return
 	}
@@ -293,13 +364,13 @@ func auditMain(args []string) {
 		return
 	}
 	for _, finding := range result.Findings {
-		fmt.Printf("[%s] %s\n", finding.Package, finding.Summary)
-		fmt.Printf("  path: %s\n", finding.Path)
+		writeFmt(1,"[%s] %s\n", finding.Package, finding.Summary)
+		writeFmt(1,"  path: %s\n", finding.Path)
 		if finding.Version != "" {
-			fmt.Printf("  version: %s\n", finding.Version)
+			writeFmt(1,"  version: %s\n", finding.Version)
 		}
 		if finding.URL != "" {
-			fmt.Printf("  url: %s\n", finding.URL)
+			writeFmt(1,"  url: %s\n", finding.URL)
 		}
 	}
 	os.Exit(1)
@@ -313,10 +384,13 @@ func sbomMain(args []string) {
 	vendorDir := fs.String("vendor", "vendor", "vendor directory to scan")
 	outPath := fs.String("out", "sbom.json", "output SBOM file path")
 	target := fs.String("target", "", "target triple to annotate in SBOM")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		writeFmt(2, "sbom failed: %v\n", err)
+		os.Exit(2)
+	}
 	root, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "sbom failed: %v\n", err)
+		writeFmt(2, "sbom failed: %v\n", err)
 		os.Exit(1)
 	}
 	utils.SetExecutionRoot(root)
@@ -327,7 +401,7 @@ func sbomMain(args []string) {
 		cfg, err = config.LoadMerged("")
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "sbom failed: %v\n", err)
+		writeFmt(2, "sbom failed: %v\n", err)
 		os.Exit(1)
 	}
 	if cfg != nil {
@@ -336,28 +410,28 @@ func sbomMain(args []string) {
 		}
 	}
 	if *verbose {
-		fmt.Fprintf(os.Stderr, "sbom: generating SBOM for project root %s using vendor dir %s\n", root, *vendorDir)
+		writeFmt(2, "sbom: generating SBOM for project root %s using vendor dir %s\n", root, *vendorDir)
 	}
 	doc, err := sbom.Generate(root, *vendorDir, version, cfg, *target)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "sbom failed: %v\n", err)
+		writeFmt(2, "sbom failed: %v\n", err)
 		os.Exit(1)
 	}
 	data, err := sbom.Marshal(doc)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "sbom failed: %v\n", err)
+		writeFmt(2, "sbom failed: %v\n", err)
 		os.Exit(1)
 	}
 	if *jsonOutput {
-		fmt.Println(string(data))
+		writeFmt(1, "%s\n", string(data))
 		return
 	}
 	if err := os.WriteFile(*outPath, data, 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "sbom failed: %v\n", err)
+		writeFmt(2, "sbom failed: %v\n", err)
 		os.Exit(1)
 	}
 	if *verbose {
-		fmt.Fprintf(os.Stderr, "sbom written to %s\n", *outPath)
+		writeFmt(2, "sbom written to %s\n", *outPath)
 	}
 }
 
@@ -365,30 +439,33 @@ func doctorMain(args []string) {
 	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
 	jsonOutput := fs.Bool("json", false, "machine-readable output")
 	rootPath := fs.String("root", "", "project root (default: cwd)")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		writeFmt(2, "doctor failed: %v\n", err)
+		os.Exit(2)
+	}
 	root := *rootPath
 	if root == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "doctor failed: %v\n", err)
+			writeFmt(2, "doctor failed: %v\n", err)
 			os.Exit(1)
 		}
 		root = cwd
 	}
 	report, err := doctor.Run(context.Background(), doctor.Options{Root: root})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "doctor failed: %v\n", err)
+		writeFmt(2, "doctor failed: %v\n", err)
 		os.Exit(1)
 	}
 	if *jsonOutput {
 		data, merr := doctor.MarshalJSON(report)
 		if merr != nil {
-			fmt.Fprintf(os.Stderr, "doctor failed: %v\n", merr)
+			writeFmt(2, "doctor failed: %v\n", merr)
 			os.Exit(1)
 		}
-		fmt.Println(string(data))
+		writeFmt(1, "%s\n", string(data))
 	} else {
-		fmt.Print(doctor.FormatHuman(report))
+		writeFmt(1, "%s", doctor.FormatHuman(report))
 	}
 	if !report.Healthy {
 		os.Exit(1)
@@ -401,32 +478,35 @@ func verifyMain(args []string) {
 	manifestPath := fs.String("manifest", "blake3.manifest", "manifest file path")
 	updateManifest := fs.Bool("update", false, "update manifest file")
 	jsonOutput := fs.Bool("json", false, "machine-readable output")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		writeFmt(2, "verify failed: %v\n", err)
+		os.Exit(2)
+	}
 	if err := utils.ValidateCLIPath(*rootPath); err != nil {
-		fmt.Fprintf(os.Stderr, "verify failed: %v\n", err)
+		writeFmt(2, "verify failed: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(*manifestPath); err != nil {
-		fmt.Fprintf(os.Stderr, "verify failed: %v\n", err)
+		writeFmt(2, "verify failed: %v\n", err)
 		os.Exit(2)
 	}
 	root := filepath.Clean(*rootPath)
 	manifest := filepath.Clean(*manifestPath)
 	if *updateManifest {
 		if err := verify.WriteManifest(manifest, root); err != nil {
-			fmt.Fprintf(os.Stderr, "verify failed: %v\n", err)
+			writeFmt(2, "verify failed: %v\n", err)
 			os.Exit(1)
 		}
 		if *jsonOutput {
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "updated", "manifest": manifest})
 			return
 		}
-		fmt.Printf("manifest updated: %s\n", manifest)
+		writeFmt(1,"manifest updated: %s\n", manifest)
 		return
 	}
 	result, err := verify.VerifyRoot(root, manifest)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "verify failed: %v\n", err)
+		writeFmt(2, "verify failed: %v\n", err)
 		os.Exit(1)
 	}
 	if len(result.Missing) == 0 && len(result.Modified) == 0 && len(result.Extra) == 0 {
@@ -434,7 +514,7 @@ func verifyMain(args []string) {
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "clean"})
 			return
 		}
-		fmt.Println("verify passed: source tree integrity intact")
+		writeFmt(1, "%s\n", "verify passed: source tree integrity intact")
 		return
 	}
 	if *jsonOutput {
@@ -442,21 +522,21 @@ func verifyMain(args []string) {
 		os.Exit(1)
 	}
 	if len(result.Missing) > 0 {
-		fmt.Println("missing files:")
+		writeFmt(1, "%s\n", "missing files:")
 		for _, path := range result.Missing {
-			fmt.Printf("  %s\n", path)
+			writeFmt(1,"  %s\n", path)
 		}
 	}
 	if len(result.Modified) > 0 {
-		fmt.Println("modified files:")
+		writeFmt(1, "%s\n", "modified files:")
 		for _, path := range result.Modified {
-			fmt.Printf("  %s\n", path)
+			writeFmt(1,"  %s\n", path)
 		}
 	}
 	if len(result.Extra) > 0 {
-		fmt.Println("extra files:")
+		writeFmt(1, "%s\n", "extra files:")
 		for _, path := range result.Extra {
-			fmt.Printf("  %s\n", path)
+			writeFmt(1,"  %s\n", path)
 		}
 	}
 	os.Exit(1)
@@ -475,57 +555,60 @@ func benchMain(args []string) {
 	verbose := fs.Bool("verbose", false, "verbose output")
 	timeoutSec := fs.Int("timeout", 60, "timeout in seconds")
 	jobs := fs.Int("j", 0, "parallel jobs")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		writeFmt(2, "bench failed: %v\n", err)
+		os.Exit(2)
+	}
 	if err := utils.ValidateCLIPath(*asmPath); err != nil {
-		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		writeFmt(2, "bench failed: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(*ccPath); err != nil {
-		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		writeFmt(2, "bench failed: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(*dirPath); err != nil {
-		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		writeFmt(2, "bench failed: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(*outBin); err != nil {
-		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		writeFmt(2, "bench failed: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIArg(*mode); err != nil {
-		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		writeFmt(2, "bench failed: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIArg(*target); err != nil {
-		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		writeFmt(2, "bench failed: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIArg(*toolchain); err != nil {
-		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		writeFmt(2, "bench failed: %v\n", err)
 		os.Exit(2)
 	}
 	if *mode != "auto" && *mode != "c" && *mode != "raw" {
-		fmt.Fprintln(os.Stderr, "bench failed: invalid mode")
+		writeFmt(2, "%s\n",  "bench failed: invalid mode")
 		os.Exit(2)
 	}
 	if *toolchain != "auto" && *toolchain != "zig" {
-		fmt.Fprintln(os.Stderr, "bench failed: invalid toolchain")
+		writeFmt(2, "%s\n",  "bench failed: invalid toolchain")
 		os.Exit(2)
 	}
 	if *jobs <= 0 {
 		*jobs = runtime.NumCPU()
 	}
 	if *asmPath == "" && *ccPath == "" && *dirPath == "" {
-		fmt.Fprintln(os.Stderr, "bench failed: missing source path")
+		writeFmt(2, "%s\n",  "bench failed: missing source path")
 		os.Exit(2)
 	}
 	if *asmPath != "" && *ccPath != "" {
-		fmt.Fprintln(os.Stderr, "bench failed: specify only one of -asm or -cc")
+		writeFmt(2, "%s\n",  "bench failed: specify only one of -asm or -cc")
 		os.Exit(2)
 	}
 	root, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		writeFmt(2, "bench failed: %v\n", err)
 		os.Exit(1)
 	}
 	utils.SetExecutionRoot(root)
@@ -554,37 +637,52 @@ func benchMain(args []string) {
 	defer cancel()
 	if *asmPath != "" {
 		objName := strings.TrimSuffix(filepath.Base(*asmPath), filepath.Ext(*asmPath)) + ".o"
-		benchTimer.Stage("assemble", func() error {
+		if err := benchTimer.Stage("assemble", func() error {
 			return assembler.Assemble(ctx, *asmPath, objName, false, *verbose, *mode)
-		})
-		benchTimer.Stage("link", func() error {
+		}); err != nil {
+			writeFmt(2, "bench failed: %v\n", err)
+			os.Exit(1)
+		}
+		if err := benchTimer.Stage("link", func() error {
 			return linker.Link(ctx, objName, *outBin, *verbose, *mode, false, true, false, nil)
-		})
+		}); err != nil {
+			writeFmt(2, "bench failed: %v\n", err)
+			os.Exit(1)
+		}
 	} else if *ccPath != "" {
 		objName := strings.TrimSuffix(filepath.Base(*ccPath), filepath.Ext(*ccPath)) + ".o"
-		benchTimer.Stage("compile", func() error {
+		if err := benchTimer.Stage("compile", func() error {
 			return assembler.Assemble(ctx, *ccPath, objName, false, *verbose, *mode)
-		})
-		benchTimer.Stage("link", func() error {
+		}); err != nil {
+			writeFmt(2, "bench failed: %v\n", err)
+			os.Exit(1)
+		}
+		if err := benchTimer.Stage("link", func() error {
 			return linker.Link(ctx, objName, *outBin, *verbose, *mode, false, true, false, nil)
-		})
+		}); err != nil {
+			writeFmt(2, "bench failed: %v\n", err)
+			os.Exit(1)
+		}
 	} else {
-		benchTimer.Stage("build_directory", func() error {
+		if err := benchTimer.Stage("build_directory", func() error {
 			_, err := builder.BuildDir(ctx, []string{*dirPath}, *outBin, false, *verbose, *mode, false, false, false, true, false, nil, nil, nil, nil, nil, *jobs, "executable")
 			return err
-		})
+		}); err != nil {
+			writeFmt(2, "bench failed: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	err = benchTimer.Error()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "bench failed: %v\n", err)
+		writeFmt(2, "bench failed: %v\n", err)
 		os.Exit(1)
 	}
 	if *jsonOutput {
 		data, _ := benchTimer.JSON()
-		fmt.Println(string(data))
+		writeFmt(1, "%s\n", string(data))
 		return
 	}
-	fmt.Print(benchTimer.Report())
+	writeFmt(1, "%s", benchTimer.Report())
 }
 
 func main() {
@@ -615,19 +713,19 @@ func main() {
 	for _, a := range os.Args[1:] {
 		if a == "--seal" {
 			if os.Getenv("FZ_TEST_HELPER") == "1" || os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
-				fmt.Println("seal written")
+				writeFmt(1, "%s\n", "seal written")
 				return
 			}
 			if err := seal.Seal(); err != nil {
-				fmt.Fprintf(os.Stderr, "seal failed: %v\n", err)
+				writeFmt(2, "seal failed: %v\n", err)
 				exit(2)
 			}
-			fmt.Println("seal written")
+			writeFmt(1, "%s\n", "seal written")
 			return
 		}
 	}
 	if err := utils.SelfAttest(); err != nil {
-		fmt.Fprintf(os.Stderr, "self-attestation failed: %v\n", err)
+		writeFmt(2, "self-attestation failed: %v\n", err)
 		os.Exit(1)
 	}
 	if len(os.Args) >= 2 {
@@ -740,91 +838,91 @@ func main() {
 	flag.Parse()
 
 	if err := utils.ValidateCLIPath(configPath); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid config path: %v\n", err)
+		writeFmt(2, "invalid config path: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(asmPath); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid asm path: %v\n", err)
+		writeFmt(2, "invalid asm path: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(ccPath); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid cc path: %v\n", err)
+		writeFmt(2, "invalid cc path: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(dirPath); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid dir path: %v\n", err)
+		writeFmt(2, "invalid dir path: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(outBin); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid output path: %v\n", err)
+		writeFmt(2, "invalid output path: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(outObj); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid object output path: %v\n", err)
+		writeFmt(2, "invalid object output path: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(ldScript); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid linker script path: %v\n", err)
+		writeFmt(2, "invalid linker script path: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(textAddr); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid text address: %v\n", err)
+		writeFmt(2, "invalid text address: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIArg(mode); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid mode: %v\n", err)
+		writeFmt(2, "invalid mode: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIArg(format); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid format: %v\n", err)
+		writeFmt(2, "invalid format: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIArg(target); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid target: %v\n", err)
+		writeFmt(2, "invalid target: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIArg(toolchain); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid toolchain: %v\n", err)
+		writeFmt(2, "invalid toolchain: %v\n", err)
 		os.Exit(2)
 	}
 	utils.SetToolchainPolicy(toolchain)
 	if err := utils.ValidateCLIArg(isolation); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid isolation: %v\n", err)
+		writeFmt(2, "invalid isolation: %v\n", err)
 		os.Exit(2)
 	}
 	if isolation != "none" && isolation != "standard" && isolation != "strict" {
-		fmt.Fprintln(os.Stderr, "error: -isolation must be none, standard, or strict")
+		writeFmt(2, "%s\n",  "error: -isolation must be none, standard, or strict")
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIArg(buildType); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid build type: %v\n", err)
+		writeFmt(2, "invalid build type: %v\n", err)
 		os.Exit(2)
 	}
 	if _, err := utils.ValidateFlagTokens([]byte(ccFlags)); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid C compiler flags: %v\n", err)
+		writeFmt(2, "invalid C compiler flags: %v\n", err)
 		os.Exit(2)
 	}
 	if _, err := utils.ValidateFlagTokens([]byte(ldFlags)); err != nil {
-		fmt.Fprintf(os.Stderr, "invalid linker flags: %v\n", err)
+		writeFmt(2, "invalid linker flags: %v\n", err)
 		os.Exit(2)
 	}
 	if mode != "" && mode != "auto" && mode != "c" && mode != "raw" {
-		fmt.Fprintln(os.Stderr, "error: -mode must be auto, c, or raw")
+		writeFmt(2, "%s\n",  "error: -mode must be auto, c, or raw")
 		os.Exit(2)
 	}
 	if toolchain != "" {
 		if !config.IsValidToolchain(toolchain) {
-			fmt.Fprintln(os.Stderr, "error: -toolchain must be one of auto, zig, fasm, nasm, gas, gcc, clang, ld")
+			writeFmt(2, "%s\n",  "error: -toolchain must be one of auto, zig, fasm, nasm, gas, gcc, clang, ld")
 			os.Exit(2)
 		}
 	}
 
 	if initMode {
 		if err := initpkg.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "init failed: %v\n", err)
+			writeFmt(2, "init failed: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Println("project initialized. edit .fz.yaml to configure ur build.")
+		writeFmt(1, "%s\n", "project initialized. edit .fz.yaml to configure ur build.")
 		return
 	}
 
@@ -833,14 +931,14 @@ func main() {
 	ctx := context.Background()
 	if len(os.Args) >= 2 && os.Args[1] == "pm" {
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: fz pm <add|remove|list|update|catalog|search|install> [args]")
+			writeFmt(1, "%s\n", "Usage: fz pm <add|remove|list|update|catalog|search|install> [args]")
 			return
 		}
 		subcmd := os.Args[2]
 		switch subcmd {
 		case "add":
 			if len(os.Args) < 4 {
-				fmt.Println("Usage: fz pm add <repo-url> [version]")
+				writeFmt(1, "%s\n", "Usage: fz pm add <repo-url> [version]")
 				return
 			}
 			pkgURL := os.Args[3]
@@ -849,53 +947,59 @@ func main() {
 				ver = os.Args[4]
 			}
 			if err := pkgman.Add(ctx, pkgURL, ver); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				writeFmt(2, "error: %v\n", err)
 				os.Exit(1)
 			}
 		case "remove":
 			if len(os.Args) < 4 {
-				fmt.Println("Usage: fz pm remove <repo-url>")
+				writeFmt(1, "%s\n", "Usage: fz pm remove <repo-url>")
 				return
 			}
 			if err := pkgman.Remove(ctx, os.Args[3]); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				writeFmt(2, "error: %v\n", err)
 				os.Exit(1)
 			}
 		case "list":
 			if len(os.Args) == 3 {
 				pkgman.List()
 			} else if os.Args[3] == "catalog" {
-				pkgman.ListCatalog(ctx)
+				if err := pkgman.ListCatalog(ctx); err != nil {
+					writeFmt(2, "error: %v\n", err)
+					os.Exit(1)
+				}
 			} else {
-				fmt.Println("Usage: fz pm list [catalog]")
+				writeFmt(1, "%s\n", "Usage: fz pm list [catalog]")
 			}
 		case "update":
 			if err := pkgman.Update(ctx); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				writeFmt(2, "error: %v\n", err)
 				os.Exit(1)
 			}
 		case "catalog":
-			pkgman.ListCatalog(ctx)
+			if err := pkgman.ListCatalog(ctx); err != nil {
+				writeFmt(2, "error: %v\n", err)
+				os.Exit(1)
+			}
 		case "search":
 			if len(os.Args) < 4 {
-				fmt.Println("Usage: fz pm search <keyword>")
+				writeFmt(1, "%s\n", "Usage: fz pm search <keyword>")
 				return
 			}
 			if err := pkgman.SearchCatalog(ctx, os.Args[3]); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				writeFmt(2, "error: %v\n", err)
 				os.Exit(1)
 			}
 		case "install":
 			if len(os.Args) < 4 {
-				fmt.Println("Usage: fz pm install <catalog-package-name>")
+				writeFmt(1, "%s\n", "Usage: fz pm install <catalog-package-name>")
 				return
 			}
 			if err := pkgman.InstallFromCatalog(ctx, os.Args[3]); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				writeFmt(2, "error: %v\n", err)
 				os.Exit(1)
 			}
 		default:
-			fmt.Printf("Unknown pm subcommand: %s\n", subcmd)
+			writeFmt(1,"Unknown pm subcommand: %s\n", subcmd)
 		}
 		return
 	}
@@ -909,12 +1013,12 @@ func main() {
 		buildType = "static"
 	}
 	if buildType != "executable" && buildType != "static" {
-		fmt.Fprintf(os.Stderr, "error: -type must be executable or static")
+		writeFmt(2, "error: -type must be executable or static")
 		os.Exit(2)
 	}
 	if updateMode {
 		if err := updater.UpdateSelf(version); err != nil {
-			fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
+			writeFmt(2, "update failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
@@ -927,7 +1031,7 @@ func main() {
 		return
 	}
 	if showMan {
-		fmt.Print(man.GenerateManPage(version))
+		writeFmt(1, "%s", man.GenerateManPage(version))
 		os.Exit(0)
 	}
 	if showHelp {
@@ -944,7 +1048,7 @@ func main() {
 		os.Exit(0)
 	}
 	if err := linker.SetOutputFormat(format); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		writeFmt(2, "error: %v\n", err)
 		os.Exit(2)
 	}
 	linker.LdScript = ldScript
@@ -960,7 +1064,7 @@ func main() {
 		utils.SetExecutionRoot(root)
 	}
 	if watch && jsonOutput {
-		fmt.Fprintln(os.Stderr, "error: -watch and -json cannot be used together")
+		writeFmt(2, "%s\n",  "error: -watch and -json cannot be used together")
 		os.Exit(2)
 	}
 	srcProvided := 0
@@ -979,7 +1083,7 @@ func main() {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
-			fmt.Fprintln(os.Stderr, errMsg)
+			writeFmt(2, "%s\n",  errMsg)
 		}
 		os.Exit(2)
 	}
@@ -996,7 +1100,7 @@ func main() {
 				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: err.Error()}
 				_ = json.NewEncoder(os.Stdout).Encode(report)
 			} else {
-				fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+				writeFmt(2, "config error: %v\n", err)
 			}
 			os.Exit(2)
 		}
@@ -1008,7 +1112,7 @@ func main() {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: err.Error()}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
-			fmt.Fprintf(os.Stderr, "config error: %v\n", err)
+			writeFmt(2, "config error: %v\n", err)
 		}
 		os.Exit(2)
 	}
@@ -1019,7 +1123,7 @@ func main() {
 		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode, toolchain, isolation)
 		utils.SetToolchainPolicy(cfg.Toolchain)
 		if verbose && !jsonOutput {
-			fmt.Printf("Loaded config from %s\n", func() string {
+			writeFmt(1,"Loaded config from %s\n", func() string {
 				if configPath != "" {
 					return configPath
 				}
@@ -1054,10 +1158,10 @@ func main() {
 			dirs = []string{cfg.SourceDir}
 		}
 		if err := compilecommands.Generate(cfg, dirs[0]); err != nil {
-			fmt.Fprintf(os.Stderr, "error generating compile_commands.json: %v\n", err)
+			writeFmt(2, "error generating compile_commands.json: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Println("compile_commands.json generated")
+		writeFmt(1, "%s\n", "compile_commands.json generated")
 		return
 	}
 
@@ -1075,7 +1179,7 @@ func main() {
 				report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
 				_ = json.NewEncoder(os.Stdout).Encode(report)
 			} else {
-				fmt.Fprintln(os.Stderr, errMsg)
+				writeFmt(2, "%s\n",  errMsg)
 			}
 			os.Exit(2)
 		}
@@ -1084,7 +1188,7 @@ func main() {
 				report := BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
 				_ = json.NewEncoder(os.Stdout).Encode(report)
 			} else {
-				fmt.Fprintf(os.Stderr, "clean failed: %v\n", err)
+				writeFmt(2, "clean failed: %v\n", err)
 			}
 			os.Exit(1)
 		}
@@ -1092,7 +1196,7 @@ func main() {
 			report := BuildReport{Status: "success", ExitCode: 0, DurationMs: 0, Binary: "cleaned"}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
-			fmt.Printf("Cleaned %s\n", targetDir)
+			writeFmt(1,"Cleaned %s\n", targetDir)
 		}
 		return
 	}
@@ -1134,7 +1238,7 @@ func main() {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
-			fmt.Fprintln(os.Stderr, errMsg)
+			writeFmt(2, "%s\n",  errMsg)
 		}
 		os.Exit(2)
 	}
@@ -1144,7 +1248,7 @@ func main() {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
-			fmt.Fprintln(os.Stderr, errMsg)
+			writeFmt(2, "%s\n",  errMsg)
 		}
 		os.Exit(2)
 	}
@@ -1171,16 +1275,16 @@ func main() {
 			}
 			ext := filepath.Ext(srcPath)
 			if !utils.SupportedExtension(ext) {
-				return fmt.Errorf("unsupported extension: %s", ext)
+				return errorf("unsupported extension: %s", ext)
 			}
 			binName, objName := utils.DeriveNames(srcPath, outBin, outObj)
 			objectFiles = append(objectFiles, objName)
 			finalBinary = binName
 			if verbose && !jsonOutput {
 				if ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" {
-					fmt.Printf("Compiling %s -> %s\n", srcPath, objName)
+					writeFmt(1,"Compiling %s -> %s\n", srcPath, objName)
 				} else {
-					fmt.Printf("Assembling %s -> %s\n", srcPath, objName)
+					writeFmt(1,"Assembling %s -> %s\n", srcPath, objName)
 				}
 			}
 			if err := assembler.Assemble(ctx, srcPath, objName, debug, verbose, mode); err != nil {
@@ -1191,24 +1295,24 @@ func main() {
 					return err
 				}
 				if !jsonOutput {
-					fmt.Printf("Built: %s\n", binName)
+					writeFmt(1,"Built: %s\n", binName)
 				}
 				return nil
 			}
 			if verbose && !jsonOutput {
-				fmt.Printf("Linking %s -> %s (mode: %s)\n", objName, binName, mode)
+				writeFmt(1,"Linking %s -> %s (mode: %s)\n", objName, binName, mode)
 			}
 			if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck, sanitize, strict, nil); err != nil {
 				return err
 			}
 			if !jsonOutput {
-				fmt.Printf("Built: %s\n", binName)
+				writeFmt(1,"Built: %s\n", binName)
 			}
 			return nil
 		}
 		if dirPath != "" || (cfg != nil && len(cfg.SourceDirs) > 0) {
 			if format == "bin" {
-				return fmt.Errorf("-format bin is not supported for directory builds")
+				return errorf("-format bin is not supported for directory builds")
 			}
 			var dirs []string
 			if cfg != nil && len(cfg.SourceDirs) > 0 {
@@ -1225,12 +1329,12 @@ func main() {
 					return err
 				}
 				if !info.IsDir() {
-					return fmt.Errorf("%s is not a directory", d)
+					return errorf("%s is not a directory", d)
 				}
 			}
 			if outBin != "" {
 				if st, err := os.Stat(outBin); err == nil && st.IsDir() {
-					return fmt.Errorf("output path %s is a directory", outBin)
+					return errorf("output path %s is a directory", outBin)
 				}
 			}
 			var exclude []string
@@ -1241,7 +1345,7 @@ func main() {
 			if cfg != nil && cfg.IgnoreFile != "" {
 				if _, err := os.Stat(cfg.IgnoreFile); err == nil {
 					if ignoreMatcher, err = ignore.LoadIgnoreFile(cfg.IgnoreFile); err != nil && verbose {
-						fmt.Printf("warning: cannot load ignore file %s: %v\n", cfg.IgnoreFile, err)
+						writeFmt(1,"warning: cannot load ignore file %s: %v\n", cfg.IgnoreFile, err)
 					}
 				}
 			}
@@ -1265,13 +1369,13 @@ func main() {
 			finalBinary = res.Binary
 			if !jsonOutput {
 				if !keepObj && verbose {
-					fmt.Printf("Removed object dir: %s\n", res.ObjDir)
+					writeFmt(1,"Removed object dir: %s\n", res.ObjDir)
 				}
-				fmt.Printf("Built: %s\n", res.Binary)
+				writeFmt(1,"Built: %s\n", res.Binary)
 			}
 			return nil
 		}
-		return fmt.Errorf("no source to build")
+		return errorf("no source to build")
 	}
 
 	buildErr = build()
@@ -1290,7 +1394,7 @@ func main() {
 			}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
 		} else {
-			fmt.Fprintf(os.Stderr, "build failed: %v\n", buildErr)
+			writeFmt(2, "build failed: %v\n", buildErr)
 		}
 		if !watch {
 			os.Exit(1)
@@ -1314,7 +1418,7 @@ func main() {
 				report := BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
 				_ = json.NewEncoder(os.Stdout).Encode(report)
 			} else {
-				fmt.Fprintf(os.Stderr, "watcher error: %v\n", err)
+				writeFmt(2, "watcher error: %v\n", err)
 			}
 			os.Exit(1)
 		}
@@ -1335,7 +1439,7 @@ func main() {
 				report := BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
 				_ = json.NewEncoder(os.Stdout).Encode(report)
 			} else {
-				fmt.Fprintf(os.Stderr, "cannot watch: %v\n", err)
+				writeFmt(2, "cannot watch: %v\n", err)
 			}
 			os.Exit(1)
 		}
@@ -1345,11 +1449,11 @@ func main() {
 			_ = w.Add(cfgFile)
 		}
 		if !jsonOutput {
-			fmt.Printf("Watching %s for changes...\n", watchTarget)
+			writeFmt(1,"Watching %s for changes...\n", watchTarget)
 		}
 		w.Watch(500*time.Millisecond, func(string) error {
 			if !jsonOutput {
-				fmt.Println("\nChange detected, rebuilding...")
+				writeFmt(1, "%s\n", "\nChange detected, rebuilding...")
 			}
 			ctx2, cancel2 := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
 			defer cancel2()
@@ -1359,10 +1463,10 @@ func main() {
 			ctx = origCtx
 			if err != nil {
 				if !jsonOutput {
-					fmt.Fprintf(os.Stderr, "rebuild failed: %v\n", err)
+					writeFmt(2, "rebuild failed: %v\n", err)
 				}
 			} else if !jsonOutput {
-				fmt.Println("Rebuild successful.")
+				writeFmt(1, "%s\n", "Rebuild successful.")
 			}
 			return nil
 		})
