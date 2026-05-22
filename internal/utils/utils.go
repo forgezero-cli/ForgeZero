@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -31,8 +32,7 @@ var (
 	bufferPool               = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 	copyBufferPool           = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
 	hasherPool               = sync.Pool{New: func() any { h, _ := blake3.NewKeyed(hashKey[:]); return h }}
-	hashSep                  = []byte{0}
-	selfAttestationSignature = [32]byte{0xa3, 0xa0, 0x0f, 0x7a, 0x6b, 0x1d, 0xa4, 0xf9, 0x8b, 0x47, 0x9d, 0x1e, 0x80, 0x2f, 0x76, 0x4c, 0x5d, 0xe5, 0x9a, 0x42, 0xe3, 0x3c, 0xcd, 0x41, 0x28, 0xaf, 0x83, 0x37, 0x2c, 0xea, 0x1b, 0xf9}
+	hashSep = []byte{0}
 )
 
 var limitedMode atomic.Bool
@@ -203,10 +203,6 @@ func (w *mutexBufferWriter) Write(p []byte) (int, error) {
 	n, err := w.buf.Write(p)
 	w.mu.Unlock()
 	return n, err
-}
-
-func bytesToString(b []byte) string {
-	return string(b)
 }
 
 func constantTimeEqual(a, b string) bool {
@@ -604,10 +600,7 @@ func SafeEnv(cfg *config.Config) []string {
 			}
 		}
 	}
-	out := env[:0]
-	for _, e := range env {
-		out = append(out, e)
-	}
+	out := append([]string(nil), env...)
 	for k, v := range base {
 		out = ensureEnv(out, k, v)
 	}
@@ -785,7 +778,11 @@ func hashEmptyDigest() ([32]byte, error) {
 	var out [32]byte
 	hasher := hasherPool.Get().(*blake3.Hasher)
 	digest := hasher.Digest()
-	digest.Read(out[:])
+	if _, err := digest.Read(out[:]); err != nil {
+		hasher.Reset()
+		hasherPool.Put(hasher)
+		return out, err
+	}
 	hasher.Reset()
 	hasherPool.Put(hasher)
 	return out, nil
@@ -798,14 +795,27 @@ func hashStreamDigest(r io.Reader) ([32]byte, error) {
 	for {
 		n, err := r.Read(buf[:])
 		if n > 0 {
-			hasher.Write(buf[:n])
+			if _, err := hasher.Write(buf[:n]); err != nil {
+				hasher.Reset()
+				hasherPool.Put(hasher)
+				return out, err
+			}
 		}
 		if err != nil {
-			break
+			if err == io.EOF {
+				break
+			}
+			hasher.Reset()
+			hasherPool.Put(hasher)
+			return out, err
 		}
 	}
 	digest := hasher.Digest()
-	digest.Read(out[:])
+	if _, err := digest.Read(out[:]); err != nil {
+		hasher.Reset()
+		hasherPool.Put(hasher)
+		return out, err
+	}
 	hasher.Reset()
 	hasherPool.Put(hasher)
 	return out, nil
@@ -875,7 +885,11 @@ func HashDataDigest(data []byte) ([32]byte, error) {
 		return out, err
 	}
 	digest := hasher.Digest()
-	digest.Read(out[:])
+	if _, err := digest.Read(out[:]); err != nil {
+		hasher.Reset()
+		hasherPool.Put(hasher)
+		return out, err
+	}
 	hasher.Reset()
 	hasherPool.Put(hasher)
 	return out, nil
@@ -890,17 +904,39 @@ func hashRawFileDigest(path string) ([32]byte, error) {
 	defer f.Close()
 	hasher := hasherPool.Get().(*blake3.Hasher)
 	var buf [65536]byte
-	for {
-		n, err := f.Read(buf[:])
-		if n > 0 {
-			hasher.Write(buf[:n])
+	if of, ok := f.(interface{ Fd() uintptr }); ok {
+		fd := int(of.Fd())
+		for {
+			n, err := syscall.Read(fd, buf[:])
+			if n > 0 {
+				if _, err := hasher.Write(buf[:n]); err != nil {
+					hasher.Reset()
+					hasherPool.Put(hasher)
+					return out, err
+				}
+			}
+			if err != nil {
+				hasher.Reset()
+				hasherPool.Put(hasher)
+				return out, ErrHashRead
+			}
+			if n == 0 {
+				break
+			}
 		}
-		if err != nil {
-			break
+	} else {
+		if _, err := io.CopyBuffer(hasher, f, buf[:]); err != nil {
+			hasher.Reset()
+			hasherPool.Put(hasher)
+			return out, err
 		}
 	}
 	digest := hasher.Digest()
-	digest.Read(out[:])
+	if _, err := digest.Read(out[:]); err != nil {
+		hasher.Reset()
+		hasherPool.Put(hasher)
+		return out, err
+	}
 	hasher.Reset()
 	hasherPool.Put(hasher)
 	return out, nil
@@ -999,12 +1035,27 @@ func HashDirDigest(rootAbs, dir string) ([32]byte, error) {
 	sort.Strings(files)
 	hasher := hasherPool.Get().(*blake3.Hasher)
 	buf := alignedSlice(32 * 1024)
+	var f io.ReadCloser
 	for _, rel := range files {
 		n := copy(buf, rel)
-		hasher.Write(buf[:n])
-		hasher.Write(hashSep)
+		if _, err := hasher.Write(buf[:n]); err != nil {
+			if f != nil {
+				f.Close()
+			}
+			hasher.Reset()
+			hasherPool.Put(hasher)
+			return out, ErrHashRead
+		}
+		if _, err := hasher.Write(hashSep); err != nil {
+			if f != nil {
+				f.Close()
+			}
+			hasher.Reset()
+			hasherPool.Put(hasher)
+			return out, ErrHashRead
+		}
 		fullPath := dirAbs + string(os.PathSeparator) + rel
-		f, err := openVerified(fullPath)
+		f, err = openVerified(fullPath)
 		if err != nil {
 			hasher.Reset()
 			hasherPool.Put(hasher)
@@ -1051,10 +1102,18 @@ func HashDirDigest(rootAbs, dir string) ([32]byte, error) {
 			}
 		}
 		f.Close()
-		hasher.Write(hashSep)
+		if _, err := hasher.Write(hashSep); err != nil {
+			hasher.Reset()
+			hasherPool.Put(hasher)
+			return out, ErrHashRead
+		}
 	}
 	digest := hasher.Digest()
-	digest.Read(out[:])
+	if _, err := digest.Read(out[:]); err != nil {
+		hasher.Reset()
+		hasherPool.Put(hasher)
+		return out, err
+	}
 	hasher.Reset()
 	hasherPool.Put(hasher)
 	return out, nil
@@ -1069,39 +1128,12 @@ func hashPath(path string) uint64 {
 	return h
 }
 
-func joinPath(base, file string) string {
-	n := len(base)
-	need := n + 1 + len(file)
-	if base == "" {
-		return file
-	}
-	if need <= 4096 {
-		var buf [4096]byte
-		m := 0
-		m += copy(buf[m:], base)
-		if base[len(base)-1] != byte(os.PathSeparator) {
-			buf[m] = byte(os.PathSeparator)
-			m++
-		}
-		m += copy(buf[m:], file)
-		return string(buf[:m])
-	}
-	sep := byte(os.PathSeparator)
-	buf := make([]byte, need)
-	n = copy(buf, base)
-	if base[len(base)-1] != sep {
-		buf[n] = sep
-		n++
-	}
-	n += copy(buf[n:], file)
-	return string(buf[:n])
-}
 
 func resolveIncludePath(currentDir, include string) (string, error) {
 	if filepath.IsAbs(include) {
 		return ResolveSecurePath(include)
 	}
-	return ResolveSecurePath(joinPath(currentDir, include))
+	return ResolveSecurePath(filepath.Join(currentDir, include))
 }
 
 func resolveIncludePathBytes(currentDir string, include []byte) (string, error) {
