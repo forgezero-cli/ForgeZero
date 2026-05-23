@@ -13,11 +13,13 @@ const (
 )
 
 var (
-	kernel32    = syscall.NewLazyDLL("kernel32.dll")
-	mapFile     = kernel32.NewProc("MapViewOfFile")
-	unmapAll    = kernel32.NewProc("UnmapViewOfFile")
-	mapHandle   = kernel32.NewProc("CreateFileMappingW")
-	closeHandle = kernel32.NewProc("CloseHandle")
+	kernel32         = syscall.NewLazyDLL("kernel32.dll")
+	mapFile          = kernel32.NewProc("MapViewOfFile")
+	unmapAll         = kernel32.NewProc("UnmapViewOfFile")
+	mapHandle        = kernel32.NewProc("CreateFileMappingW")
+	closeHandle      = kernel32.NewProc("CloseHandle")
+	lockFileExProc   = kernel32.NewProc("LockFileEx")
+	unlockFileExProc = kernel32.NewProc("UnlockFileEx")
 )
 
 func mmapFile(fd int, size int64) ([]byte, error) {
@@ -71,7 +73,18 @@ func lockFileShared(fd int) error {
 	var ol syscall.Overlapped
 	const lockRangeLow = 0xffffffff
 	const lockRangeHigh = 0xffffffff
-	return syscall.LockFileEx(h, 0, 0, lockRangeLow, lockRangeHigh, &ol)
+	ret, _, err := lockFileExProc.Call(
+		uintptr(h),
+		0,
+		0,
+		lockRangeLow,
+		lockRangeHigh,
+		uintptr(unsafe.Pointer(&ol)),
+	)
+	if ret == 0 {
+		return err.(syscall.Errno)
+	}
+	return nil
 }
 
 func unlockFile(fd int) error {
@@ -79,7 +92,17 @@ func unlockFile(fd int) error {
 	var ol syscall.Overlapped
 	const lockRangeLow = 0xffffffff
 	const lockRangeHigh = 0xffffffff
-	return syscall.UnlockFileEx(h, 0, lockRangeLow, lockRangeHigh, &ol)
+	ret, _, err := unlockFileExProc.Call(
+		uintptr(h),
+		0,
+		lockRangeLow,
+		lockRangeHigh,
+		uintptr(unsafe.Pointer(&ol)),
+	)
+	if ret == 0 {
+		return err.(syscall.Errno)
+	}
+	return nil
 }
 
 func madviseNormal(data []byte) {
