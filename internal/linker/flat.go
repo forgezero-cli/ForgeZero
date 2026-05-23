@@ -3,7 +3,6 @@ package linker
 import (
 	"context"
 	"os"
-	"syscall"
 
 	"fz/internal/assembler"
 	"fz/internal/utils"
@@ -47,7 +46,7 @@ func copyFileHot(src, dst string) error {
 		}
 		wn := 0
 		for wn < rn {
-			m, werr := syscall.Write(int(df.Fd()), buf[wn:rn])
+			m, werr := df.Write(buf[wn:rn])
 			if werr != nil {
 				return werr
 			}

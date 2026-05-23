@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -62,11 +61,11 @@ func (helperFakeRunner) Run(ctx context.Context, verbose bool, name string, args
 }
 
 const (
-	versionCore     = "4.0 ZERO"
+	versionCore     = "4.0.1 ZERO"
 	versionCodename = "SA1410"
 )
 
-var version = "4.0 ZERO"
+var version = "4.0.1 ZERO"
 
 func versionText() string {
 	var b strings.Builder
@@ -93,7 +92,18 @@ func outputVersion() {
 }
 
 func writeOut(fd int, s string) {
-	_, _ = syscall.Write(fd, unsafe.Slice(unsafe.StringData(s), len(s)))
+	switch fd {
+	case 1:
+		_, _ = os.Stdout.WriteString(s)
+	case 2:
+		_, _ = os.Stderr.WriteString(s)
+	default:
+		f := os.NewFile(uintptr(fd), "")
+		if f != nil {
+			_, _ = f.WriteString(s)
+			_ = f.Close()
+		}
+	}
 }
 
 func appendInt(dst []byte, v int64) []byte {
@@ -185,7 +195,18 @@ func formatAppend(dst []byte, format string, a ...any) []byte {
 func writeFmt(fd int, format string, a ...any) {
 	var buf [4096]byte
 	b := formatAppend(buf[:0], format, a...)
-	_, _ = syscall.Write(fd, b)
+	switch fd {
+	case 1:
+		_, _ = os.Stdout.Write(b)
+	case 2:
+		_, _ = os.Stderr.Write(b)
+	default:
+		f := os.NewFile(uintptr(fd), "")
+		if f != nil {
+			_, _ = f.Write(b)
+			_ = f.Close()
+		}
+	}
 }
 
 func writeStdout(s string) {
