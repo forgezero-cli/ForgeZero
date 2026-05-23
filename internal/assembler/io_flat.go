@@ -1,6 +1,6 @@
 package assembler
 
-import "syscall"
+import "os"
 
 func writeFlatAssembled(p *pathBuf) {
 	if p == nil || p.n == 0 {
@@ -14,7 +14,7 @@ func writeFlatAssembled(p *pathBuf) {
 	n := copy(msg[:], prefix)
 	n += copy(msg[n:], p.data[:p.n])
 	msg[n] = '\n'
-	_, _ = syscall.Write(1, msg[:n+1])
+	_, _ = os.Stdout.Write(msg[:n+1])
 }
 
 func WriteFlatAssembledNotice(path string) {

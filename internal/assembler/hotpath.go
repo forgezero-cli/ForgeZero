@@ -3,9 +3,9 @@ package assembler
 import (
 	"context"
 	"flag"
+	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"unsafe"
 )
 
@@ -102,14 +102,11 @@ func cleanPathHot(raw string, dst *pathBuf) bool {
 }
 
 func statFileHot(p *pathBuf) bool {
-	var st syscall.Stat_t
-	if syscall.Stat(p.string(), &st) != nil {
+	info, err := os.Stat(p.string())
+	if err != nil {
 		return false
 	}
-	if st.Mode&syscall.S_IFDIR != 0 {
-		return false
-	}
-	return true
+	return !info.IsDir()
 }
 
 func hotTesting() bool {
@@ -139,12 +136,12 @@ func writeErrHot(code byte) {
 	buf[i] = byte('0' + code)
 	i++
 	buf[i] = '\n'
-	_, _ = syscall.Write(2, buf[:i+1])
+	_, _ = os.Stderr.Write(buf[:i+1])
 }
 
 func failHot(code byte) {
 	writeErrHot(code)
-	syscall.Exit(int(code))
+	os.Exit(int(code))
 }
 
 func runHotNASM(ctx context.Context, nasm *pathBuf, vec *hotArgVec) error {
