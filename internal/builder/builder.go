@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,6 +40,11 @@ func (p *pathBuffer) appendString(s string) {
 func (p *pathBuffer) appendByte(b byte) {
 	p.buf[p.n] = b
 	p.n++
+}
+
+func (p *pathBuffer) appendBytes(b []byte) {
+	copy(p.buf[p.n:], b)
+	p.n += len(b)
 }
 
 func (p *pathBuffer) String() string {
@@ -230,15 +236,35 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			rel = filepath.Base(srcAbs)
 		}
-		rel = strings.ReplaceAll(rel, string(filepath.Separator), "_")
-		ext := filepath.Ext(rel)
-		baseNoExt := strings.TrimSuffix(rel, ext)
-		srcExt := strings.TrimPrefix(ext, ".")
-		objName := baseNoExt + "_" + srcExt + ".o"
+		var rep pathBuffer
+		sep := byte(os.PathSeparator)
+		for j := 0; j < len(rel); j++ {
+			c := rel[j]
+			if c == sep {
+				rep.appendByte('_')
+			} else {
+				rep.appendByte(c)
+			}
+		}
+		lastDot := -1
+		for j := rep.n - 1; j >= 0; j-- {
+			if rep.buf[j] == '.' {
+				lastDot = j
+				break
+			}
+		}
 		var pb pathBuffer
 		pb.appendString(objDir)
 		pb.appendByte(byte(os.PathSeparator))
-		pb.appendString(objName)
+		if lastDot >= 0 {
+			pb.appendBytes(rep.buf[:lastDot])
+			pb.appendByte('_')
+			pb.appendBytes(rep.buf[lastDot+1 : rep.n])
+		} else {
+			pb.appendBytes(rep.buf[:rep.n])
+			pb.appendByte('_')
+		}
+		pb.appendString(".o")
 		objPath := pb.String()
 		if err := utils.SecureMkdirAll(objPath); err != nil {
 			return nil, fmt.Errorf("cannot create subdir for object: %w", err)
@@ -246,11 +272,7 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 		pairs[i] = pair{src: src, obj: objPath}
 	}
 
-	objFiles := make([]string, len(pairs))
-	for i, p := range pairs {
-		objFiles[i] = p.obj
-	}
-	sort.Strings(objFiles)
+	sort.Slice(pairs, func(i, j int) bool { return pairs[i].obj < pairs[j].obj })
 
 	if jobs <= 0 {
 		jobs = 1
@@ -287,7 +309,10 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 				}
 				if restored {
 					needAssemble = false
-					seal.UpdateGlobalState([]byte("shadow:restore:" + p.src))
+					var mbuf [512]byte
+					n := copy(mbuf[:], []byte("shadow:restore:"))
+					n += copy(mbuf[n:], []byte(p.src))
+					seal.UpdateGlobalState(mbuf[:n])
 				} else {
 					cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
 					if err == nil && cachedObj != "" {
@@ -296,7 +321,10 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 						}
 						if err := utils.CopyFile(cachedObj, p.obj); err == nil {
 							needAssemble = false
-							seal.UpdateGlobalState([]byte("cache:hit:" + p.src))
+							var mbuf [512]byte
+							n := copy(mbuf[:], []byte("cache:hit:"))
+							n += copy(mbuf[n:], []byte(p.src))
+							seal.UpdateGlobalState(mbuf[:n])
 						}
 					}
 				}
@@ -305,7 +333,10 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 				if verbose {
 					fmt.Printf("Assembling %s -> %s\n", p.src, p.obj)
 				}
-				seal.UpdateGlobalState([]byte("assemble:" + p.src))
+				var mbuf [512]byte
+				n := copy(mbuf[:], []byte("assemble:"))
+				n += copy(mbuf[n:], []byte(p.src))
+				seal.UpdateGlobalState(mbuf[:n])
 				if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
 					recordError(fmt.Errorf("assemble %s: %w", p.src, err))
 					return
@@ -319,7 +350,10 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 						recordError(fmt.Errorf("shadow cache %s: %w", p.src, err))
 						return
 					}
-					seal.UpdateGlobalState([]byte("cache:store:" + p.src))
+					var mbuf2 [512]byte
+					m := copy(mbuf2[:], []byte("cache:store:"))
+					m += copy(mbuf2[m:], []byte(p.src))
+					seal.UpdateGlobalState(mbuf2[:m])
 				}
 			}
 		}
@@ -338,6 +372,11 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 		return nil, entry.err
 	}
 
+	// prepare final object list from sorted pairs
+	objFiles := make([]string, len(pairs))
+	for i, p := range pairs {
+		objFiles[i] = p.obj
+	}
 	if buildType == "static" {
 		if verbose {
 			fmt.Printf("Creating static library %s from %d object files\n", outBin, len(objFiles))
@@ -390,7 +429,7 @@ func checkCache(src, cacheDir string, debug, verbose bool, mode string) (string,
 }
 
 func restoreShadowCache(src, obj string, debug bool, mode string) (bool, error) {
-	flags := []string{fmt.Sprintf("debug=%t", debug), fmt.Sprintf("mode=%s", mode)}
+	flags := []string{"debug=" + strconv.FormatBool(debug), "mode=" + mode}
 	key, err := utils.ShadowCacheKey(src, flags)
 	if err != nil {
 		return false, err
@@ -428,7 +467,7 @@ func storeCache(src, obj, cacheDir string, debug, verbose bool, mode string) err
 }
 
 func storeShadowCache(src, obj string, debug bool, mode string) error {
-	flags := []string{fmt.Sprintf("debug=%t", debug), fmt.Sprintf("mode=%s", mode)}
+	flags := []string{"debug=" + strconv.FormatBool(debug), "mode=" + mode}
 	key, err := utils.ShadowCacheKey(src, flags)
 	if err != nil {
 		return err
