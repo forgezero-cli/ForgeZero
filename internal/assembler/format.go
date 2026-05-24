@@ -10,7 +10,10 @@ func IsBinFormat() bool {
 
 func IsBareMetalTarget() bool {
 	t := Target
-	if strings.Contains(t, "bare-metal") {
+	if strings.Contains(t, "baremetal") || strings.Contains(t, "bare-metal") {
+		return true
+	}
+	if strings.Contains(t, "cortex-") {
 		return true
 	}
 	if strings.Contains(t, "none-") {

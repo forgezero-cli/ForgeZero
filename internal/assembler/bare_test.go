@@ -29,6 +29,10 @@ func TestIsBareMetalTarget(t *testing.T) {
 	if !IsBareMetalTarget() {
 		t.Fatal("expected bare-metal for unknown-elf")
 	}
+	Target = "cortex-m3"
+	if !IsBareMetalTarget() {
+		t.Fatal("expected bare-metal for cortex-m3")
+	}
 	Target = "x86_64-linux-gnu"
 	if IsBareMetalTarget() {
 		t.Fatal("linux-gnu is not bare-metal")

@@ -1034,7 +1034,7 @@ func main() {
 	linker.Shared = shared
 	assembler.Target = assembler.NormalizeTargetTriple(target)
 	target = assembler.Target
-	linker.Target = target
+	linker.SetTarget(target)
 	if libMode {
 		buildType = "static"
 	}
