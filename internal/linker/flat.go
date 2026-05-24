@@ -2,7 +2,7 @@ package linker
 
 import (
 	"context"
-	"os"
+	"syscall"
 
 	"fz/internal/assembler"
 	"fz/internal/utils"
@@ -19,40 +19,43 @@ func linkFlatBinary(ctx context.Context, obj, bin string) error {
 }
 
 func copyFileHot(src, dst string) error {
-	sf, err := os.Open(src)
+	sfd, err := syscall.Open(src, syscall.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}
-	defer sf.Close()
-	st, err := sf.Stat()
+	defer syscall.Close(sfd)
+	var st syscall.Stat_t
+	if err := syscall.Fstat(sfd, &st); err != nil {
+		return err
+	}
+	mode := uint32(st.Mode & 0777)
+	dfd, err := syscall.Open(dst, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
-	df, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, utils.FilePerm)
-	if err != nil {
-		return err
-	}
-	defer df.Close()
+	defer syscall.Close(dfd)
 	var buf [65536]byte
-	remain := st.Size()
-	for remain > 0 {
-		n := int(remain)
-		if n > len(buf) {
-			n = len(buf)
+	for {
+		rn, rerr := syscall.Read(sfd, buf[:])
+		if rn > 0 {
+			written := 0
+			for written < rn {
+				wn, werr := syscall.Write(dfd, buf[written:rn])
+				if werr != nil {
+					return werr
+				}
+				written += wn
+			}
 		}
-		rn, rerr := sf.Read(buf[:n])
 		if rerr != nil {
+			if rerr == syscall.EINTR {
+				continue
+			}
 			return rerr
 		}
-		wn := 0
-		for wn < rn {
-			m, werr := df.Write(buf[wn:rn])
-			if werr != nil {
-				return werr
-			}
-			wn += m
+		if rn == 0 {
+			break
 		}
-		remain -= int64(rn)
 	}
 	return nil
 }
