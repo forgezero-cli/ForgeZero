@@ -432,7 +432,14 @@ func (p *parser) alignSection(arg []byte) error {
 }
 
 func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
-	shstrtab := buildStringTable([][]byte{[]byte(""), p.text.name, p.data.name, p.bss.name, []byte(".shstrtab"), []byte(".symtab"), []byte(".strtab")})
+	shstrtabNames0 := []byte("")
+	shstrtabNames1 := p.text.name
+	shstrtabNames2 := p.data.name
+	shstrtabNames3 := p.bss.name
+	shstrtabNames4 := []byte(".shstrtab")
+	shstrtabNames5 := []byte(".symtab")
+	shstrtabNames6 := []byte(".strtab")
+	shstrtabLen := 1 + (len(shstrtabNames0)+1) + (len(shstrtabNames1)+1) + (len(shstrtabNames2)+1) + (len(shstrtabNames3)+1) + (len(shstrtabNames4)+1) + (len(shstrtabNames5)+1) + (len(shstrtabNames6) + 1)
 	strtab := buildSymbolStringTable(p)
 	symtab := buildSymbolTable(p, strtab, profile)
 	outPtr := emitterBufferPool.Get().(*[]byte)
@@ -441,6 +448,10 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	headerSize := 64
 	if profile.elfClass == elfClass32 {
 		headerSize = 52
+	}
+	need := headerSize + len(p.text.data) + len(p.data.data) + len(symtab) + len(strtab) + shstrtabLen + headerSize*(7)
+	if cap(out) < need {
+		out = make([]byte, 0, need)
 	}
 	for i := 0; i < headerSize; i++ {
 		out = append(out, 0)
@@ -468,7 +479,22 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	strtabOffset := len(out)
 	out = append(out, strtab...)
 	shstrtabOffset := len(out)
-	out = append(out, shstrtab...)
+	out = append(out, 0)
+	out = append(out, shstrtabNames0...)
+	out = append(out, 0)
+	out = append(out, shstrtabNames1...)
+	out = append(out, 0)
+	out = append(out, shstrtabNames2...)
+	out = append(out, 0)
+	out = append(out, shstrtabNames3...)
+	out = append(out, 0)
+	out = append(out, shstrtabNames4...)
+	out = append(out, 0)
+	out = append(out, shstrtabNames5...)
+	out = append(out, 0)
+	out = append(out, shstrtabNames6...)
+	out = append(out, 0)
+	shstrtab := out[shstrtabOffset:shstrtabOffset+shstrtabLen]
 	shOff := alignOutOffset(len(out), uint64(headerSize))
 	out = alignOut(out, uint64(headerSize))
 	numSections := 7
@@ -488,6 +514,7 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	*outPtr = out
 	return out, nil
 }
+
 
 func buildStringTable(names [][]byte) []byte {
 	outPtr := emitterBufferPool.Get().(*[]byte)
