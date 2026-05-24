@@ -46,6 +46,23 @@ func TestParsePkgURL(t *testing.T) {
 	}
 }
 
+func TestParsePkgURLRejectsTraversal(t *testing.T) {
+	repo, _, err := parsePkgURL("github.com/user/../evil")
+	if err == nil {
+		t.Fatalf("expected error for traversal repo, got repo %q", repo)
+	}
+}
+
+func TestRemovePackageOutsideVendor(t *testing.T) {
+	tmpDir := t.TempDir()
+	defer chdirTemp(t, tmpDir)()
+
+	bad := filepath.Join("..", "evil")
+	if err := removePackage(bad); err == nil {
+		t.Fatal("expected removePackage to reject outside vendor path")
+	}
+}
+
 func TestUpdateConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	defer chdirTemp(t, tmpDir)()

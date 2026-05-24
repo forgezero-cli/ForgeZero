@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -48,7 +49,11 @@ func Add(ctx context.Context, pkgURL, version string) error {
 	if version != "" {
 		tag = version
 	}
-	dest := filepath.Join(vendorDir, repo)
+	destRel := filepath.Join(vendorDir, repo)
+	dest, err := secureVendorPath(repo)
+	if err != nil {
+		return err
+	}
 	if err := utils.SecureMkdirAll(dest); err != nil {
 		return fmt.Errorf("prepare vendor dir: %w", err)
 	}
@@ -61,7 +66,7 @@ func Add(ctx context.Context, pkgURL, version string) error {
 			return fmt.Errorf("git checkout %s@%s: %w", repo, tag, err)
 		}
 	}
-	if err := updateConfig(dest, true); err != nil {
+	if err := updateConfig(destRel, true); err != nil {
 		return err
 	}
 	fmt.Printf("Package %s installed.\n", pkgURL)
@@ -72,9 +77,11 @@ func Remove(ctx context.Context, pkgURL string) error {
 	_ = ctx
 	repo, _, err := parsePkgURL(pkgURL)
 	if err == nil {
-		dest := filepath.Join(vendorDir, repo)
-		if _, err := os.Stat(dest); err == nil {
-			return removePackage(dest)
+		dest, derr := secureVendorPath(repo)
+		if derr == nil {
+			if _, err := os.Stat(dest); err == nil {
+				return removePackage(dest)
+			}
 		}
 	}
 	dest, err := findPackagePath(pkgURL)
@@ -85,6 +92,9 @@ func Remove(ctx context.Context, pkgURL string) error {
 }
 
 func removePackage(path string) error {
+	if err := ensureVendorSubpath(path); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(path); err != nil {
 		return fmt.Errorf("failed to remove %s: %w", path, err)
 	}
@@ -130,10 +140,22 @@ func cleanConfig(pkgPath string) error {
 	if !ok {
 		return nil
 	}
+	absPkgPath, _ := filepath.Abs(pkgPath)
 	newDirs := []interface{}{}
 	for _, d := range dirsSlice {
 		if str, ok := d.(string); ok {
-			if !strings.HasPrefix(str, pkgPath) {
+			remove := false
+			if absDir, err := filepath.Abs(str); err == nil {
+				if absDir == absPkgPath || strings.HasPrefix(absDir, absPkgPath+string(filepath.Separator)) {
+					remove = true
+				}
+			}
+			if !remove {
+				if str == pkgPath || strings.HasPrefix(str, pkgPath+string(filepath.Separator)) {
+					remove = true
+				}
+			}
+			if !remove {
 				newDirs = append(newDirs, str)
 			}
 		} else {
@@ -334,6 +356,51 @@ func InstallFromCatalog(ctx context.Context, pkgName string) error {
 	return nil
 }
 
+func secureVendorPath(repo string) (string, error) {
+	if strings.Contains(repo, "..") {
+		return "", fmt.Errorf("invalid repository path: %s", repo)
+	}
+	if strings.Contains(repo, "\\") {
+		return "", fmt.Errorf("invalid repository path: %s", repo)
+	}
+	dest := filepath.Join(vendorDir, repo)
+	absVendor, err := filepath.Abs(vendorDir)
+	if err != nil {
+		return "", err
+	}
+	absDest, err := filepath.Abs(dest)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(absVendor, absDest)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("package path escapes vendor directory: %s", repo)
+	}
+	return absDest, nil
+}
+
+func ensureVendorSubpath(resolved string) error {
+	absVendor, err := filepath.Abs(vendorDir)
+	if err != nil {
+		return err
+	}
+	absPath, err := filepath.Abs(resolved)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(absVendor, absPath)
+	if err != nil {
+		return err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("path outside vendor directory: %s", resolved)
+	}
+	return nil
+}
+
 func parsePkgURL(raw string) (repo, tag string, err error) {
 	raw = strings.TrimPrefix(raw, "https://")
 	raw = strings.TrimPrefix(raw, "http://")
@@ -347,8 +414,27 @@ func parsePkgURL(raw string) (repo, tag string, err error) {
 		repo = raw
 	}
 	repo = strings.Replace(repo, ":", "/", 1)
-	if !strings.Contains(repo, "/") {
+	if repo == "." || repo == "/" || strings.HasPrefix(repo, "/") || strings.Contains(repo, "..") || strings.Contains(repo, "\\") {
 		return "", "", fmt.Errorf("invalid repository format: %s", raw)
+	}
+	repo = path.Clean(repo)
+	if repo == "." || repo == "/" || strings.HasPrefix(repo, "/") || strings.Contains(repo, "..") || strings.Contains(repo, "\\") {
+		return "", "", fmt.Errorf("invalid repository format: %s", raw)
+	}
+	if strings.Contains(repo, "//") {
+		return "", "", fmt.Errorf("invalid repository format: %s", raw)
+	}
+	parts := strings.Split(repo, "/")
+	if len(parts) < 2 {
+		return "", "", fmt.Errorf("invalid repository format: %s", raw)
+	}
+	for _, p := range parts {
+		if p == "" {
+			return "", "", fmt.Errorf("invalid repository format: %s", raw)
+		}
+		if err := utils.ValidateCLIArg(p); err != nil {
+			return "", "", fmt.Errorf("invalid repository segment: %w", err)
+		}
 	}
 	return repo, tag, nil
 }
@@ -394,11 +480,17 @@ func updateConfig(pkgPath string, add bool) error {
 }
 
 func findPackagePath(name string) (string, error) {
+	if strings.Contains(name, "..") || strings.Contains(name, "\\") {
+		return "", fmt.Errorf("invalid package name: %s", name)
+	}
 	clean := strings.TrimPrefix(name, "github.com/")
 	var found string
 	err := filepath.Walk(vendorDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
 		}
 		if !info.IsDir() {
 			return nil
@@ -407,6 +499,13 @@ func findPackagePath(name string) (string, error) {
 		if _, err := os.Stat(gitPath); err == nil {
 			rel, _ := filepath.Rel(vendorDir, path)
 			if strings.HasSuffix(rel, clean) || rel == clean {
+				resolved, rerr := filepath.Abs(path)
+				if rerr != nil {
+					return rerr
+				}
+				if suberr := ensureVendorSubpath(resolved); suberr != nil {
+					return suberr
+				}
 				found = path
 				return filepath.SkipDir
 			}
