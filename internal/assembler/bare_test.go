@@ -1,9 +1,10 @@
 package assembler
 
 import (
+	"bytes"
 	"context"
+	"debug/elf"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -40,9 +41,6 @@ func TestIsBareMetalTarget(t *testing.T) {
 }
 
 func TestAssembleNASMBootSector(t *testing.T) {
-	if _, err := exec.LookPath("nasm"); err != nil {
-		t.Skip("nasm not installed")
-	}
 	oldFmt := OutputFormat
 	defer func() { OutputFormat = oldFmt }()
 	OutputFormat = "bin"
@@ -78,6 +76,40 @@ start:
 	}
 	if data[510] != 0x55 || data[511] != 0xAA {
 		t.Fatalf("missing boot signature: %02x %02x", data[510], data[511])
+	}
+}
+
+func TestEmitSourceObjectELF(t *testing.T) {
+	src := []byte("start:\n    db 0x90\n    global foo\nfoo:\n    db 0xCC\n")
+	out, err := emitSourceObject(src, selfTargetProfile("x86_64-linux-gnu"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := elf.NewFile(bytes.NewReader(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	sect := f.Section(".text")
+	if sect == nil {
+		t.Fatal("missing .text section")
+	}
+	if sect.Size != 2 {
+		t.Fatalf(".text size = %d, want 2", sect.Size)
+	}
+	syms, err := f.Symbols()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, sym := range syms {
+		found[sym.Name] = true
+	}
+	if !found["start"] {
+		t.Fatal("missing start symbol")
+	}
+	if !found["foo"] {
+		t.Fatal("missing foo symbol")
 	}
 }
 
