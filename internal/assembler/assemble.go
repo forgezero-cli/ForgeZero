@@ -125,6 +125,9 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 			}
 			return assembleFASM(ctx, src, obj, debug, verbose)
 		}
+		if mode == "raw" {
+			return assembleRawASM(ctx, src, obj, debug, verbose)
+		}
 		if IsBinFormat() {
 			if err := CheckAssemblerTool("nasm"); err != nil {
 				return err
@@ -165,6 +168,19 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 	default:
 		return fmt.Errorf("unsupported source extension: %s (supported: .asm, .s, .S, .fasm, .c, .cpp, .cc, .cxx)", ext)
 	}
+}
+
+func assembleRawASM(ctx context.Context, src, obj string, debug, verbose bool) error {
+	if isWasmTarget() {
+		return fmt.Errorf("cannot assemble .asm files for wasm target")
+	}
+	if IsBinFormat() {
+		if verbose || debug {
+			return assembleNASMSlow(ctx, src, obj, debug, verbose)
+		}
+		return assembleNASMHot(ctx, src, obj, debug, verbose)
+	}
+	return assembleNASMSlow(ctx, src, obj, debug, verbose)
 }
 
 func assembleNASM(ctx context.Context, src, obj string, debug, verbose bool) error {
