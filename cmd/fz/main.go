@@ -812,23 +812,10 @@ func main() {
 		ccFlags            string
 		ldFlags            string
 		forceFASM          bool
+		rawFlag            bool
+		forceLdFlag        bool
 	)
 
-	flag.StringVar(&asmPath, "asm", "", "")
-	flag.StringVar(&asmPath, "assembler", "", "")
-	flag.StringVar(&ccPath, "cc", "", "")
-	flag.StringVar(&dirPath, "dir", "", "")
-	flag.BoolVar(&debug, "debug", false, "")
-	flag.BoolVar(&verbose, "verbose", false, "")
-	flag.StringVar(&outBin, "out", "", "")
-	flag.StringVar(&outObj, "out-obj", "", "")
-	flag.IntVar(&timeoutSec, "timeout", 60, "")
-	flag.StringVar(&mode, "mode", "", "")
-	flag.BoolVar(&keepObj, "keep-obj", false, "")
-	flag.BoolVar(&clean, "clean", false, "")
-	flag.BoolVar(&noCache, "no-cache", false, "")
-	flag.BoolVar(&noSymbolCheck, "no-symbol-check", false, "")
-	flag.StringVar(&configPath, "config", "", "")
 	flag.BoolVar(&watch, "watch", false, "")
 	flag.BoolVar(&sanitize, "sanitize", true, "")
 	flag.BoolVar(&noSanitize, "no-sanitize", false, "")
@@ -856,6 +843,22 @@ func main() {
 	flag.StringVar(&ccFlags, "cc-flag", "", "additional C compiler flags (space-separated)")
 	flag.StringVar(&ldFlags, "ld-flag", "", "additional linker flags (space-separated)")
 	flag.BoolVar(&forceFASM, "fasm", false, "use FASM instead of NASM for .asm files")
+	flag.BoolVar(&rawFlag, "raw", false, "force raw linking (alias for -mode raw)")
+	flag.BoolVar(&forceLdFlag, "ld", false, "invoke ld directly, skip gcc/clang probes")
+	flag.StringVar(&asmPath, "asm", "", "path to .asm file")
+	flag.StringVar(&ccPath, "cc", "", "path to C source file")
+	flag.StringVar(&dirPath, "dir", "", "build all supported files recursively")
+	flag.StringVar(&outBin, "out", "", "output binary name")
+	flag.StringVar(&outObj, "out-obj", "", "object file name (single file only)")
+	flag.StringVar(&mode, "mode", "auto", "linking mode: auto, c, raw")
+	flag.BoolVar(&debug, "debug", false, "emit debug symbols (-g)")
+	flag.BoolVar(&debug, "d", false, "emit debug symbols (-g)")
+	flag.BoolVar(&verbose, "verbose", false, "print every command executed")
+	flag.BoolVar(&keepObj, "keep-obj", false, "keep temporary object files (when using -dir)")
+	flag.BoolVar(&noCache, "no-cache", false, "disable incremental cache")
+	flag.BoolVar(&noSymbolCheck, "no-symbol-check", false, "skip duplicate symbol pre-check")
+	flag.StringVar(&configPath, "config", "", "config file (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)")
+	flag.BoolVar(&clean, "clean", false, "remove all build artifacts (.fz_objs, .fz_cache, binaries)")
 	flag.Usage = printHelp
 	flag.Parse()
 
@@ -949,7 +952,12 @@ func main() {
 	}
 
 	assembler.ForceFASM = forceFASM
-
+	if rawFlag {
+		mode = "raw"
+	}
+	if forceLdFlag {
+		linker.ForceLD = true
+	}
 	ctx := context.Background()
 	if len(os.Args) >= 2 && os.Args[1] == "pm" {
 		if len(os.Args) < 3 {
