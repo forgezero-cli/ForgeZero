@@ -3,7 +3,12 @@
 
 package linker
 
-import "syscall"
+import (
+	"context"
+	"io"
+	"os"
+	"syscall"
+)
 
 func copyFileHot(src, dst string) error {
 	srcPtr, err := syscall.UTF16PtrFromString(src)
@@ -32,7 +37,6 @@ func copyFileHot(src, dst string) error {
 				if rn == 0 {
 					break
 				}
-				// continue and write remaining bytes
 			} else {
 				_ = syscall.CloseHandle(dfd)
 				_ = syscall.CloseHandle(sfd)
@@ -62,4 +66,27 @@ func copyFileHot(src, dst string) error {
 		return err
 	}
 	return nil
+}
+
+func unlinkHot(path string) error {
+	return os.Remove(path)
+}
+
+func shouldSkipLinker() bool {
+	return false
+}
+
+func linkFlatBinary(ctx context.Context, obj, bin string) error {
+	sf, err := os.Open(obj)
+	if err != nil {
+		return err
+	}
+	defer sf.Close()
+	df, err := os.Create(bin)
+	if err != nil {
+		return err
+	}
+	defer df.Close()
+	_, err = io.Copy(df, sf)
+	return err
 }
