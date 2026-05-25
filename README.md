@@ -82,7 +82,7 @@ go build -o fz ./cmd/fz
 ./bench.sh  # Generates 20 test modules and runs hyperfine
 
 ---
-
+```
 ## Table of Contents
 
 1. [Overview](#1-overview)
