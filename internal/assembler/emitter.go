@@ -2,10 +2,11 @@ package assembler
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
-	"runtime"
+	"strconv"
 	"sync"
 )
 
@@ -43,39 +44,6 @@ var nameShstrtab = []byte(".shstrtab")
 var nameSymtab = []byte(".symtab")
 var nameStrtab = []byte(".strtab")
 var reusableOut *[]byte
-
-var allocCounters = map[string]uint64{}
-var allocCountersMu sync.Mutex
-
-func resetAllocCounters() {
-	allocCountersMu.Lock()
-	for k := range allocCounters {
-		delete(allocCounters, k)
-	}
-	allocCountersMu.Unlock()
-}
-
-func recordAllocPoint(name string) {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	allocCountersMu.Lock()
-	allocCounters[name] = m.Mallocs
-	allocCountersMu.Unlock()
-}
-
-func snapshotAllocDeltas() map[string]uint64 {
-	allocCountersMu.Lock()
-	defer allocCountersMu.Unlock()
-	out := make(map[string]uint64, len(allocCounters))
-	var base uint64
-	if v, ok := allocCounters["start"]; ok {
-		base = v
-	}
-	for k, v := range allocCounters {
-		out[k] = v - base
-	}
-	return out
-}
 
 func assembleBareMetalObject(ctx context.Context, src, obj string) error {
 	srcBuf, release, err := loadSourcePooled(src)
@@ -318,6 +286,16 @@ func (p *parser) parseLine(line []byte) error {
 		return p.alignSection(n)
 	case equalWord(tok, "bits"), equalWord(tok, "org"):
 		return nil
+	case equalWord(tok, "mov"):
+		return p.emitMov(rest)
+	case equalWord(tok, "xor"):
+		return p.emitXor(rest)
+	case equalWord(tok, "syscall"):
+		p.current.data = append(p.current.data, 0x0F, 0x05)
+		return nil
+	case equalWord(tok, "ret"):
+		p.current.data = append(p.current.data, 0xC3)
+		return nil
 	}
 	return fmt.Errorf("unsupported assembler directive: %s", string(tok))
 }
@@ -507,7 +485,6 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	}
 	out := *outPtr
 	out = out[:0]
-	recordAllocPoint("start")
 	ehSize := 64
 	if profile.elfClass == elfClass32 {
 		ehSize = 52
@@ -545,7 +522,6 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	symtabOffset = len(out)
 	base := len(out)
 	out = out[:base+symtabSize]
-	recordAllocPoint("after_reserve_symtab")
 	strtabOffset := len(out)
 	out = append(out, 0)
 	for i := 0; i < p.symCount; i++ {
@@ -553,7 +529,6 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 		out = append(out, p.symbols[i].name...)
 		out = append(out, 0)
 	}
-	recordAllocPoint("after_build_strtab")
 	if profile.elfClass == elfClass64 {
 		off := symtabOffset
 		writeElf64SymAt(out, off, 0, 0, 0, 0, 0, 0)
@@ -573,7 +548,6 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 			off += 16
 		}
 	}
-	recordAllocPoint("after_write_symtab")
 	shstrtabOffset := len(out)
 	out = append(out, 0)
 	out = append(out, shstrtabNames0...)
@@ -590,7 +564,6 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	out = append(out, 0)
 	out = append(out, shstrtabNames6...)
 	out = append(out, 0)
-	recordAllocPoint("after_build_shstrtab")
 	shstrtab := out[shstrtabOffset : shstrtabOffset+shstrtabLen]
 	shOff := alignOutOffset(len(out), uint64(shdrSize))
 	out = alignOut(out, uint64(shdrSize))
@@ -929,6 +902,129 @@ func splitArgs(data []byte) [][]byte {
 		}
 	}
 	return parts
+}
+
+type registerInfo struct {
+	code  byte
+	width int
+}
+
+func parseRegister(tok []byte) (registerInfo, bool) {
+	s := string(tok)
+	switch s {
+	case "rax":
+		return registerInfo{code: 0, width: 64}, true
+	case "rcx":
+		return registerInfo{code: 1, width: 64}, true
+	case "rdx":
+		return registerInfo{code: 2, width: 64}, true
+	case "rbx":
+		return registerInfo{code: 3, width: 64}, true
+	case "rsp":
+		return registerInfo{code: 4, width: 64}, true
+	case "rbp":
+		return registerInfo{code: 5, width: 64}, true
+	case "rsi":
+		return registerInfo{code: 6, width: 64}, true
+	case "rdi":
+		return registerInfo{code: 7, width: 64}, true
+	case "eax":
+		return registerInfo{code: 0, width: 32}, true
+	case "ecx":
+		return registerInfo{code: 1, width: 32}, true
+	case "edx":
+		return registerInfo{code: 2, width: 32}, true
+	case "ebx":
+		return registerInfo{code: 3, width: 32}, true
+	case "esp":
+		return registerInfo{code: 4, width: 32}, true
+	case "ebp":
+		return registerInfo{code: 5, width: 32}, true
+	case "esi":
+		return registerInfo{code: 6, width: 32}, true
+	case "edi":
+		return registerInfo{code: 7, width: 32}, true
+	}
+	return registerInfo{}, false
+}
+
+func parseImmediate(tok []byte) (uint64, error) {
+	value := string(trimSpace(tok))
+	return strconv.ParseUint(value, 0, 64)
+}
+
+func (p *parser) emitMov(rest []byte) error {
+	args := splitArgs(trimSpace(rest))
+	if len(args) != 2 {
+		return fmt.Errorf("invalid mov operands: %s", string(rest))
+	}
+	dstToken := trimSpace(args[0])
+	srcToken := trimSpace(args[1])
+	dst, ok := parseRegister(dstToken)
+	if !ok {
+		return fmt.Errorf("invalid mov destination: %s", string(dstToken))
+	}
+	if src, ok := parseRegister(srcToken); ok {
+		if dst.width != src.width {
+			return fmt.Errorf("register size mismatch: %s, %s", string(dstToken), string(srcToken))
+		}
+		opcode := byte(0x89)
+		if dst.width == 64 {
+			p.current.data = append(p.current.data, 0x48, opcode)
+		} else {
+			p.current.data = append(p.current.data, opcode)
+		}
+		modrm := byte(0xC0 | (src.code << 3) | dst.code)
+		p.current.data = append(p.current.data, modrm)
+		return nil
+	}
+	imm, err := parseImmediate(srcToken)
+	if err != nil {
+		return fmt.Errorf("invalid mov immediate: %s", string(srcToken))
+	}
+	if dst.width == 64 {
+		p.current.data = append(p.current.data, 0x48, 0xB8+dst.code)
+		var buf [8]byte
+		binary.LittleEndian.PutUint64(buf[:], imm)
+		p.current.data = append(p.current.data, buf[:]...)
+		return nil
+	}
+	if imm > 0xFFFFFFFF {
+		return fmt.Errorf("mov immediate too large for 32-bit register: %d", imm)
+	}
+	p.current.data = append(p.current.data, 0xB8+dst.code)
+	var buf [4]byte
+	binary.LittleEndian.PutUint32(buf[:], uint32(imm))
+	p.current.data = append(p.current.data, buf[:]...)
+	return nil
+}
+
+func (p *parser) emitXor(rest []byte) error {
+	args := splitArgs(trimSpace(rest))
+	if len(args) != 2 {
+		return fmt.Errorf("invalid xor operands: %s", string(rest))
+	}
+	dstToken := trimSpace(args[0])
+	srcToken := trimSpace(args[1])
+	dst, ok := parseRegister(dstToken)
+	if !ok {
+		return fmt.Errorf("invalid xor destination: %s", string(dstToken))
+	}
+	src, ok := parseRegister(srcToken)
+	if !ok {
+		return fmt.Errorf("invalid xor source: %s", string(srcToken))
+	}
+	if dst.code != src.code || dst.width != src.width {
+		return fmt.Errorf("unsupported xor operands: %s, %s", string(dstToken), string(srcToken))
+	}
+	if dst.width == 64 {
+		p.current.data = append(p.current.data, 0x48, 0x31)
+	} else {
+		p.current.data = append(p.current.data, 0x31)
+	}
+	modrm := byte(0xC0 | (src.code << 3) | dst.code)
+	p.current.data = append(p.current.data, modrm)
+	return nil
 }
 
 func trimSpace(data []byte) []byte {
