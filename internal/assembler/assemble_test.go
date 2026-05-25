@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -442,3 +443,75 @@ func TestAssembleCUsesZigWhenRequested(t *testing.T) {
 		t.Fatal("expected zig compile to run")
 	}
 }
+
+func TestEmitZeroAllocs_x86_64(t *testing.T) {
+	profile := TargetProfileFromTarget("x86_64-linux-gnu")
+	p := parser{}
+	p.text.name = []byte(".text")
+	p.text.flags = shFlagAlloc | shFlagExecInstr
+	p.text.align = profile.align
+	p.data.name = []byte(".data")
+	p.data.flags = shFlagAlloc | shFlagWrite
+	p.data.align = profile.align
+	p.bss.name = []byte(".bss")
+	p.bss.flags = shFlagAlloc | shFlagWrite
+	p.bss.align = profile.align
+	p.current = &p.text
+	p.text.data = []byte{144, 144, 144}
+	p.data.data = []byte{1, 2, 3, 4}
+	for i := 0; i < 20; i++ {
+		if _, err := p.emit(profile); err != nil {
+			t.Fatalf("warmup emit failed: %v", err)
+		}
+	}
+	ehSize := 64
+	if profile.elfClass == elfClass32 {
+		ehSize = 52
+	}
+	shdrSize := elf64ShdrSize
+	if profile.elfClass == elfClass32 {
+		shdrSize = elf32ShdrSize
+	}
+	shstrtabLen := 1 + (len(nameEmpty) + 1) + (len(p.text.name) + 1) + (len(p.data.name) + 1) + (len(p.bss.name) + 1) + (len(nameShstrtab) + 1) + (len(nameSymtab) + 1) + (len(nameStrtab) + 1)
+	strtabLen := 1
+	for i := 0; i < p.symCount; i++ {
+		strtabLen += len(p.symbols[i].name) + 1
+	}
+	symEntrySize := 24
+	if profile.elfClass == elfClass32 {
+		symEntrySize = 16
+	}
+	symtabSize := (p.symCount + 1) * symEntrySize
+	need := ehSize + len(p.text.data) + len(p.data.data) + symtabSize + strtabLen + shstrtabLen + shdrSize*7
+	need += 1024
+	b := make([]byte, 0, need)
+	reusableOut = &b
+	benchParser = &p
+	benchProfile = profile
+	resetAllocCounters()
+	if _, err := benchParser.emit(benchProfile); err != nil {
+		t.Fatalf("warmup emit failed: %v", err)
+	}
+	deltas := snapshotAllocDeltas()
+	for k, v := range deltas {
+		t.Logf("alloc delta %s = %d", k, v)
+	}
+	var m1, m2 runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&m1)
+	for i := 0; i < 50; i++ {
+		if _, err := benchParser.emit(benchProfile); err != nil {
+			panic(err)
+		}
+	}
+	runtime.ReadMemStats(&m2)
+	allocs := (m2.Mallocs - m1.Mallocs) / 50
+	if allocs != 0 {
+		t.Fatalf("allocs per run = %v, want 0", allocs)
+	}
+}
+
+var (
+	benchParser  *parser
+	benchProfile targetEmitterProfile
+)
