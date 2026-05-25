@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"sync"
 )
 
@@ -31,9 +32,50 @@ const (
 	stBindGlobal      = 1
 	stTypeNotype      = 0
 	shnUnDef          = 0
+	elf32ShdrSize     = 40
+	elf64ShdrSize     = 64
 )
 
 var emitterBufferPool = sync.Pool{New: func() any { b := make([]byte, 0, 65536); return &b }}
+
+var nameEmpty = []byte("")
+var nameShstrtab = []byte(".shstrtab")
+var nameSymtab = []byte(".symtab")
+var nameStrtab = []byte(".strtab")
+var reusableOut *[]byte
+
+var allocCounters = map[string]uint64{}
+var allocCountersMu sync.Mutex
+
+func resetAllocCounters() {
+	allocCountersMu.Lock()
+	for k := range allocCounters {
+		delete(allocCounters, k)
+	}
+	allocCountersMu.Unlock()
+}
+
+func recordAllocPoint(name string) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	allocCountersMu.Lock()
+	allocCounters[name] = m.Mallocs
+	allocCountersMu.Unlock()
+}
+
+func snapshotAllocDeltas() map[string]uint64 {
+	allocCountersMu.Lock()
+	defer allocCountersMu.Unlock()
+	out := make(map[string]uint64, len(allocCounters))
+	var base uint64
+	if v, ok := allocCounters["start"]; ok {
+		base = v
+	}
+	for k, v := range allocCounters {
+		out[k] = v - base
+	}
+	return out
+}
 
 func assembleBareMetalObject(ctx context.Context, src, obj string) error {
 	srcBuf, release, err := loadSourcePooled(src)
@@ -193,7 +235,12 @@ func emitSourceRaw(src []byte, profile targetEmitterProfile) ([]byte, error) {
 }
 
 func (p *parser) emitRaw(profile targetEmitterProfile) ([]byte, error) {
-	outPtr := emitterBufferPool.Get().(*[]byte)
+	var outPtr *[]byte
+	if reusableOut != nil {
+		outPtr = reusableOut
+	} else {
+		outPtr = emitterBufferPool.Get().(*[]byte)
+	}
 	out := *outPtr
 	out = out[:0]
 	if len(p.text.data) > 0 {
@@ -206,6 +253,9 @@ func (p *parser) emitRaw(profile targetEmitterProfile) ([]byte, error) {
 		out = append(out, 0)
 	}
 	*outPtr = out
+	if reusableOut == nil {
+		emitterBufferPool.Put(outPtr)
+	}
 	return out, nil
 }
 
@@ -432,28 +482,46 @@ func (p *parser) alignSection(arg []byte) error {
 }
 
 func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
-	shstrtabNames0 := []byte("")
+	shstrtabNames0 := nameEmpty
 	shstrtabNames1 := p.text.name
 	shstrtabNames2 := p.data.name
 	shstrtabNames3 := p.bss.name
-	shstrtabNames4 := []byte(".shstrtab")
-	shstrtabNames5 := []byte(".symtab")
-	shstrtabNames6 := []byte(".strtab")
-	shstrtabLen := 1 + (len(shstrtabNames0)+1) + (len(shstrtabNames1)+1) + (len(shstrtabNames2)+1) + (len(shstrtabNames3)+1) + (len(shstrtabNames4)+1) + (len(shstrtabNames5)+1) + (len(shstrtabNames6) + 1)
-	strtab := buildSymbolStringTable(p)
-	symtab := buildSymbolTable(p, strtab, profile)
-	outPtr := emitterBufferPool.Get().(*[]byte)
+	shstrtabNames4 := nameShstrtab
+	shstrtabNames5 := nameSymtab
+	shstrtabNames6 := nameStrtab
+	shstrtabLen := 1 + (len(shstrtabNames0) + 1) + (len(shstrtabNames1) + 1) + (len(shstrtabNames2) + 1) + (len(shstrtabNames3) + 1) + (len(shstrtabNames4) + 1) + (len(shstrtabNames5) + 1) + (len(shstrtabNames6) + 1)
+	strtabLen := 1
+	for i := 0; i < p.symCount; i++ {
+		strtabLen += len(p.symbols[i].name) + 1
+	}
+	symEntrySize := 24
+	if profile.elfClass == elfClass32 {
+		symEntrySize = 16
+	}
+	symtabSize := (p.symCount + 1) * symEntrySize
+	var outPtr *[]byte
+	if reusableOut != nil {
+		outPtr = reusableOut
+	} else {
+		outPtr = emitterBufferPool.Get().(*[]byte)
+	}
 	out := *outPtr
 	out = out[:0]
-	headerSize := 64
+	recordAllocPoint("start")
+	ehSize := 64
 	if profile.elfClass == elfClass32 {
-		headerSize = 52
+		ehSize = 52
 	}
-	need := headerSize + len(p.text.data) + len(p.data.data) + len(symtab) + len(strtab) + shstrtabLen + headerSize*(7)
+	shdrSize := elf64ShdrSize
+	if profile.elfClass == elfClass32 {
+		shdrSize = elf32ShdrSize
+	}
+	need := ehSize + len(p.text.data) + len(p.data.data) + symtabSize + strtabLen + shstrtabLen + shdrSize*(7)
+	need += 512
 	if cap(out) < need {
 		out = make([]byte, 0, need)
 	}
-	for i := 0; i < headerSize; i++ {
+	for i := 0; i < ehSize; i++ {
 		out = append(out, 0)
 	}
 	textOffset := 0
@@ -475,9 +543,37 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	symtabOffset := alignOutOffset(len(out), align)
 	out = alignOut(out, align)
 	symtabOffset = len(out)
-	out = append(out, symtab...)
+	base := len(out)
+	out = out[:base+symtabSize]
+	recordAllocPoint("after_reserve_symtab")
 	strtabOffset := len(out)
-	out = append(out, strtab...)
+	out = append(out, 0)
+	for i := 0; i < p.symCount; i++ {
+		p.symbols[i].nameOffset = uint32(len(out) - strtabOffset)
+		out = append(out, p.symbols[i].name...)
+		out = append(out, 0)
+	}
+	recordAllocPoint("after_build_strtab")
+	if profile.elfClass == elfClass64 {
+		off := symtabOffset
+		writeElf64SymAt(out, off, 0, 0, 0, 0, 0, 0)
+		off += 24
+		for i := 0; i < p.symCount; i++ {
+			info := byte(p.symbols[i].bind<<4 | p.symbols[i].typ)
+			writeElf64SymAt(out, off, p.symbols[i].nameOffset, info, 0, p.symbols[i].shndx, p.symbols[i].value, 0)
+			off += 24
+		}
+	} else {
+		off := symtabOffset
+		writeElf32SymAt(out, off, 0, 0, 0, 0, 0, 0)
+		off += 16
+		for i := 0; i < p.symCount; i++ {
+			info := byte(p.symbols[i].bind<<4 | p.symbols[i].typ)
+			writeElf32SymAt(out, off, p.symbols[i].nameOffset, info, 0, p.symbols[i].shndx, uint32(p.symbols[i].value), 0)
+			off += 16
+		}
+	}
+	recordAllocPoint("after_write_symtab")
 	shstrtabOffset := len(out)
 	out = append(out, 0)
 	out = append(out, shstrtabNames0...)
@@ -494,11 +590,12 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	out = append(out, 0)
 	out = append(out, shstrtabNames6...)
 	out = append(out, 0)
-	shstrtab := out[shstrtabOffset:shstrtabOffset+shstrtabLen]
-	shOff := alignOutOffset(len(out), uint64(headerSize))
-	out = alignOut(out, uint64(headerSize))
+	recordAllocPoint("after_build_shstrtab")
+	shstrtab := out[shstrtabOffset : shstrtabOffset+shstrtabLen]
+	shOff := alignOutOffset(len(out), uint64(shdrSize))
+	out = alignOut(out, uint64(shdrSize))
 	numSections := 7
-	shSize := headerSize
+	shSize := shdrSize
 	for i := 0; i < numSections; i++ {
 		for j := 0; j < shSize; j++ {
 			out = append(out, 0)
@@ -506,15 +603,14 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	}
 	if profile.elfClass == elfClass64 {
 		populateELF64Header(out, profile, uint64(shOff), uint16(shSize), uint16(numSections), 4)
-		populateELF64SectionHeaders(out[shOff:], out, p, uint64(textOffset), uint64(dataOffset), uint64(symtabOffset), uint64(strtabOffset), uint64(shstrtabOffset), uint64(len(symtab)), uint64(len(strtab)), uint64(len(shstrtab)))
+		populateELF64SectionHeaders(out[shOff:], out, p, uint64(textOffset), uint64(dataOffset), uint64(symtabOffset), uint64(strtabOffset), uint64(shstrtabOffset), uint64(symtabSize), uint64(strtabLen), uint64(len(shstrtab)))
 	} else {
 		populateELF32Header(out, profile, uint32(shOff), uint16(shSize), uint16(numSections), 4)
-		populateELF32SectionHeaders(out[shOff:], out, p, uint32(textOffset), uint32(dataOffset), uint32(symtabOffset), uint32(strtabOffset), uint32(shstrtabOffset), uint32(len(symtab)), uint32(len(strtab)), uint32(len(shstrtab)))
+		populateELF32SectionHeaders(out[shOff:], out, p, uint32(textOffset), uint32(dataOffset), uint32(symtabOffset), uint32(strtabOffset), uint32(shstrtabOffset), uint32(symtabSize), uint32(strtabLen), uint32(len(shstrtab)))
 	}
 	*outPtr = out
 	return out, nil
 }
-
 
 func buildStringTable(names [][]byte) []byte {
 	outPtr := emitterBufferPool.Get().(*[]byte)
@@ -604,35 +700,83 @@ func matchBytes(data, pattern []byte) bool {
 }
 
 func writeELF64Section(out []byte, name uint32, typ uint32, flags uint64, addr uint64, offset uint64, size uint64, link uint32, info uint32, addralign uint64, entsize uint64) {
-	out = out[:0]
-	out = appendUint32(out, name)
-	out = appendUint32(out, typ)
-	out = appendUint64(out, flags)
-	out = appendUint64(out, addr)
-	out = appendUint64(out, offset)
-	out = appendUint64(out, size)
-	out = appendUint32(out, link)
-	out = appendUint32(out, info)
-	out = appendUint64(out, addralign)
-	out = appendUint64(out, entsize)
+	if len(out) < elf64ShdrSize {
+		return
+	}
+	writeUint32At(out, 0, name)
+	writeUint32At(out, 4, typ)
+	writeUint64At(out, 8, flags)
+	writeUint64At(out, 16, addr)
+	writeUint64At(out, 24, offset)
+	writeUint64At(out, 32, size)
+	writeUint32At(out, 40, link)
+	writeUint32At(out, 44, info)
+	writeUint64At(out, 48, addralign)
+	writeUint64At(out, 56, entsize)
 }
 
 func writeELF32Section(out []byte, name uint32, typ uint32, flags uint32, addr uint32, offset uint32, size uint32, link uint32, info uint32, addralign uint32, entsize uint32) {
-	out = out[:0]
-	out = appendUint32(out, name)
-	out = appendUint32(out, typ)
-	out = appendUint32(out, flags)
-	out = appendUint32(out, addr)
-	out = appendUint32(out, offset)
-	out = appendUint32(out, size)
-	out = appendUint32(out, link)
-	out = appendUint32(out, info)
-	out = appendUint32(out, addralign)
-	out = appendUint32(out, entsize)
+	if len(out) < elf32ShdrSize {
+		return
+	}
+	writeUint32At(out, 0, name)
+	writeUint32At(out, 4, typ)
+	writeUint32At(out, 8, flags)
+	writeUint32At(out, 12, addr)
+	writeUint32At(out, 16, offset)
+	writeUint32At(out, 20, size)
+	writeUint32At(out, 24, link)
+	writeUint32At(out, 28, info)
+	writeUint32At(out, 32, addralign)
+	writeUint32At(out, 36, entsize)
+}
+
+func writeUint16At(b []byte, off int, v uint16) {
+	b[off] = byte(v)
+	b[off+1] = byte(v >> 8)
+}
+
+func writeUint32At(b []byte, off int, v uint32) {
+	b[off] = byte(v)
+	b[off+1] = byte(v >> 8)
+	b[off+2] = byte(v >> 16)
+	b[off+3] = byte(v >> 24)
+}
+
+func writeUint64At(b []byte, off int, v uint64) {
+	b[off] = byte(v)
+	b[off+1] = byte(v >> 8)
+	b[off+2] = byte(v >> 16)
+	b[off+3] = byte(v >> 24)
+	b[off+4] = byte(v >> 32)
+	b[off+5] = byte(v >> 40)
+	b[off+6] = byte(v >> 48)
+	b[off+7] = byte(v >> 56)
+}
+
+func writeElf64SymAt(dst []byte, off int, name uint32, info byte, other byte, shndx uint16, value uint64, size uint64) {
+	writeUint32At(dst, off+0, name)
+	dst[off+4] = info
+	dst[off+5] = other
+	writeUint16At(dst, off+6, shndx)
+	writeUint64At(dst, off+8, value)
+	writeUint64At(dst, off+16, size)
+}
+
+func writeElf32SymAt(dst []byte, off int, name uint32, info byte, other byte, shndx uint16, value uint32, size uint32) {
+	writeUint32At(dst, off+0, name)
+	dst[off+4] = info
+	dst[off+5] = other
+	writeUint16At(dst, off+6, shndx)
+	writeUint32At(dst, off+8, value)
+	writeUint32At(dst, off+12, size)
 }
 
 func populateELF64Header(out []byte, profile targetEmitterProfile, shoff uint64, shentsize uint16, shnum uint16, shstrndx uint16) {
-	copy(out[0:4], []byte{0x7f, 'E', 'L', 'F'})
+	out[0] = 0x7f
+	out[1] = 'E'
+	out[2] = 'L'
+	out[3] = 'F'
 	out[4] = elfClass64
 	out[5] = elfData2LSB
 	out[6] = elfVersion1
@@ -645,23 +789,26 @@ func populateELF64Header(out []byte, profile targetEmitterProfile, shoff uint64,
 	out[13] = 0
 	out[14] = 0
 	out[15] = 0
-	out = appendUint16(out[:16], elfTypeRel)
-	out = appendUint16(out[:18], profile.eMachine)
-	out = appendUint32(out[:20], elfVersion1)
-	out = appendUint64(out[:24], 0)
-	out = appendUint64(out[:32], 0)
-	out = appendUint64(out[:40], shoff)
-	out = appendUint32(out[:48], 0)
-	out = appendUint16(out[:52], 64)
-	out = appendUint16(out[:54], 0)
-	out = appendUint16(out[:56], 0)
-	out = appendUint16(out[:58], shentsize)
-	out = appendUint16(out[:60], shnum)
-	out = appendUint16(out[:62], shstrndx)
+	writeUint16At(out, 16, elfTypeRel)
+	writeUint16At(out, 18, profile.eMachine)
+	writeUint32At(out, 20, elfVersion1)
+	writeUint64At(out, 24, 0)
+	writeUint64At(out, 32, 0)
+	writeUint64At(out, 40, shoff)
+	writeUint32At(out, 48, 0)
+	writeUint16At(out, 52, 64)
+	writeUint16At(out, 54, 0)
+	writeUint16At(out, 56, 0)
+	writeUint16At(out, 58, shentsize)
+	writeUint16At(out, 60, shnum)
+	writeUint16At(out, 62, shstrndx)
 }
 
 func populateELF32Header(out []byte, profile targetEmitterProfile, shoff uint32, shentsize uint16, shnum uint16, shstrndx uint16) {
-	copy(out[0:4], []byte{0x7f, 'E', 'L', 'F'})
+	out[0] = 0x7f
+	out[1] = 'E'
+	out[2] = 'L'
+	out[3] = 'F'
 	out[4] = elfClass32
 	out[5] = elfData2LSB
 	out[6] = elfVersion1
@@ -674,30 +821,30 @@ func populateELF32Header(out []byte, profile targetEmitterProfile, shoff uint32,
 	out[13] = 0
 	out[14] = 0
 	out[15] = 0
-	out = appendUint16(out[:16], elfTypeRel)
-	out = appendUint16(out[:18], profile.eMachine)
-	out = appendUint32(out[:20], elfVersion1)
-	out = appendUint32(out[:24], 0)
-	out = appendUint32(out[:28], 0)
-	out = appendUint32(out[:32], shoff)
-	out = appendUint32(out[:36], 0)
-	out = appendUint16(out[:40], 52)
-	out = appendUint16(out[:42], 0)
-	out = appendUint16(out[:44], 0)
-	out = appendUint16(out[:46], shentsize)
-	out = appendUint16(out[:48], shnum)
-	out = appendUint16(out[:50], shstrndx)
+	writeUint16At(out, 16, elfTypeRel)
+	writeUint16At(out, 18, profile.eMachine)
+	writeUint32At(out, 20, elfVersion1)
+	writeUint32At(out, 24, 0)
+	writeUint32At(out, 28, 0)
+	writeUint32At(out, 32, shoff)
+	writeUint32At(out, 36, 0)
+	writeUint16At(out, 40, 52)
+	writeUint16At(out, 42, 0)
+	writeUint16At(out, 44, 0)
+	writeUint16At(out, 46, shentsize)
+	writeUint16At(out, 48, shnum)
+	writeUint16At(out, 50, shstrndx)
 }
 
 func populateELF64SectionHeaders(sec []byte, full []byte, p *parser, textOffset, dataOffset, symtabOffset, strtabOffset, shstrtabOffset uint64, symtabSize, strtabSize, shstrtabSize uint64) {
 	shstr := full[shstrtabOffset : shstrtabOffset+shstrtabSize]
-	writeELF64Section(sec[0:], 0, shTypeNull, 0, 0, 0, 0, 0, 0, 0, 0)
-	writeELF64Section(sec[64:], uint32(offsetOfNameInShstr(p.text.name, shstr)), shTypeProgBits, uint64(p.text.flags), 0, uint64(textOffset), uint64(len(p.text.data)), 0, 0, uint64(p.text.align), 0)
-	writeELF64Section(sec[128:], uint32(offsetOfNameInShstr(p.data.name, shstr)), shTypeProgBits, uint64(p.data.flags), 0, uint64(dataOffset), uint64(len(p.data.data)), 0, 0, uint64(p.data.align), 0)
-	writeELF64Section(sec[192:], uint32(offsetOfNameInShstr(p.bss.name, shstr)), shTypeNoBits, uint64(p.bss.flags), 0, 0, p.bss.size, 0, 0, uint64(p.bss.align), 0)
-	writeELF64Section(sec[256:], uint32(offsetOfNameInShstr([]byte(".shstrtab"), shstr)), shTypeStrTab, 0, 0, shstrtabOffset, shstrtabSize, 0, 0, 1, 0)
-	writeELF64Section(sec[320:], uint32(offsetOfNameInShstr([]byte(".symtab"), shstr)), shTypeSymTab, 0, 0, symtabOffset, symtabSize, 6, uint32(symbolLocalCount(p)+1), 8, 24)
-	writeELF64Section(sec[384:], uint32(offsetOfNameInShstr([]byte(".strtab"), shstr)), shTypeStrTab, 0, 0, strtabOffset, strtabSize, 0, 0, 1, 0)
+	writeELF64Section(sec[0:elf64ShdrSize], 0, shTypeNull, 0, 0, 0, 0, 0, 0, 0, 0)
+	writeELF64Section(sec[elf64ShdrSize:elf64ShdrSize*2], uint32(offsetOfNameInShstr(p.text.name, shstr)), shTypeProgBits, uint64(p.text.flags), 0, uint64(textOffset), uint64(len(p.text.data)), 0, 0, uint64(p.text.align), 0)
+	writeELF64Section(sec[elf64ShdrSize*2:elf64ShdrSize*3], uint32(offsetOfNameInShstr(p.data.name, shstr)), shTypeProgBits, uint64(p.data.flags), 0, uint64(dataOffset), uint64(len(p.data.data)), 0, 0, uint64(p.data.align), 0)
+	writeELF64Section(sec[elf64ShdrSize*3:elf64ShdrSize*4], uint32(offsetOfNameInShstr(p.bss.name, shstr)), shTypeNoBits, uint64(p.bss.flags), 0, 0, p.bss.size, 0, 0, uint64(p.bss.align), 0)
+	writeELF64Section(sec[elf64ShdrSize*4:elf64ShdrSize*5], uint32(offsetOfNameInShstr(nameShstrtab, shstr)), shTypeStrTab, 0, 0, shstrtabOffset, shstrtabSize, 0, 0, 1, 0)
+	writeELF64Section(sec[elf64ShdrSize*5:elf64ShdrSize*6], uint32(offsetOfNameInShstr(nameSymtab, shstr)), shTypeSymTab, 0, 0, symtabOffset, symtabSize, 6, uint32(symbolLocalCount(p)+1), 8, 24)
+	writeELF64Section(sec[elf64ShdrSize*6:elf64ShdrSize*7], uint32(offsetOfNameInShstr(nameStrtab, shstr)), shTypeStrTab, 0, 0, strtabOffset, strtabSize, 0, 0, 1, 0)
 }
 
 func offsetOfNameInShstr(name []byte, shstrtab []byte) uint32 {
@@ -714,13 +861,13 @@ func offsetOfNameInShstr(name []byte, shstrtab []byte) uint32 {
 
 func populateELF32SectionHeaders(sec []byte, full []byte, p *parser, textOffset, dataOffset, symtabOffset, strtabOffset, shstrtabOffset uint32, symtabSize, strtabSize, shstrtabSize uint32) {
 	shstr := full[shstrtabOffset : shstrtabOffset+shstrtabSize]
-	writeELF32Section(sec[0:], 0, shTypeNull, 0, 0, 0, 0, 0, 0, 0, 0)
-	writeELF32Section(sec[40:], uint32(offsetOfNameInShstr(p.text.name, shstr)), shTypeProgBits, p.text.flags, 0, textOffset, uint32(len(p.text.data)), 0, 0, p.text.align, 0)
-	writeELF32Section(sec[80:], uint32(offsetOfNameInShstr(p.data.name, shstr)), shTypeProgBits, p.data.flags, 0, dataOffset, uint32(len(p.data.data)), 0, 0, p.data.align, 0)
-	writeELF32Section(sec[120:], uint32(offsetOfNameInShstr(p.bss.name, shstr)), shTypeNoBits, p.bss.flags, 0, 0, uint32(p.bss.size), 0, 0, p.bss.align, 0)
-	writeELF32Section(sec[160:], uint32(offsetOfNameInShstr([]byte(".shstrtab"), shstr)), shTypeStrTab, 0, 0, shstrtabOffset, shstrtabSize, 0, 0, 1, 0)
-	writeELF32Section(sec[200:], uint32(offsetOfNameInShstr([]byte(".symtab"), shstr)), shTypeSymTab, 0, 0, symtabOffset, symtabSize, 6, uint32(symbolLocalCount(p)+1), 8, 16)
-	writeELF32Section(sec[240:], uint32(offsetOfNameInShstr([]byte(".strtab"), shstr)), shTypeStrTab, 0, 0, strtabOffset, strtabSize, 0, 0, 1, 0)
+	writeELF32Section(sec[0:elf32ShdrSize], 0, shTypeNull, 0, 0, 0, 0, 0, 0, 0, 0)
+	writeELF32Section(sec[elf32ShdrSize:elf32ShdrSize*2], uint32(offsetOfNameInShstr(p.text.name, shstr)), shTypeProgBits, p.text.flags, 0, textOffset, uint32(len(p.text.data)), 0, 0, p.text.align, 0)
+	writeELF32Section(sec[elf32ShdrSize*2:elf32ShdrSize*3], uint32(offsetOfNameInShstr(p.data.name, shstr)), shTypeProgBits, p.data.flags, 0, dataOffset, uint32(len(p.data.data)), 0, 0, p.data.align, 0)
+	writeELF32Section(sec[elf32ShdrSize*3:elf32ShdrSize*4], uint32(offsetOfNameInShstr(p.bss.name, shstr)), shTypeNoBits, p.bss.flags, 0, 0, uint32(p.bss.size), 0, 0, p.bss.align, 0)
+	writeELF32Section(sec[elf32ShdrSize*4:elf32ShdrSize*5], uint32(offsetOfNameInShstr(nameShstrtab, shstr)), shTypeStrTab, 0, 0, shstrtabOffset, shstrtabSize, 0, 0, 1, 0)
+	writeELF32Section(sec[elf32ShdrSize*5:elf32ShdrSize*6], uint32(offsetOfNameInShstr(nameSymtab, shstr)), shTypeSymTab, 0, 0, symtabOffset, symtabSize, 6, uint32(symbolLocalCount(p)+1), 8, 16)
+	writeELF32Section(sec[elf32ShdrSize*6:elf32ShdrSize*7], uint32(offsetOfNameInShstr(nameStrtab, shstr)), shTypeStrTab, 0, 0, strtabOffset, strtabSize, 0, 0, 1, 0)
 }
 
 func offsetOfName(name []byte, shstrtabOffset uint64, full []byte) uint32 {
