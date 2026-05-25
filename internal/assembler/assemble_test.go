@@ -1,7 +1,9 @@
 package assembler
 
 import (
+	"bytes"
 	"context"
+	"debug/elf"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -34,6 +36,70 @@ start:
 	}
 	if _, err := os.Stat(obj); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAssembleRawELFCallAndJump(t *testing.T) {
+	old := OutputFormat
+	defer func() { OutputFormat = old }()
+	OutputFormat = "elf64"
+
+	dir := t.TempDir()
+	src := writeTempFile(t, dir, "test.asm", `global _start
+section .text
+_start:
+    mov rdi, 5
+    call factorial_iterative
+    mov rdi, rax
+    mov rax, 60
+    syscall
+factorial_iterative:
+    mov rax, 1
+    cmp rdi, 1
+    jle .done
+.loop:
+    imul rax, rdi
+    dec rdi
+    cmp rdi, 1
+    jg .loop
+.done:
+    ret
+`)
+	obj := filepath.Join(dir, "test.o")
+
+	if err := Assemble(context.Background(), src, obj, false, false, "raw"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := elf.NewFile(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	syms, err := f.Symbols()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var foundStart, foundFactorial bool
+	for _, sym := range syms {
+		switch sym.Name {
+		case "_start":
+			if elf.SymBind(sym.Info>>4) == elf.STB_GLOBAL {
+				foundStart = true
+			}
+		case "factorial_iterative":
+			foundFactorial = true
+		case "mov", "call", "cmp", "jle", "jg", "imul", "dec", "syscall":
+			t.Fatalf("unexpected instruction symbol in symtab: %s", sym.Name)
+		}
+	}
+	if !foundStart {
+		t.Fatal("missing _start symbol")
+	}
+	if !foundFactorial {
+		t.Fatal("missing factorial_iterative symbol")
 	}
 }
 

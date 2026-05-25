@@ -21,10 +21,13 @@ const (
 	elfMachineARM     = 40
 	elfMachineAARCH64 = 183
 	elfMachineRISCV   = 243
+	rX86_64_64        = 1
+	rX86_64_PC32      = 2
 	shTypeNull        = 0
 	shTypeProgBits    = 1
 	shTypeSymTab      = 2
 	shTypeStrTab      = 3
+	shTypeRela        = 4
 	shTypeNoBits      = 8
 	shFlagAlloc       = 0x2
 	shFlagExecInstr   = 0x4
@@ -156,6 +159,13 @@ type parser struct {
 	current  *sectionState
 	symbols  [128]symbolState
 	symCount int
+	relocs   []struct{
+		sec uint16
+		off uint64
+		sym int
+		typ uint32
+		addend int64
+	}
 }
 
 func emitSourceObject(src []byte, profile targetEmitterProfile) ([]byte, error) {
@@ -249,6 +259,13 @@ func (p *parser) parseLine(line []byte) error {
 		return p.defineLabel(name)
 	}
 	tok, rest := readToken(line)
+	if len(tok) > 0 && tok[len(tok)-1] == ':' {
+		name := tok[:len(tok)-1]
+		if err := p.defineLabel(name); err != nil {
+			return err
+		}
+		return p.parseLine(rest)
+	}
 	switch {
 	case equalWord(tok, "section"):
 		name, _ := readToken(rest)
@@ -290,6 +307,18 @@ func (p *parser) parseLine(line []byte) error {
 		return p.emitMov(rest)
 	case equalWord(tok, "xor"):
 		return p.emitXor(rest)
+	case equalWord(tok, "call"):
+		return p.emitCall(rest)
+	case equalWord(tok, "imul"):
+		return p.emitImul(rest)
+	case equalWord(tok, "dec"):
+		return p.emitDec(rest)
+	case equalWord(tok, "cmp"):
+		return p.emitCmp(rest)
+	case equalWord(tok, "jle"):
+		return p.emitJump(0x8E, rest)
+	case equalWord(tok, "jg"):
+		return p.emitJump(0x8F, rest)
 	case equalWord(tok, "syscall"):
 		p.current.data = append(p.current.data, 0x0F, 0x05)
 		return nil
@@ -467,7 +496,8 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	shstrtabNames4 := nameShstrtab
 	shstrtabNames5 := nameSymtab
 	shstrtabNames6 := nameStrtab
-	shstrtabLen := 1 + (len(shstrtabNames0) + 1) + (len(shstrtabNames1) + 1) + (len(shstrtabNames2) + 1) + (len(shstrtabNames3) + 1) + (len(shstrtabNames4) + 1) + (len(shstrtabNames5) + 1) + (len(shstrtabNames6) + 1)
+	shstrtabNames7 := []byte(".rela.text")
+	shstrtabLen := 1 + (len(shstrtabNames0) + 1) + (len(shstrtabNames1) + 1) + (len(shstrtabNames2) + 1) + (len(shstrtabNames3) + 1) + (len(shstrtabNames4) + 1) + (len(shstrtabNames5) + 1) + (len(shstrtabNames6) + 1) + (len(shstrtabNames7) + 1)
 	strtabLen := 1
 	for i := 0; i < p.symCount; i++ {
 		strtabLen += len(p.symbols[i].name) + 1
@@ -493,7 +523,7 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	if profile.elfClass == elfClass32 {
 		shdrSize = elf32ShdrSize
 	}
-	need := ehSize + len(p.text.data) + len(p.data.data) + symtabSize + strtabLen + shstrtabLen + shdrSize*(7)
+	need := ehSize + len(p.text.data) + len(p.data.data) + symtabSize + strtabLen + shstrtabLen + shdrSize*(8)
 	need += 512
 	if cap(out) < need {
 		out = make([]byte, 0, need)
@@ -534,6 +564,17 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 		writeElf64SymAt(out, off, 0, 0, 0, 0, 0, 0)
 		off += 24
 		for i := 0; i < p.symCount; i++ {
+			if p.symbols[i].bind != stBindLocal {
+				continue
+			}
+			info := byte(p.symbols[i].bind<<4 | p.symbols[i].typ)
+			writeElf64SymAt(out, off, p.symbols[i].nameOffset, info, 0, p.symbols[i].shndx, p.symbols[i].value, 0)
+			off += 24
+		}
+		for i := 0; i < p.symCount; i++ {
+			if p.symbols[i].bind == stBindLocal {
+				continue
+			}
 			info := byte(p.symbols[i].bind<<4 | p.symbols[i].typ)
 			writeElf64SymAt(out, off, p.symbols[i].nameOffset, info, 0, p.symbols[i].shndx, p.symbols[i].value, 0)
 			off += 24
@@ -543,6 +584,17 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 		writeElf32SymAt(out, off, 0, 0, 0, 0, 0, 0)
 		off += 16
 		for i := 0; i < p.symCount; i++ {
+			if p.symbols[i].bind != stBindLocal {
+				continue
+			}
+			info := byte(p.symbols[i].bind<<4 | p.symbols[i].typ)
+			writeElf32SymAt(out, off, p.symbols[i].nameOffset, info, 0, p.symbols[i].shndx, uint32(p.symbols[i].value), 0)
+			off += 16
+		}
+		for i := 0; i < p.symCount; i++ {
+			if p.symbols[i].bind == stBindLocal {
+				continue
+			}
 			info := byte(p.symbols[i].bind<<4 | p.symbols[i].typ)
 			writeElf32SymAt(out, off, p.symbols[i].nameOffset, info, 0, p.symbols[i].shndx, uint32(p.symbols[i].value), 0)
 			off += 16
@@ -564,10 +616,12 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	out = append(out, 0)
 	out = append(out, shstrtabNames6...)
 	out = append(out, 0)
+	out = append(out, shstrtabNames7...)
+	out = append(out, 0)
 	shstrtab := out[shstrtabOffset : shstrtabOffset+shstrtabLen]
 	shOff := alignOutOffset(len(out), uint64(shdrSize))
 	out = alignOut(out, uint64(shdrSize))
-	numSections := 7
+	numSections := 8
 	shSize := shdrSize
 	for i := 0; i < numSections; i++ {
 		for j := 0; j < shSize; j++ {
@@ -575,11 +629,52 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 		}
 	}
 	if profile.elfClass == elfClass64 {
+		// build symbol index mapping
+		mapIdx := make([]int, p.symCount)
+		idx := 1
+		for i := 0; i < p.symCount; i++ {
+			if p.symbols[i].bind == stBindLocal {
+				mapIdx[i] = idx
+				idx++
+			}
+		}
+		for i := 0; i < p.symCount; i++ {
+			if p.symbols[i].bind == stBindLocal {
+				continue
+			}
+			mapIdx[i] = idx
+			idx++
+		}
+		// emit rela.text if needed
+		relaOffset := 0
+		relaSize := 0
+		if len(p.relocs) > 0 {
+			cnt := 0
+			for i := 0; i < len(p.relocs); i++ {
+				if p.relocs[i].sec == 1 {
+					cnt++
+				}
+			}
+			if cnt > 0 {
+				out = alignOut(out, 8)
+				relaOffset = len(out)
+				for i := 0; i < len(p.relocs); i++ {
+					r := p.relocs[i]
+					if r.sec != 1 {
+						continue
+					}
+					out = appendUint64(out, r.off)
+					out = appendUint64(out, (uint64(mapIdx[r.sym])<<32)|uint64(r.typ))
+					out = appendUint64(out, uint64(r.addend))
+				}
+				relaSize = (cnt * 24)
+			}
+		}
 		populateELF64Header(out, profile, uint64(shOff), uint16(shSize), uint16(numSections), 4)
-		populateELF64SectionHeaders(out[shOff:], out, p, uint64(textOffset), uint64(dataOffset), uint64(symtabOffset), uint64(strtabOffset), uint64(shstrtabOffset), uint64(symtabSize), uint64(strtabLen), uint64(len(shstrtab)))
+		populateELF64SectionHeaders(out[shOff:], out, p, uint64(textOffset), uint64(dataOffset), uint64(symtabOffset), uint64(strtabOffset), uint64(shstrtabOffset), uint64(symtabSize), uint64(strtabLen), uint64(len(shstrtab)), uint64(relaOffset), uint64(relaSize))
 	} else {
 		populateELF32Header(out, profile, uint32(shOff), uint16(shSize), uint16(numSections), 4)
-		populateELF32SectionHeaders(out[shOff:], out, p, uint32(textOffset), uint32(dataOffset), uint32(symtabOffset), uint32(strtabOffset), uint32(shstrtabOffset), uint32(symtabSize), uint32(strtabLen), uint32(len(shstrtab)))
+		populateELF32SectionHeaders(out[shOff:], out, p, uint32(textOffset), uint32(dataOffset), uint32(symtabOffset), uint32(strtabOffset), uint32(shstrtabOffset), uint32(symtabSize), uint32(strtabLen), uint32(len(shstrtab)), 0, 0)
 	}
 	*outPtr = out
 	return out, nil
@@ -809,7 +904,7 @@ func populateELF32Header(out []byte, profile targetEmitterProfile, shoff uint32,
 	writeUint16At(out, 50, shstrndx)
 }
 
-func populateELF64SectionHeaders(sec []byte, full []byte, p *parser, textOffset, dataOffset, symtabOffset, strtabOffset, shstrtabOffset uint64, symtabSize, strtabSize, shstrtabSize uint64) {
+func populateELF64SectionHeaders(sec []byte, full []byte, p *parser, textOffset, dataOffset, symtabOffset, strtabOffset, shstrtabOffset uint64, symtabSize, strtabSize, shstrtabSize uint64, relaOffset, relaSize uint64) {
 	shstr := full[shstrtabOffset : shstrtabOffset+shstrtabSize]
 	writeELF64Section(sec[0:elf64ShdrSize], 0, shTypeNull, 0, 0, 0, 0, 0, 0, 0, 0)
 	writeELF64Section(sec[elf64ShdrSize:elf64ShdrSize*2], uint32(offsetOfNameInShstr(p.text.name, shstr)), shTypeProgBits, uint64(p.text.flags), 0, uint64(textOffset), uint64(len(p.text.data)), 0, 0, uint64(p.text.align), 0)
@@ -818,6 +913,7 @@ func populateELF64SectionHeaders(sec []byte, full []byte, p *parser, textOffset,
 	writeELF64Section(sec[elf64ShdrSize*4:elf64ShdrSize*5], uint32(offsetOfNameInShstr(nameShstrtab, shstr)), shTypeStrTab, 0, 0, shstrtabOffset, shstrtabSize, 0, 0, 1, 0)
 	writeELF64Section(sec[elf64ShdrSize*5:elf64ShdrSize*6], uint32(offsetOfNameInShstr(nameSymtab, shstr)), shTypeSymTab, 0, 0, symtabOffset, symtabSize, 6, uint32(symbolLocalCount(p)+1), 8, 24)
 	writeELF64Section(sec[elf64ShdrSize*6:elf64ShdrSize*7], uint32(offsetOfNameInShstr(nameStrtab, shstr)), shTypeStrTab, 0, 0, strtabOffset, strtabSize, 0, 0, 1, 0)
+	writeELF64Section(sec[elf64ShdrSize*7:elf64ShdrSize*8], uint32(offsetOfNameInShstr([]byte(".rela.text"), shstr)), shTypeRela, 0, 0, relaOffset, relaSize, 5, 1, 8, 24)
 }
 
 func offsetOfNameInShstr(name []byte, shstrtab []byte) uint32 {
@@ -832,7 +928,7 @@ func offsetOfNameInShstr(name []byte, shstrtab []byte) uint32 {
 	return 0
 }
 
-func populateELF32SectionHeaders(sec []byte, full []byte, p *parser, textOffset, dataOffset, symtabOffset, strtabOffset, shstrtabOffset uint32, symtabSize, strtabSize, shstrtabSize uint32) {
+func populateELF32SectionHeaders(sec []byte, full []byte, p *parser, textOffset, dataOffset, symtabOffset, strtabOffset, shstrtabOffset uint32, symtabSize, strtabSize, shstrtabSize uint32, relaOffset uint32, relaSize uint32) {
 	shstr := full[shstrtabOffset : shstrtabOffset+shstrtabSize]
 	writeELF32Section(sec[0:elf32ShdrSize], 0, shTypeNull, 0, 0, 0, 0, 0, 0, 0, 0)
 	writeELF32Section(sec[elf32ShdrSize:elf32ShdrSize*2], uint32(offsetOfNameInShstr(p.text.name, shstr)), shTypeProgBits, p.text.flags, 0, textOffset, uint32(len(p.text.data)), 0, 0, p.text.align, 0)
@@ -841,6 +937,7 @@ func populateELF32SectionHeaders(sec []byte, full []byte, p *parser, textOffset,
 	writeELF32Section(sec[elf32ShdrSize*4:elf32ShdrSize*5], uint32(offsetOfNameInShstr(nameShstrtab, shstr)), shTypeStrTab, 0, 0, shstrtabOffset, shstrtabSize, 0, 0, 1, 0)
 	writeELF32Section(sec[elf32ShdrSize*5:elf32ShdrSize*6], uint32(offsetOfNameInShstr(nameSymtab, shstr)), shTypeSymTab, 0, 0, symtabOffset, symtabSize, 6, uint32(symbolLocalCount(p)+1), 8, 16)
 	writeELF32Section(sec[elf32ShdrSize*6:elf32ShdrSize*7], uint32(offsetOfNameInShstr(nameStrtab, shstr)), shTypeStrTab, 0, 0, strtabOffset, strtabSize, 0, 0, 1, 0)
+	writeELF32Section(sec[elf32ShdrSize*7:elf32ShdrSize*8], uint32(offsetOfNameInShstr([]byte(".rela.text"), shstr)), shTypeRela, 0, 0, relaOffset, relaSize, 5, 1, 4, 12)
 }
 
 func offsetOfName(name []byte, shstrtabOffset uint64, full []byte) uint32 {
@@ -895,11 +992,28 @@ func readToken(line []byte) ([]byte, []byte) {
 func splitArgs(data []byte) [][]byte {
 	var parts [][]byte
 	start := 0
-	for i := 0; i <= len(data); i++ {
-		if i == len(data) || data[i] == ',' {
+	in := false
+	var q byte
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if in {
+			if c == q {
+				in = false
+			}
+			continue
+		}
+		if c == '"' || c == '\'' {
+			in = true
+			q = c
+			continue
+		}
+		if c == ',' {
 			parts = append(parts, data[start:i])
 			start = i + 1
 		}
+	}
+	if start <= len(data) {
+		parts = append(parts, data[start:len(data)])
 	}
 	return parts
 }
@@ -979,23 +1093,38 @@ func (p *parser) emitMov(rest []byte) error {
 		return nil
 	}
 	imm, err := parseImmediate(srcToken)
-	if err != nil {
-		return fmt.Errorf("invalid mov immediate: %s", string(srcToken))
-	}
-	if dst.width == 64 {
-		p.current.data = append(p.current.data, 0x48, 0xB8+dst.code)
-		var buf [8]byte
-		binary.LittleEndian.PutUint64(buf[:], imm)
+	if err == nil {
+		if dst.width == 64 {
+			p.current.data = append(p.current.data, 0x48, 0xB8+dst.code)
+			var buf [8]byte
+			binary.LittleEndian.PutUint64(buf[:], imm)
+			p.current.data = append(p.current.data, buf[:]...)
+			return nil
+		}
+		if imm > 0xFFFFFFFF {
+			return fmt.Errorf("mov immediate too large for 32-bit register: %d", imm)
+		}
+		p.current.data = append(p.current.data, 0xB8+dst.code)
+		var buf [4]byte
+		binary.LittleEndian.PutUint32(buf[:], uint32(imm))
 		p.current.data = append(p.current.data, buf[:]...)
 		return nil
 	}
-	if imm > 0xFFFFFFFF {
-		return fmt.Errorf("mov immediate too large for 32-bit register: %d", imm)
+	name := srcToken
+	_ = p.addSymbol(name, 0, shnUnDef, stBindLocal)
+	symIdx := p.findSymbol(name)
+	cur := len(p.current.data)
+	if dst.width == 64 {
+		p.current.data = append(p.current.data, 0x48, 0xB8+dst.code)
+		var z [8]byte
+		p.current.data = append(p.current.data, z[:]...)
+		p.relocs = append(p.relocs, struct{sec uint16; off uint64; sym int; typ uint32; addend int64}{sec: sectionIndex(p.current), off: uint64(cur + 2), sym: symIdx, typ: 1, addend: 0})
+		return nil
 	}
 	p.current.data = append(p.current.data, 0xB8+dst.code)
-	var buf [4]byte
-	binary.LittleEndian.PutUint32(buf[:], uint32(imm))
-	p.current.data = append(p.current.data, buf[:]...)
+	var z4 [4]byte
+	p.current.data = append(p.current.data, z4[:]...)
+	p.relocs = append(p.relocs, struct{sec uint16; off uint64; sym int; typ uint32; addend int64}{sec: sectionIndex(p.current), off: uint64(cur + 1), sym: symIdx, typ: 10, addend: 0})
 	return nil
 }
 
@@ -1024,6 +1153,105 @@ func (p *parser) emitXor(rest []byte) error {
 	}
 	modrm := byte(0xC0 | (src.code << 3) | dst.code)
 	p.current.data = append(p.current.data, modrm)
+	return nil
+}
+
+func (p *parser) emitCall(rest []byte) error {
+	name := trimSpace(rest)
+	if len(name) == 0 {
+		return fmt.Errorf("invalid call target: %s", string(rest))
+	}
+	_ = p.addSymbol(name, 0, shnUnDef, stBindLocal)
+	symIdx := p.findSymbol(name)
+	cur := len(p.current.data)
+	p.current.data = append(p.current.data, 0xE8, 0, 0, 0, 0)
+	p.relocs = append(p.relocs, struct{sec uint16; off uint64; sym int; typ uint32; addend int64}{sec: sectionIndex(p.current), off: uint64(cur + 1), sym: symIdx, typ: rX86_64_PC32, addend: -4})
+	return nil
+}
+
+func (p *parser) emitImul(rest []byte) error {
+	args := splitArgs(trimSpace(rest))
+	if len(args) != 2 {
+		return fmt.Errorf("invalid imul operands: %s", string(rest))
+	}
+	dstToken := trimSpace(args[0])
+	srcToken := trimSpace(args[1])
+	dst, ok := parseRegister(dstToken)
+	if !ok {
+		return fmt.Errorf("invalid imul destination: %s", string(dstToken))
+	}
+	src, ok := parseRegister(srcToken)
+	if !ok {
+		return fmt.Errorf("invalid imul source: %s", string(srcToken))
+	}
+	if dst.width != src.width {
+		return fmt.Errorf("register size mismatch: %s, %s", string(dstToken), string(srcToken))
+	}
+	modrm := byte(0xC0 | (dst.code << 3) | src.code)
+	if dst.width == 64 {
+		p.current.data = append(p.current.data, 0x48, 0x0F, 0xAF, modrm)
+	} else {
+		p.current.data = append(p.current.data, 0x0F, 0xAF, modrm)
+	}
+	return nil
+}
+
+func (p *parser) emitDec(rest []byte) error {
+	token := trimSpace(rest)
+	reg, ok := parseRegister(token)
+	if !ok {
+		return fmt.Errorf("invalid dec operand: %s", string(rest))
+	}
+	if reg.width == 64 {
+		p.current.data = append(p.current.data, 0x48, 0xFF, 0xC8|reg.code)
+	} else {
+		p.current.data = append(p.current.data, 0xFF, 0xC8|reg.code)
+	}
+	return nil
+}
+
+func (p *parser) emitCmp(rest []byte) error {
+	args := splitArgs(trimSpace(rest))
+	if len(args) != 2 {
+		return fmt.Errorf("invalid cmp operands: %s", string(rest))
+	}
+	dstToken := trimSpace(args[0])
+	srcToken := trimSpace(args[1])
+	dst, ok := parseRegister(dstToken)
+	if !ok {
+		return fmt.Errorf("invalid cmp destination: %s", string(dstToken))
+	}
+	imm, err := parseImmediate(srcToken)
+	if err != nil {
+		return fmt.Errorf("invalid cmp immediate: %s", string(srcToken))
+	}
+	if dst.width == 64 {
+		p.current.data = append(p.current.data, 0x48, 0x81, 0xF8|dst.code)
+		var buf [4]byte
+		binary.LittleEndian.PutUint32(buf[:], uint32(imm))
+		p.current.data = append(p.current.data, buf[:]...)
+		return nil
+	}
+	if imm > 0xFFFFFFFF {
+		return fmt.Errorf("cmp immediate too large for 32-bit register: %d", imm)
+	}
+	p.current.data = append(p.current.data, 0x81, 0xF8|dst.code)
+	var buf [4]byte
+	binary.LittleEndian.PutUint32(buf[:], uint32(imm))
+	p.current.data = append(p.current.data, buf[:]...)
+	return nil
+}
+
+func (p *parser) emitJump(opcode byte, rest []byte) error {
+	name := trimSpace(rest)
+	if len(name) == 0 {
+		return fmt.Errorf("invalid jump target: %s", string(rest))
+	}
+	_ = p.addSymbol(name, 0, shnUnDef, stBindLocal)
+	symIdx := p.findSymbol(name)
+	cur := len(p.current.data)
+	p.current.data = append(p.current.data, 0x0F, opcode, 0, 0, 0, 0)
+	p.relocs = append(p.relocs, struct{sec uint16; off uint64; sym int; typ uint32; addend int64}{sec: sectionIndex(p.current), off: uint64(cur + 2), sym: symIdx, typ: rX86_64_PC32, addend: -4})
 	return nil
 }
 
