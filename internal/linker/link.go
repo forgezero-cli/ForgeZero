@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
+	"fz/internal/config"
 	"fz/internal/utils"
 	"fz/internal/zig"
 )
@@ -23,6 +26,7 @@ var (
 	Shared       bool
 	ZigRequested bool
 	ZigEnabled   bool
+	ForceLD      bool
 )
 
 func SetRunner(r CmdRunner) {
@@ -120,7 +124,51 @@ func runLinkerCommand(ctx context.Context, verbose bool, name string, args []str
 		defer os.Remove(path)
 		args = []string{"@" + path}
 	}
+	if _, isReal := runner.(*RealCmdRunner); isReal && isLdExecutable(name) {
+		ctx, cancel := ensureContextTimeout(ctx, 30*time.Second)
+		defer cancel()
+		return runLinkerCombinedOutput(ctx, verbose, name, args)
+	}
 	return runner.Run(ctx, verbose, name, args...)
+}
+
+func ensureContextTimeout(ctx context.Context, min time.Duration) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		if time.Until(deadline) >= min {
+			return ctx, func() {}
+		}
+		ctx = context.Background()
+	}
+	return context.WithTimeout(ctx, min)
+}
+
+func isLdExecutable(name string) bool {
+	base := filepath.Base(name)
+	if base == "ld" || base == "ld.lld" || base == "wasm-ld" {
+		return true
+	}
+	return strings.HasSuffix(base, "-ld")
+}
+
+func runLinkerCombinedOutput(ctx context.Context, verbose bool, name string, args []string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	if dir := utils.GetExecutionRoot(); dir != "" {
+		cmd.Dir = dir
+	}
+	if cfg := utils.ConfigFromContext(ctx); cfg != nil && cfg.Isolation != config.IsolationNone {
+		cmd.Env = utils.SafeEnv(cfg)
+	} else {
+		cmd.Env = os.Environ()
+	}
+	output, err := cmd.CombinedOutput()
+	out := string(output)
+	if verbose && len(out) > 0 {
+		fmt.Fprint(os.Stdout, out)
+	}
+	return out, err
 }
 
 func validateLinkCall(ctx context.Context, output string) error {
@@ -295,6 +343,13 @@ func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bo
 }
 
 func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bool, strict bool, libs []string) error {
+	var lastErr error
+	if ForceLD {
+		if err := utils.CheckTool(ldForTarget()); err == nil {
+			return linkWithLd(ctx, obj, bin, verbose, libs)
+		}
+		return fmt.Errorf("ld not found")
+	}
 	if useZig() {
 		if verbose {
 			fmt.Println("Strict mode: using zig for deterministic linking")
@@ -326,6 +381,10 @@ func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bo
 		if err := linkWithLd(ctx, obj, bin, verbose, libs); err == nil {
 			return nil
 		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return lastErr
 	}
 	return fmt.Errorf("auto linking failed: no suitable linker")
 }
@@ -480,6 +539,13 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool, libs []strin
 
 func tryAutoLinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, sanitize bool, strict bool, libs []string) error {
 	sort.Strings(objFiles)
+	if ForceLD {
+		if err := utils.CheckTool(ldForTarget()); err == nil {
+			return linkMultipleWithLd(ctx, objFiles, bin, verbose, libs)
+		}
+		return fmt.Errorf("ld not found")
+	}
+	var lastErr error
 	if useZig() {
 		if verbose {
 			fmt.Println("Strict mode: using zig for deterministic linking")
@@ -511,6 +577,10 @@ func tryAutoLinkMultiple(ctx context.Context, objFiles []string, bin string, ver
 		if err := linkMultipleWithLd(ctx, objFiles, bin, verbose, libs); err == nil {
 			return nil
 		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return lastErr
 	}
 	return fmt.Errorf("auto linking failed: no suitable linker")
 }

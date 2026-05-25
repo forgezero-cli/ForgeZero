@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"fz/internal/assembler"
 	"fz/internal/config"
@@ -546,6 +547,36 @@ func TestTryAutoLinkMultipleNoLinker(t *testing.T) {
 	}
 }
 
+func TestTryAutoLinkMultipleForceLdSkipsProbe(t *testing.T) {
+	oldRunner := runner
+	oldForceLd := ForceLD
+	defer func() {
+		runner = oldRunner
+		ForceLD = oldForceLd
+	}()
+	ForceLD = true
+
+	called := false
+	runner = &MockRunner{
+		RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+			if name != ldForTarget() {
+				t.Errorf("expected only ld to be invoked, got %s", name)
+			}
+			called = true
+			return "", nil
+		},
+	}
+
+	objFiles := []string{"a.o"}
+	err := tryAutoLinkMultiple(context.Background(), objFiles, "bin", false, false, false, nil)
+	if err != nil {
+		t.Fatalf("expected ld-only link to succeed, got %v", err)
+	}
+	if !called {
+		t.Fatal("expected ld to be invoked")
+	}
+}
+
 func TestLinkMultipleWithGccFallbackNoPie(t *testing.T) {
 	oldRunner := runner
 	defer func() { runner = oldRunner }()
@@ -629,6 +660,22 @@ func TestCreateResponseFileWritesArgs(t *testing.T) {
 func TestRunLinkerCommandNoName(t *testing.T) {
 	if _, err := runLinkerCommand(context.Background(), false, "", []string{"a"}); err == nil {
 		t.Fatal("expected error when linker name is empty")
+	}
+}
+
+func TestEnsureContextTimeoutReplacesExpiredContext(t *testing.T) {
+	expiredCtx, cancel := context.WithTimeout(context.Background(), 0)
+	cancel()
+	ctx, cancelCtx := ensureContextTimeout(expiredCtx, 30*time.Second)
+	defer cancelCtx()
+
+	if err := ctx.Err(); err != nil {
+		t.Fatalf("expected fresh context, got %v", err)
+	}
+	if deadline, ok := ctx.Deadline(); !ok {
+		t.Fatal("expected deadline on new context")
+	} else if time.Until(deadline) < 29*time.Second {
+		t.Fatalf("expected at least 29s remaining, got %v", time.Until(deadline))
 	}
 }
 
