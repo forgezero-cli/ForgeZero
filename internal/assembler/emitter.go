@@ -42,11 +42,13 @@ const (
 
 var emitterBufferPool = sync.Pool{New: func() any { b := make([]byte, 0, 65536); return &b }}
 
-var nameEmpty = []byte("")
-var nameShstrtab = []byte(".shstrtab")
-var nameSymtab = []byte(".symtab")
-var nameStrtab = []byte(".strtab")
-var reusableOut *[]byte
+var (
+	nameEmpty    = []byte("")
+	nameShstrtab = []byte(".shstrtab")
+	nameSymtab   = []byte(".symtab")
+	nameStrtab   = []byte(".strtab")
+	reusableOut  *[]byte
+)
 
 func assembleBareMetalObject(ctx context.Context, src, obj string) error {
 	srcBuf, release, err := loadSourcePooled(src)
@@ -159,11 +161,11 @@ type parser struct {
 	current  *sectionState
 	symbols  [128]symbolState
 	symCount int
-	relocs   []struct{
-		sec uint16
-		off uint64
-		sym int
-		typ uint32
+	relocs   []struct {
+		sec    uint16
+		off    uint64
+		sym    int
+		typ    uint32
 		addend int64
 	}
 }
@@ -523,7 +525,7 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	if profile.elfClass == elfClass32 {
 		shdrSize = elf32ShdrSize
 	}
-	need := ehSize + len(p.text.data) + len(p.data.data) + symtabSize + strtabLen + shstrtabLen + shdrSize*(8)
+	need := ehSize + len(p.text.data) + len(p.data.data) + symtabSize + strtabLen + shstrtabLen + shdrSize*8
 	need += 512
 	if cap(out) < need {
 		out = make([]byte, 0, need)
@@ -629,7 +631,6 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 		}
 	}
 	if profile.elfClass == elfClass64 {
-		// build symbol index mapping
 		mapIdx := make([]int, p.symCount)
 		idx := 1
 		for i := 0; i < p.symCount; i++ {
@@ -645,7 +646,6 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 			mapIdx[i] = idx
 			idx++
 		}
-		// emit rela.text if needed
 		relaOffset := 0
 		relaSize := 0
 		if len(p.relocs) > 0 {
@@ -1013,7 +1013,7 @@ func splitArgs(data []byte) [][]byte {
 		}
 	}
 	if start <= len(data) {
-		parts = append(parts, data[start:len(data)])
+		parts = append(parts, data[start:])
 	}
 	return parts
 }
@@ -1118,13 +1118,25 @@ func (p *parser) emitMov(rest []byte) error {
 		p.current.data = append(p.current.data, 0x48, 0xB8+dst.code)
 		var z [8]byte
 		p.current.data = append(p.current.data, z[:]...)
-		p.relocs = append(p.relocs, struct{sec uint16; off uint64; sym int; typ uint32; addend int64}{sec: sectionIndex(p.current), off: uint64(cur + 2), sym: symIdx, typ: 1, addend: 0})
+		p.relocs = append(p.relocs, struct {
+			sec    uint16
+			off    uint64
+			sym    int
+			typ    uint32
+			addend int64
+		}{sec: sectionIndex(p.current), off: uint64(cur + 2), sym: symIdx, typ: 1, addend: 0})
 		return nil
 	}
 	p.current.data = append(p.current.data, 0xB8+dst.code)
 	var z4 [4]byte
 	p.current.data = append(p.current.data, z4[:]...)
-	p.relocs = append(p.relocs, struct{sec uint16; off uint64; sym int; typ uint32; addend int64}{sec: sectionIndex(p.current), off: uint64(cur + 1), sym: symIdx, typ: 10, addend: 0})
+	p.relocs = append(p.relocs, struct {
+		sec    uint16
+		off    uint64
+		sym    int
+		typ    uint32
+		addend int64
+	}{sec: sectionIndex(p.current), off: uint64(cur + 1), sym: symIdx, typ: 10, addend: 0})
 	return nil
 }
 
@@ -1165,7 +1177,13 @@ func (p *parser) emitCall(rest []byte) error {
 	symIdx := p.findSymbol(name)
 	cur := len(p.current.data)
 	p.current.data = append(p.current.data, 0xE8, 0, 0, 0, 0)
-	p.relocs = append(p.relocs, struct{sec uint16; off uint64; sym int; typ uint32; addend int64}{sec: sectionIndex(p.current), off: uint64(cur + 1), sym: symIdx, typ: rX86_64_PC32, addend: -4})
+	p.relocs = append(p.relocs, struct {
+		sec    uint16
+		off    uint64
+		sym    int
+		typ    uint32
+		addend int64
+	}{sec: sectionIndex(p.current), off: uint64(cur + 1), sym: symIdx, typ: rX86_64_PC32, addend: -4})
 	return nil
 }
 
@@ -1251,7 +1269,13 @@ func (p *parser) emitJump(opcode byte, rest []byte) error {
 	symIdx := p.findSymbol(name)
 	cur := len(p.current.data)
 	p.current.data = append(p.current.data, 0x0F, opcode, 0, 0, 0, 0)
-	p.relocs = append(p.relocs, struct{sec uint16; off uint64; sym int; typ uint32; addend int64}{sec: sectionIndex(p.current), off: uint64(cur + 2), sym: symIdx, typ: rX86_64_PC32, addend: -4})
+	p.relocs = append(p.relocs, struct {
+		sec    uint16
+		off    uint64
+		sym    int
+		typ    uint32
+		addend int64
+	}{sec: sectionIndex(p.current), off: uint64(cur + 2), sym: symIdx, typ: rX86_64_PC32, addend: -4})
 	return nil
 }
 

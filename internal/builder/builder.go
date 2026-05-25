@@ -372,7 +372,6 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 		return nil, entry.err
 	}
 
-	// prepare final object list from sorted pairs
 	objFiles := make([]string, len(pairs))
 	for i, p := range pairs {
 		objFiles[i] = p.obj
