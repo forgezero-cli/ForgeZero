@@ -30,7 +30,7 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly and C dev
 
 ## ⚡ Performance: Full Scaling Benchmark
 
-| Modules | ForgeZero (`fzt`) | Traditional (`make -j4`) | Speedup |
+| Modules | ForgeZero (`fz`) | Traditional (`make -j4`) | Speedup |
 |---------|------------------|-------------------------|---------|
 | 20 | 19.3 ± 1.2 ms | 45.4 ± 2.3 ms | **2.35×** |
 | 50 | 31.1 ± 1.3 ms | 85.0 ± 2.1 ms | **2.73×** |
@@ -39,7 +39,7 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly and C dev
 
 ### 🔹 Scaling Efficiency
 
-| Metric | `fzt` | `make -j4` |
+| Metric | `fz` | `make -j4` |
 |--------|-------|-----------|
 | Time growth (20→150 modules) | **+279%** | **+405%** |
 | Overhead per module | ~0.36 ms | ~1.23 ms |
@@ -50,7 +50,7 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly and C dev
 
 ### 🔹 Why the difference?
 
-| Factor | Traditional (`make + nasm + ld`) | ForgeZero (`fzt`) |
+| Factor | Traditional (`make + nasm + ld`) | ForgeZero (`fz`) |
 |--------|---------------------------------|-------------------|
 | **Processes** | 40+ forks (`nasm`×20 + `ld`×20) | **1 process** (integrated pipeline) |
 | **I/O** | Writes 20 intermediate `.o` files to disk | **Zero intermediate files** (in-memory) |
@@ -62,7 +62,7 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly and C dev
 
 Based on linear scaling from the 20-module benchmark:
 
-| Modules | `fzt` (est.) | `make -j4` (est.) | Speedup |
+| Modules | `fz` (est.) | `make -j4` (est.) | Speedup |
 |---------|--------------|-------------------|---------|
 | 20 | 19 ms | 45 ms | **2.35×** |
 | 50 | ~38 ms | ~115 ms | **~3.0×** |
@@ -76,7 +76,7 @@ Based on linear scaling from the 20-module benchmark:
 # Clone and build ForgeZero
 git clone https://github.com/forgezero-cli/ForgeZero
 cd ForgeZero
-go build -o fzt ./cmd/fzt
+go build -o fz ./cmd/fz
 
 # Run the benchmark script
 ./bench.sh  # Generates 20 test modules and runs hyperfine
