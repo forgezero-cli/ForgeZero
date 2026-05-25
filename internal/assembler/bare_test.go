@@ -46,12 +46,11 @@ func TestAssembleNASMBootSector(t *testing.T) {
 	OutputFormat = "bin"
 	dir := t.TempDir()
 	src := filepath.Join(dir, "boot.asm")
-	asm := `bits 16
-org 0x7C00
+	asm := `section .text
 start:
-	jmp short start
-	times 510-($-$$) db 0
-	dw 0xAA55
+    db 0x90
+    resb 509
+    dw 0xAA55
 `
 	if err := os.WriteFile(src, []byte(asm), 0o644); err != nil {
 		t.Fatal(err)

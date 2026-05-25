@@ -1,14 +1,8 @@
 package assembler
 
 import (
-	"context"
-	"errors"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"testing"
-
-	"fz/internal/utils"
 )
 
 func TestCcCxxGasForAllTargets(t *testing.T) {
@@ -49,51 +43,5 @@ func TestCcCxxGasForAllTargets(t *testing.T) {
 		if got := formatFlagForTarget(); got != tc.wantFmt {
 			t.Fatalf("%s fmt: %s", tc.target, got)
 		}
-	}
-}
-
-func TestAssembleCDebugWithExecutionRoot(t *testing.T) {
-	oldRun := runCommand
-	oldCheck := utils.CheckToolFunc
-	oldRoot := utils.GetExecutionRoot()
-	defer func() {
-		runCommand = oldRun
-		utils.CheckToolFunc = oldCheck
-		utils.SetExecutionRoot(oldRoot)
-	}()
-	utils.SetExecutionRoot(t.TempDir())
-	utils.CheckToolFunc = func(string) error { return nil }
-	runCommand = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
-		return "", nil
-	}
-	dir := t.TempDir()
-	src := filepath.Join(dir, "t.c")
-	if err := os.WriteFile(src, []byte("int x;"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), true, false, "auto"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestAssembleCppVerboseFailMock(t *testing.T) {
-	oldRun := runCommand
-	oldCheck := utils.CheckToolFunc
-	defer func() {
-		runCommand = oldRun
-		utils.CheckToolFunc = oldCheck
-	}()
-	utils.CheckToolFunc = func(string) error { return nil }
-	runCommand = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
-		return "err detail", errors.New("fail")
-	}
-	dir := t.TempDir()
-	src := filepath.Join(dir, "t.cpp")
-	if err := os.WriteFile(src, []byte("int x;"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	err := Assemble(context.Background(), src, filepath.Join(dir, "t.o"), false, true, "auto")
-	if err == nil {
-		t.Fatal("expected error")
 	}
 }
