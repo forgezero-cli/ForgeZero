@@ -48,18 +48,27 @@ func Walk(root string, fn func(path string, info os.FileInfo, err error) error) 
 				info, err := os.Lstat(path)
 				if err != nil {
 					if err := fn(path, nil, err); err != nil {
+						if err == filepath.SkipDir {
+							continue
+						}
 						syscall.Close(fd)
 						return err
 					}
 					continue
 				}
+
 				if err := fn(path, info, nil); err != nil {
+					if err == filepath.SkipDir {
+						continue
+					}
 					syscall.Close(fd)
 					return err
 				}
+
 				if info.IsDir() {
 					stack = append(stack, path)
 				}
+
 			}
 		}
 		syscall.Close(fd)
