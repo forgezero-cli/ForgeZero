@@ -176,52 +176,34 @@ func walkProjectFiles(root string, visit func(path string, info os.FileInfo, err
 	if err := visit(root, info, nil); err != nil {
 		return err
 	}
-	var stack []string
-	stack = append(stack, root)
-	var buf [8192]byte
-	for len(stack) > 0 {
-		dir := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		fd, err := syscall.Open(dir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
+	if !info.IsDir() {
+		return nil
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "." || name == ".." {
+			continue
+		}
+		path := filepath.Join(root, name)
+		info, err := entry.Info()
 		if err != nil {
+			if err := visit(path, nil, err); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := visit(path, info, nil); err != nil {
 			return err
 		}
-		for {
-			n, _, errno := syscall.Syscall(syscall.SYS_GETDENTS64, uintptr(fd), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
-			if errno != 0 {
-				syscall.Close(fd)
-				if errno == syscall.EINTR {
-					continue
-				}
-				return os.NewSyscallError("getdents64", errno)
-			}
-			if n == 0 {
-				break
-			}
-			_, _, names := syscall.ParseDirent(buf[:n], -1, nil)
-			for _, name := range names {
-				if name == "." || name == ".." {
-					continue
-				}
-				path := filepath.Join(dir, name)
-				info, err := os.Lstat(path)
-				if err != nil {
-					if err := visit(path, nil, err); err != nil {
-						syscall.Close(fd)
-						return err
-					}
-					continue
-				}
-				if err := visit(path, info, nil); err != nil {
-					syscall.Close(fd)
-					return err
-				}
-				if info.IsDir() {
-					stack = append(stack, path)
-				}
+		if info.IsDir() {
+			if err := walkProjectFiles(path, visit); err != nil {
+				return err
 			}
 		}
-		syscall.Close(fd)
 	}
 	return nil
 }
