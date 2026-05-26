@@ -34,7 +34,10 @@ var (
 	hashSep        = []byte{0}
 )
 
-var limitedMode atomic.Bool
+var (
+	limitedMode     atomic.Bool
+	fileExistsCache sync.Map
+)
 
 func IsLimitedMode() bool { return limitedMode.Load() }
 
@@ -451,6 +454,10 @@ func DeriveNames(src, outFlag, outObjFlag string) (bin, obj string) {
 }
 
 func CheckFileExists(path string) error {
+	if _, exists := fileExistsCache.Load(path); exists {
+		return nil
+	}
+
 	info, err := LstatPath(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -473,6 +480,8 @@ func CheckFileExists(path string) error {
 		return err
 	}
 	defer f.Close()
+
+	fileExistsCache.Store(path, struct{}{})
 	return nil
 }
 
