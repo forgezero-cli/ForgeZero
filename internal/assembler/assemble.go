@@ -6,20 +6,23 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"fz/internal/seal"
 	"fz/internal/utils"
 )
 
 var (
-	OutputFormat   = "elf64"
-	Target         = "x86_64-linux-gnu"
-	AsmFlags       []string
-	ForceFASM      bool
-	CcFlags        string
-	ZigRequested   bool
-	ZigEnabled     bool
-	runCommand     = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+	OutputFormat  = "elf64"
+	Target        = "x86_64-linux-gnu"
+	AsmFlags      []string
+	ForceFASM     bool
+	CcFlags       string
+	ZigRequested  bool
+	ZigEnabled    bool
+	CcFLagsParsed []string
+	CcFlagsOnce   sync.Once
+	runCommand    = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
 		return utils.RunCommandSilent(ctx, verbose, name, args...)
 	}
 )
@@ -170,9 +173,16 @@ func assembleS(ctx context.Context, src, obj string, verbose bool) error {
 
 func compileC(ctx context.Context, src, obj string, verbose bool, compiler string) error {
 	args := []string{"-c", src, "-o", obj}
-	if CcFlags != "" {
-		args = append(args, strings.Fields(CcFlags)...)
+	CcFlagsOnce.Do(func() {
+		if CcFlags != "" {
+			CcFLagsParsed = strings.Fields(CcFlags)
+		}
+	})
+
+	if len(CcFLagsParsed) > 0 {
+		args = append(args, CcFLagsParsed...)
 	}
+
 	_, err := runCommand(ctx, verbose, compiler, args...)
 	return err
 }
