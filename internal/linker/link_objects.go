@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -52,27 +51,20 @@ func LinkObjects(ctx context.Context, target string, objs []string, cfg *config.
 }
 
 func dedupObjects(objs []string) []string {
-	seen := make(map[uint64][]string, len(objs))
+	seen := make(map[string]struct{}, len(objs))
 	unique := make([]string, 0, len(objs))
+
 	for _, obj := range objs {
 		if obj == "" {
 			continue
 		}
-		h := fnv1aString(obj)
-		bucket := seen[h]
-		match := false
-		for _, existing := range bucket {
-			if existing == obj {
-				match = true
-				break
-			}
+
+		if _, ok := seen[obj]; !ok {
+			seen[obj] = struct{}{}
+			unique = append(unique, obj)
 		}
-		if match {
-			continue
-		}
-		seen[h] = append(bucket, obj)
-		unique = append(unique, obj)
 	}
+
 	sort.Strings(unique)
 	return unique
 }
@@ -170,64 +162,4 @@ func newLinkError(cmd string, verbose bool, err error, output string) error {
 		return fmt.Errorf("%s failed: %w\n%s", cmd, err, output)
 	}
 	return fmt.Errorf("%s link failed (use -verbose for details)", cmd)
-}
-
-func createMmapResponseFile(args []string) (string, error) {
-	f, err := os.CreateTemp("", "fz_link_args_*.rsp")
-	if err != nil {
-		return "", err
-	}
-	name := f.Name()
-	if err := f.Chmod(utils.FilePerm); err != nil {
-		f.Close()
-		os.Remove(name)
-		return "", err
-	}
-	total := 0
-	for _, arg := range args {
-		if strings.ContainsAny(arg, "\n\r\x00") {
-			f.Close()
-			os.Remove(name)
-			return "", fmt.Errorf("invalid argument for response file")
-		}
-		if err := utils.ValidateCLIArg(arg); err != nil {
-			f.Close()
-			os.Remove(name)
-			return "", fmt.Errorf("invalid argument for response file: %w", err)
-		}
-		total += len(arg) + 1
-	}
-	if err := f.Truncate(int64(total)); err != nil {
-		f.Close()
-		os.Remove(name)
-		return "", err
-	}
-	data, err := mmapWritableFile(f, total)
-	if err != nil {
-		f.Close()
-		os.Remove(name)
-		return "", err
-	}
-	off := 0
-	for _, arg := range args {
-		n := copy(data[off:], arg)
-		off += n
-		data[off] = '\n'
-		off++
-	}
-	if err := unmapWritableFile(data); err != nil {
-		f.Close()
-		os.Remove(name)
-		return "", err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		os.Remove(name)
-		return "", err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(name)
-		return "", err
-	}
-	return name, nil
 }
