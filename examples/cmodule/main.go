@@ -13,9 +13,9 @@ func main() {
 		panic(err)
 	}
 	defer m.Close()
-	var v int64 = 41
-	if err := m.CallModuleEntry("fz_module", unsafe.Pointer(&v)); err != nil {
+	var ctxValue int64 = 41
+	if err := m.CallEntryBySymbol("fz_init_module", unsafe.Pointer(&ctxValue)); err != nil {
 		panic(err)
 	}
-	fmt.Println(v)
+	fmt.Println(ctxValue)
 }
