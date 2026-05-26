@@ -21,11 +21,11 @@ import (
 
 	"fz/internal/assembler"
 	"fz/internal/audit"
-	"fz/internal/cplugin"
 	"fz/internal/bench"
 	"fz/internal/builder"
 	"fz/internal/compilecommands"
 	"fz/internal/config"
+	"fz/internal/cplugin"
 	"fz/internal/doctor"
 	fzvfs "fz/internal/fs"
 	"fz/internal/ignore"
@@ -1387,8 +1387,15 @@ func main() {
 	var objectFiles []string
 	var finalBinary string
 	var buildErr error
+	if timeoutSec <= 0 {
+		timeoutSec = 120
+	}
+	tSec := timeoutSec
+	if tSec <= 0 {
+		tSec = 120
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(tSec)*time.Second)
 	defer cancel()
 	if cfg != nil {
 		ctx = utils.ContextWithConfig(ctx, cfg)
@@ -1590,7 +1597,14 @@ func main() {
 			if !jsonOutput {
 				writeFmt(1, "%s\n", "\nChange detected, rebuilding...")
 			}
-			ctx2, cancel2 := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+			if timeoutSec <= 0 {
+				timeoutSec = 120
+			}
+			tSec2 := timeoutSec
+			if tSec2 <= 0 {
+				tSec2 = 120
+			}
+			ctx2, cancel2 := context.WithTimeout(context.Background(), time.Duration(tSec2)*time.Second)
 			defer cancel2()
 			origCtx := ctx
 			ctx = ctx2
