@@ -310,8 +310,8 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 				if restored {
 					needAssemble = false
 					var mbuf [512]byte
-					n := copy(mbuf[:], []byte("shadow:restore:"))
-					n += copy(mbuf[n:], []byte(p.src))
+					n := copy(mbuf[:], "shadow:restore:")
+					n += copy(mbuf[n:], p.src)
 					seal.UpdateGlobalState(mbuf[:n])
 				} else {
 					cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
@@ -320,10 +320,13 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 							fmt.Printf("Cache hit for %s\n", p.src)
 						}
 						if err := utils.CopyFile(cachedObj, p.obj); err == nil {
+							cachedSyms := strings.TrimSuffix(cachedObj, ".o") + ".syms"
+							_ = utils.CopyFile(cachedSyms, p.obj+".syms")
+
 							needAssemble = false
 							var mbuf [512]byte
-							n := copy(mbuf[:], []byte("cache:hit:"))
-							n += copy(mbuf[n:], []byte(p.src))
+							n := copy(mbuf[:], "cache:hit:")
+							n += copy(mbuf[n:], p.src)
 							seal.UpdateGlobalState(mbuf[:n])
 						}
 					}
@@ -334,8 +337,8 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 					fmt.Printf("Assembling %s -> %s\n", p.src, p.obj)
 				}
 				var mbuf [512]byte
-				n := copy(mbuf[:], []byte("assemble:"))
-				n += copy(mbuf[n:], []byte(p.src))
+				n := copy(mbuf[:], "assemble:")
+				n += copy(mbuf[n:], p.src)
 				seal.UpdateGlobalState(mbuf[:n])
 				if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
 					recordError(fmt.Errorf("assemble %s: %w", p.src, err))
@@ -351,8 +354,8 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 						return
 					}
 					var mbuf2 [512]byte
-					m := copy(mbuf2[:], []byte("cache:store:"))
-					m += copy(mbuf2[m:], []byte(p.src))
+					m := copy(mbuf2[:], "cache:store:")
+					m += copy(mbuf2[m:], p.src)
 					seal.UpdateGlobalState(mbuf2[:m])
 				}
 			}
