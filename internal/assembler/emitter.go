@@ -40,6 +40,24 @@ const (
 	elf64ShdrSize     = 64
 )
 
+var parserPool = sync.Pool{
+	New: func() any {
+		p := &parser{}
+		p.text.data = make([]byte, 0, 4096)
+		p.data.data = make([]byte, 0, 1024)
+		p.bss.data = make([]byte, 0, 1024)
+		p.relocs = make([]struct {
+			sec    uint16
+			off    uint64
+			sym    int
+			typ    uint32
+			addend int64
+		}, 0, 32)
+		p.argsPool = make([][]byte, 0, 16)
+		return p
+	},
+}
+
 var emitterBufferPool = sync.Pool{New: func() any { b := make([]byte, 0, 65536); return &b }}
 
 var (
@@ -172,7 +190,10 @@ type parser struct {
 }
 
 func emitSourceObject(src []byte, profile targetEmitterProfile) ([]byte, error) {
-	p := parser{}
+	p := parserPool.Get().(*parser)
+	p.reset()
+	defer parserPool.Put(p)
+
 	p.text.name = []byte(".text")
 	p.text.flags = shFlagAlloc | shFlagExecInstr
 	p.text.align = profile.align
@@ -184,6 +205,7 @@ func emitSourceObject(src []byte, profile targetEmitterProfile) ([]byte, error) 
 	p.bss.align = profile.align
 	p.current = &p.text
 	p.src = src
+
 	for p.pos < len(p.src) {
 		line := p.readLine()
 		if err := p.parseLine(line); err != nil {
@@ -193,8 +215,26 @@ func emitSourceObject(src []byte, profile targetEmitterProfile) ([]byte, error) 
 	return p.emit(profile)
 }
 
+func (p *parser) reset() {
+	p.src = nil
+	p.pos = 0
+	p.symCount = 0
+	p.text.data = p.text.data[:0]
+	p.text.size = 0
+	p.data.data = p.data.data[:0]
+	p.data.size = 0
+	p.bss.data = p.bss.data[:0]
+	p.bss.size = 0
+	p.current = &p.text
+	p.relocs = p.relocs[:0]
+	p.argsPool = p.argsPool[:0]
+}
+
 func emitSourceRaw(src []byte, profile targetEmitterProfile) ([]byte, error) {
-	p := parser{}
+	p := parserPool.Get().(*parser)
+	p.reset()
+	defer parserPool.Put(p)
+
 	p.text.name = []byte(".text")
 	p.text.flags = shFlagAlloc | shFlagExecInstr
 	p.text.align = profile.align
@@ -206,6 +246,7 @@ func emitSourceRaw(src []byte, profile targetEmitterProfile) ([]byte, error) {
 	p.bss.align = profile.align
 	p.current = &p.text
 	p.src = src
+
 	for p.pos < len(p.src) {
 		line := p.readLine()
 		if err := p.parseLine(line); err != nil {
