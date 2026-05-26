@@ -1,20 +1,35 @@
 cmodule — experimental
 
 Architecture
-dlopen/dlsym bridge loads an external ELF shared object and resolves a single exported module descriptor. The host passes an opaque pointer to the module entry for zero-copy interaction. The loader exposes raw symbol lookup and a helper to invoke the module descriptor entry.
+dlopen/dlsym bridge loads an external ELF shared object and resolves a direct entry symbol. The host passes a pointer to `fz_context_t` for plugin initialization. The loader exposes raw symbol lookup and a helper to invoke the plugin entry.
 
 The ABI
 ```c
 typedef struct {
-    void* host;
-    int64_t id;
+    const char* plugin_path;
+    const char* config_path;
+    const char* source_path;
+    const char* dir_path;
+    const char* out_bin;
+    const char* out_obj;
+    const char* build_type;
+    const char* target;
+    const char* toolchain;
+    const char* mode;
+    const char* cc_flags;
+    const char* ld_flags;
+    const char* format;
+    const char* isolation;
+    const char** source_dirs;
+    int source_dir_count;
 } fz_context_t;
 ```
 
 Build
 ```sh
-gcc -fPIC -shared -o libfz_example.so c_src/fz_example.c -I../../internal/cplugin
-CGO_ENABLED=1 go run main.go
+fz -dir ./c_src/ -out libfz_example.so 
+fz -verify libfz_example.so 
+
 ```
 
 Safety
