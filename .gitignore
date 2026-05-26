@@ -14,3 +14,33 @@ rustcache/Cargo.lock
 # OS stuff
 .DS_Store
 fz/
+
+# Binaries
+fzt
+fzt.exe
+fzt.old
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.elf
+
+# Benchmark & stress test directories
+ninja_benchmark_*/
+stress_test_*/
+bench_*/
+test_results/
+
+# Local scripts & temp files
+ningja.sh
+test.sh
+*.tmp
+*.log
+*.pid
+
+# Go
+/go.sum.bak
+/vendor/
