@@ -1,4 +1,4 @@
-# ☘️ ForgeZero (fzt) — Complete Documentation
+# ☘️ ForgeZero (fz) — Complete Documentation
 
 <div align="center">
   <table style="border:none; background:transparent;">
@@ -34,7 +34,7 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly and C dev
 
 Benchmarks measured against standard `nasm -f elf64 && ld` and `make -j4` pipelines. Test environment: **Intel Core i5-10310U** (4C/8T, 1.7 GHz base), Arch Linux, Samsung 980 NVMe. Results are mean ± stddev over ≥10 runs via `hyperfine`.
 
-| Modules | ForgeZero (`fzt`) | Traditional (`make -j4`) | Speedup |
+| Modules | ForgeZero (`fz`) | Traditional (`make -j4`) | Speedup |
 |---------|-------------------|--------------------------|---------|
 | 20      | 19.3 ± 1.2 ms     | 45.4 ± 2.3 ms            | **2.35×** |
 | 50      | 31.1 ± 1.3 ms     | 85.0 ± 2.1 ms            | **2.73×** |
@@ -45,7 +45,7 @@ Benchmarks measured against standard `nasm -f elf64 && ld` and `make -j4` pipeli
 
 ### 🔹 Scaling Efficiency
 
-| Metric | `fzt` | `make -j4` |
+| Metric | `fz` | `make -j4` |
 |--------|-------|------------|
 | Time growth (20→400 modules) | **+1056%** | **+2333%** |
 | Overhead per module | ~0.36 ms | ~1.23 ms |
@@ -56,7 +56,7 @@ Benchmarks measured against standard `nasm -f elf64 && ld` and `make -j4` pipeli
 
 ### 🔹 Why the difference?
 
-| Factor | Traditional (`make + nasm + ld`) | ForgeZero (`fzt`) |
+| Factor | Traditional (`make + nasm + ld`) | ForgeZero (`fz`) |
 |--------|---------------------------------|-------------------|
 | **Processes** | 400+ forks at scale | **1 process** (integrated pipeline) |
 | **I/O** | Writes N intermediate `.o` files to disk | **Zero intermediate files** (in-memory) |
@@ -67,7 +67,7 @@ Benchmarks measured against standard `nasm -f elf64 && ld` and `make -j4` pipeli
 
 ### 🔹 Scaling Projection
 
-| Modules | `fzt` (est.) | `make -j4` (est.) | Speedup |
+| Modules | `fz` (est.) | `make -j4` (est.) | Speedup |
 |---------|--------------|-------------------|---------|
 | 20      | 19 ms        | 45 ms             | **2.35×** |
 | 100     | 57 ms        | 185 ms            | **~3.2×** |
@@ -82,14 +82,14 @@ Benchmarks measured against standard `nasm -f elf64 && ld` and `make -j4` pipeli
 # Clone and build ForgeZero
 git clone https://github.com/forgezero-cli/ForgeZero
 cd ForgeZero
-go build -o fzt ./cmd/fzt
+go build -o fz ./cmd/fz 
 
 # Run the benchmark script (generates N test modules and runs hyperfine)
 ./bench.sh  # Edit NUM_MODULES in script for different module counts
 
 # Export benchmark results to Markdown
 hyperfine --warmup 3 --prepare 'make clean && rm -rf .fz_objs fz_out' \
-  './fzt -dir . -out fz_out' 'make -j4' \
+  './fz -dir . -out fz_out' 'make -j4' \
   --export-markdown results.md
 ```
 
@@ -123,7 +123,7 @@ hyperfine --warmup 3 --prepare 'make clean && rm -rf .fz_objs fz_out' \
 11. [Cross-Compilation](#11-cross-compilation)
 12. [Static Library Mode](#12-static-library-mode)
 13. [Shared Library Mode](#13-shared-library-mode)
-14. [Package Manager (fzt pm)](#14-package-manager-fzt-pm)
+14. [Package Manager (fz pm)](#14-package-manager-fz-pm)
 15. [Internal Mechanisms](#15-internal-mechanisms)
     - 15.1 [Build Cache (BLAKE3)](#151-build-cache-blake3)
     - 15.2 [Pre-link Symbol Check](#152-pre-link-symbol-check)
@@ -148,11 +148,11 @@ hyperfine --warmup 3 --prepare 'make clean && rm -rf .fz_objs fz_out' \
     - 17.3 [FASM (.fasm)](#173-fasm-fasm)
 18. [Zig Toolchain Backend](#18-zig-toolchain-backend)
 19. [Supply Chain Security](#19-supply-chain-security)
-    - 19.1 [SBOM Generation (fzt sbom)](#191-sbom-generation-fzt-sbom)
-    - 19.2 [SAST Audit Scanner (fzt audit)](#192-sast-audit-scanner-fzt-audit)
+    - 19.1 [SBOM Generation (fz sbom)](#191-sbom-generation-fz-sbom)
+    - 19.2 [SAST Audit Scanner (fz audit)](#192-sast-audit-scanner-fz-audit)
 20. [Reproducible Builds](#20-reproducible-builds)
-21. [Source Tree Integrity (fzt verify)](#21-source-tree-integrity-fzt-verify)
-22. [Build Profiler (fzt bench)](#22-build-profiler-fzt-bench)
+21. [Source Tree Integrity (fz verify)](#21-source-tree-integrity-fz-verify)
+22. [Build Profiler (fz bench)](#22-build-profiler-fz-bench)
 23. [WebAssembly (WASM)](#23-webassembly-wasm)
 24. [Project Initialization](#24-project-initialization)
 25. [LSP & IDE Integration](#25-lsp--ide-integration)
@@ -163,7 +163,7 @@ hyperfine --warmup 3 --prepare 'make clean && rm -rf .fz_objs fz_out' \
 30. [Roadmap](#30-roadmap)
 31. [Virtual Filesystem Layer (Aegis)](#31-virtual-filesystem-layer-aegis)
 32. [Aegis Security Core](#32-aegis-security-core)
-33. [System Self-Audit (`fzt doctor`)](#33-system-self-audit-fzt-doctor)
+33. [System Self-Audit (`fz doctor`)](#33-system-self-audit-fz-doctor)
 34. [Cross-Platform Readiness](#34-cross-platform-readiness)
 35. [Testing Standards (Aegis)](#35-testing-standards-aegis)
 36. [HADES Engine: Codegen & ELF Emission](#36-hades-engine-codegen--elf-emission)
@@ -174,7 +174,7 @@ hyperfine --warmup 3 --prepare 'make clean && rm -rf .fz_objs fz_out' \
 
 ## 1. Overview
 
-ForgeZero removes the friction between writing assembly (or C) code and running it. Instead of managing assembler flags, linker invocations, and object file paths by hand, you point `fzt` at a source file or directory and it handles everything:
+ForgeZero removes the friction between writing assembly (or C) code and running it. Instead of managing assembler flags, linker invocations, and object file paths by hand, you point `fz` at a source file or directory and it handles everything:
 
 - Detects the file type and selects the correct assembler backend automatically.
 - Compiles each source file into an object file with appropriate flags.
@@ -187,15 +187,15 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 - Supports cross-compilation to ARM, RISC-V, WASM, and other targets via `-target`.
 - Builds static libraries (`.a`) and shared libraries (`.so` / `.dylib`) in addition to executables.
 - Compiles C++ (`.cpp`, `.cc`, `.cxx`) with the same strict standards as C.
-- Manages external C/ASM dependencies via the built-in package manager (`fzt pm`).
+- Manages external C/ASM dependencies via the built-in package manager (`fz pm`).
 - Generates CycloneDX SBOMs with BLAKE3 hashes for supply chain transparency.
 - Runs a built-in SAST scanner to detect secrets, license violations, and dangerous patterns.
 - Guarantees byte-identical reproducible builds across machines.
 - Verifies source tree integrity via BLAKE3 manifests.
-- Profiles every build phase with nanosecond precision (`fzt bench`).
+- Profiles every build phase with nanosecond precision (`fz bench`).
 - Compiles to WebAssembly via `wasm32-emscripten` and `wasm32-wasi`.
 - Routes security-sensitive filesystem operations through a virtual layer with TOCTOU-safe `OpenVerified` reads (v3.1.0 Aegis).
-- Runs `fzt doctor` to verify toolchain presence, directory permissions, and platform integrity before builds.
+- Runs `fz doctor` to verify toolchain presence, directory permissions, and platform integrity before builds.
 - Achieves **zero heap allocations** on all linker hot-paths — `0 allocs/op`, `0 B/op` in micro-benchmarks (v4.1.0 Citadel).
 - Uses **stack-buffered syscalls** (`openHot`, `unlinkHot`) for path conversion, bypassing `os.File` and `path/filepath` heap overhead.
 - Emits **correct, deterministic ELF64 binaries** with local-before-global symbol table ordering and fixed absolute relocation offsets (HADES engine, v4.1.0).
@@ -219,19 +219,19 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 - **Hardened subprocess execution** — external tools (`git`, `ar`, `zig`, `fasm`, `gcc`, `ld`, `nasm`, …) invoke exclusively through `utils.RunCommand`, which resolves binaries with `exec.LookPath`, validates every argument, and runs under a fixed, reproducibility-oriented environment.
 - **Atomic secure writes** — manifests, configuration files, SBOM output, and doctor probe files use `SecureWriteFile`: mode `0600` temporary file, flush via close, platform-specific atomic rename (retry loop on Windows file locks).
 - **Constant-time toolchain checksum comparison** — optional per-tool BLAKE3 expectations in config are verified with `crypto/subtle.ConstantTimeCompare` to reduce timing leakage during integrity audits.
-- **`fzt doctor`** — four-stage self-audit: toolchain reachability, recursive permission probe (read/write via `OpenVerified`), platform integrity (`GOOS`/`GOARCH`, VFS backend name, execution root, CPU count), and consolidated human or `--json` reporting.
+- **`fz doctor`** — four-stage self-audit: toolchain reachability, recursive permission probe (read/write via `OpenVerified`), platform integrity (`GOOS`/`GOARCH`, VFS backend name, execution root, CPU count), and consolidated human or `--json` reporting.
 - **Native Windows I/O path** — `//go:build windows` selects `fs.Windows`, `CleanPath` for drive/UNC normalization, and `renameAtomic` with bounded retries when AV software holds transient locks.
 - **Fault-injection test suite** — `fs.Mock` injects `ErrDiskFull`, `ErrPermission`, `ErrTimeout`, and related errors; critical internal packages target **90%+** statement coverage.
 
 **What's new in v3.0.0 GLORIA:**
 
 - **Zig toolchain backend** — `zig cc` / `zig c++` as primary or alternative backend for C/C++. Zero external dependencies for cross-compilation: Zig ships all headers, libc, and sysroots internally.
-- **SBOM (CycloneDX + BLAKE3)** — `fzt sbom` generates a Software Bill of Materials in CycloneDX format with BLAKE3 hashes for every component.
-- **SAST audit (`fzt audit`)** — built-in security scanner: hardcoded secrets, license compliance (MPL/GPL detection), and dangerous C patterns.
+- **SBOM (CycloneDX + BLAKE3)** — `fz sbom` generates a Software Bill of Materials in CycloneDX format with BLAKE3 hashes for every component.
+- **SAST audit (`fz audit`)** — built-in security scanner: hardcoded secrets, license compliance (MPL/GPL detection), and dangerous C patterns.
 - **Reproducible builds (`--reproducible`)** — suppression of build IDs, timestamps, and non-deterministic path references; object files sorted before linking for byte-identical output.
-- **Source tree verification (`fzt verify`)** — generates and checks BLAKE3 manifests of the entire source tree.
+- **Source tree verification (`fz verify`)** — generates and checks BLAKE3 manifests of the entire source tree.
 - **Symlink boundary protection** — every symlink is resolved and validated against the project root, blocking symlink race attacks.
-- **`fzt bench`** — nanosecond-precision build profiler. Multi-run averaging and JSON output supported.
+- **`fz bench`** — nanosecond-precision build profiler. Multi-run averaging and JSON output supported.
 - **Race-free parallel pipeline** — verified with `go test -race` across the complete test suite.
 - **FASM improvements** — automatic `format ELF64` injection and correct `-dDEBUG=1` / debug symbol pass-through.
 - **WebAssembly** — `wasm32-emscripten` and `wasm32-wasi` targets.
@@ -239,7 +239,7 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 **What's new in v2.0.0 NEXUS:**
 
 - **BLAKE3 hashing** — cache is up to 7× faster. 10 MB file hash time dropped from ~58 ms to ~8.7 ms.
-- **Package manager (`fzt pm`)** — manage external C/ASM dependencies from Git or the official catalog.
+- **Package manager (`fz pm`)** — manage external C/ASM dependencies from Git or the official catalog.
 - **Shared library support** — `-shared`, `-cc-flag`, and `-ld-flag` flags for `.so`, `.dylib`, and `.dll` targets.
 - **High test coverage** — utils 84%, linker 60%, assembler 60%, builder 56%.
 
@@ -247,7 +247,7 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 
 - **Cross-compilation** — `-target <triple>` supports ARM, RISC-V, x86_64, and any standard GNU cross-compilation triple.
 - **LSP support** — `-compile-commands` generates `compile_commands.json` for clangd, ccls, and LSP-aware editors.
-- **Smart self-update** — `fzt -update` backs up the old binary to `/usr/local/bin/fzt.old` before replacing it.
+- **Smart self-update** — `fz -update` backs up the old binary to `/usr/local/bin/fz.old` before replacing it.
 
 **What's new in v1.8.0:**
 
@@ -257,12 +257,12 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 **What's new in v1.7.0:**
 
 - **Parallel builds** — `-j N` compiles all source files concurrently (0 = auto).
-- **Interactive shell** — `fzt -shell` opens a REPL for running `fzt` commands without re-invoking the binary.
+- **Interactive shell** — `fz -shell` opens a REPL for running `fz` commands without re-invoking the binary.
 - **C++ support** — `.cpp`, `.cc`, `.cxx` compiled with `g++` or `clang++`.
 
 **What's new in v1.6.0:**
 
-- **Project initialization** — `fzt -init` scaffolds `.fz.yaml`, `.fzignore`, and `README.md`.
+- **Project initialization** — `fz -init` scaffolds `.fz.yaml`, `.fzignore`, and `README.md`.
 - **Flat binary output** — `-format bin` for bootloaders, firmware, and embedded targets.
 
 **What's new in v1.5.0:**
@@ -299,7 +299,7 @@ ForgeZero is intentionally lightweight — a single statically compiled Go binar
 
 ### Cross-compilation tools (optional)
 
-When using `-target <triple>`, `fzt` looks for prefixed toolchain binaries on your `PATH`:
+When using `-target <triple>`, `fz` looks for prefixed toolchain binaries on your `PATH`:
 
 | Target triple            | Expected compiler prefix     |
 |--------------------------|------------------------------|
@@ -319,14 +319,14 @@ When using `-zig`, no prefixed toolchain is required — Zig resolves the target
 | `nm`       | Pre-link duplicate symbol check (primary) |
 | `objdump`  | Fallback for symbol check |
 | `readelf`  | Second fallback for symbol check |
-| `git`      | Required for `fzt pm add` |
+| `git`      | Required for `fz pm add` |
 | `zig`      | Required for `-zig` backend (v3.0.0+) |
 | `emcc`     | Required for `wasm32-emscripten` target (v3.0.0+) |
-| `hyperfine`| Benchmarking (`fzt bench` and `bench.sh`) — optional but recommended |
+| `hyperfine`| Benchmarking (`fz bench` and `bench.sh`) — optional but recommended |
 
 ### Go version (build from source only)
 
-Go **1.21** or later is required to build `fzt` from source.
+Go **1.21** or later is required to build `fz` from source.
 
 ---
 
@@ -378,7 +378,7 @@ chmod +x /usr/local/bin/fasm
 **Install ForgeZero via Go:**
 
 ```bash
-go install github.com/forgezero-cli/ForgeZero/cmd/fzt@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 Ensure `~/go/bin` is on your `PATH`:
@@ -391,7 +391,7 @@ source ~/.bashrc
 Verify:
 
 ```bash
-fzt -v
+fz -v
 ```
 
 ---
@@ -421,7 +421,7 @@ echo 'export PATH="$PATH:/opt/zig"' >> ~/.bashrc
 **Install ForgeZero:**
 
 ```bash
-go install github.com/forgezero-cli/ForgeZero/cmd/fzt@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 ---
@@ -440,7 +440,7 @@ yay -S fasm
 **Install ForgeZero:**
 
 ```bash
-go install github.com/forgezero-cli/ForgeZero/cmd/fzt@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 ---
@@ -456,7 +456,7 @@ sudo zypper install -y nasm gcc binutils clang git
 **Install ForgeZero:**
 
 ```bash
-go install github.com/forgezero-cli/ForgeZero/cmd/fzt@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 ---
@@ -482,7 +482,7 @@ brew install nasm gcc go git zig
 **Install ForgeZero:**
 
 ```bash
-go install github.com/forgezero-cli/ForgeZero/cmd/fzt@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 Add Go's bin directory to your shell profile:
@@ -495,7 +495,7 @@ source ~/.zshrc
 Verify:
 
 ```bash
-fzt -v
+fz -v
 ```
 
 ---
@@ -556,7 +556,7 @@ Download from [go.dev/dl](https://go.dev/dl/) and run the installer.
 Open **Command Prompt** or **PowerShell**:
 
 ```powershell
-go install github.com/forgezero-cli/ForgeZero/cmd/fzt@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 Or build from source:
@@ -564,14 +564,14 @@ Or build from source:
 ```powershell
 git clone https://github.com/forgezero-cli/ForgeZero.git
 cd ForgeZero
-go build -o fzt.exe ./cmd/fzt/main.go
+go build -o fz.exe ./cmd/fz/main.go
 ```
 
-Move `fzt.exe` to a directory on your `PATH`.
+Move `fz.exe` to a directory on your `PATH`.
 
 > **Known limitation:** `-sanitize` and `-strict` require Clang with AddressSanitizer support compiled for Windows, available via the official LLVM Windows release but requiring additional setup beyond MSYS2. Basic NASM assembly and GCC linking work without any extra configuration.
 
-Run `fzt doctor` as the first command after installation to confirm PATH and directory permissions are correctly configured.
+Run `fz doctor` as the first command after installation to confirm PATH and directory permissions are correctly configured.
 
 ---
 
@@ -580,8 +580,8 @@ Run `fzt doctor` as the first command after installation to confirm PATH and dir
 ```bash
 git clone https://github.com/forgezero-cli/ForgeZero.git
 cd ForgeZero
-go build -o fzt ./cmd/fzt/main.go    # Linux / macOS
-go build -o fzt.exe ./cmd/fzt/main.go  # Windows
+go build -o fz ./cmd/fz/main.go    # Linux / macOS
+go build -o fz.exe ./cmd/fz/main.go  # Windows
 ```
 
 Run tests:
@@ -595,10 +595,10 @@ Install to `PATH`:
 
 ```bash
 # Linux / macOS
-sudo mv fzt /usr/local/bin/
+sudo mv fz /usr/local/bin/
 
 # Windows (PowerShell, as Administrator)
-Move-Item fzt.exe C:\Windows\System32\fzt.exe
+Move-Item fz.exe C:\Windows\System32\fz.exe
 ```
 
 ---
@@ -608,13 +608,13 @@ Move-Item fzt.exe C:\Windows\System32\fzt.exe
 The simplest method if Go is already configured:
 
 ```bash
-go install github.com/forgezero-cli/ForgeZero/cmd/fzt@latest
+go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 ```
 
 The binary lands in `$GOPATH/bin`. Verify:
 
 ```bash
-fzt -v
+fz -v
 ```
 
 ---
@@ -624,113 +624,113 @@ fzt -v
 **Assemble a NASM file:**
 
 ```bash
-fzt -asm hello.asm
+fz -asm hello.asm
 ./hello
 ```
 
 **Compile a C file:**
 
 ```bash
-fzt -cc main.c
+fz -cc main.c
 ./main
 ```
 
 **Compile a C++ file:**
 
 ```bash
-fzt -cc main.cpp
+fz -cc main.cpp
 ./main
 ```
 
 **Build an entire directory:**
 
 ```bash
-fzt -dir ./src
+fz -dir ./src
 ./src
 ```
 
 **Initialize a new project:**
 
 ```bash
-fzt -init
+fz -init
 ```
 
 **Build with cross-compilation:**
 
 ```bash
-fzt -cc main.c -target arm-linux-gnueabihf
+fz -cc main.c -target arm-linux-gnueabihf
 ```
 
 **Build with Zig backend (no extra toolchain needed):**
 
 ```bash
-fzt -cc main.c -zig -target aarch64-linux-musl
+fz -cc main.c -zig -target aarch64-linux-musl
 ```
 
 **Direct linker invocation (v4.1.0 — bypasses compiler validation):**
 
 ```bash
-fzt -asm boot.asm -ld -out boot.elf
+fz -asm boot.asm -ld -out boot.elf
 ```
 
 **Generate LSP compilation database:**
 
 ```bash
-fzt -compile-commands
+fz -compile-commands
 ```
 
 **Build a static library:**
 
 ```bash
-fzt -dir ./src -type static -lib mylib
+fz -dir ./src -type static -lib mylib
 ```
 
 **Build a shared library:**
 
 ```bash
-fzt -cc mylib.c -shared -o libmylib.so
+fz -cc mylib.c -shared -o libmylib.so
 ```
 
 **Add a package dependency:**
 
 ```bash
-fzt pm add github.com/me/my-lib
+fz pm add github.com/me/my-lib
 ```
 
 **Generate a Software Bill of Materials:**
 
 ```bash
-fzt sbom
+fz sbom
 ```
 
 **Run the security audit:**
 
 ```bash
-fzt audit
+fz audit
 ```
 
 **Reproducible build:**
 
 ```bash
-fzt -dir ./src --reproducible
+fz -dir ./src --reproducible
 ```
 
 **Verify source tree integrity:**
 
 ```bash
-fzt verify
+fz verify
 ```
 
 **Profile the build:**
 
 ```bash
-fzt bench
+fz bench
 ```
 
 **Build for WebAssembly (WASI, via Zig):**
 
 ```bash
-fzt -cc main.c -zig -target wasm32-wasi -out main.wasm
+fz -cc main.c -zig -target wasm32-wasi -out main.wasm
 ```
 
 **Build multiple directories (v1.5.0):**
@@ -745,7 +745,7 @@ output: myos
 ```
 
 ```bash
-fzt
+fz
 ```
 
 ---
@@ -772,9 +772,9 @@ All other extensions are silently ignored during directory and recursive scannin
 Compiles and links a single source file into a binary.
 
 ```bash
-fzt -asm program.asm
-fzt -cc main.c
-fzt -cc main.cpp
+fz -asm program.asm
+fz -cc main.c
+fz -cc main.cpp
 ```
 
 - Output binary name is derived from the source filename (`program.asm` → `program`).
@@ -786,7 +786,7 @@ fzt -cc main.cpp
 Recursively scans a directory for all supported source files, compiles each to a uniquely named object file, then links everything into a single binary.
 
 ```bash
-fzt -dir ./src
+fz -dir ./src
 ```
 
 **Object file naming** — names are derived from the full relative path to prevent collisions across subdirectories:
@@ -812,13 +812,13 @@ ForgeZero automatically searches the working directory for a config file in this
 Run without any flags to use the config:
 
 ```bash
-fzt
+fz
 ```
 
 Use `-config` to specify a path explicitly:
 
 ```bash
-fzt -config ./configs/release.yaml
+fz -config ./configs/release.yaml
 ```
 
 CLI flags always take precedence over config file values.
@@ -837,7 +837,7 @@ CLI flags always take precedence over config file values.
 ### Synopsis
 
 ```
-fzt [options]
+fz [options]
 ```
 
 At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, `sbom`, `audit`, `verify`, `bench`, `doctor`, or a valid config file must be present.
@@ -879,10 +879,10 @@ At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, `sbom`, `audit`,
 | `-compile-commands` | — | off | Generate `compile_commands.json` for LSP/IDE integration. |
 | `-init` | — | off | Scaffold a new project: creates `.fz.yaml`, `.fzignore`, and `README.md`. |
 | `-shell` | — | off | Open interactive REPL shell. |
-| `-update` | — | off | Download and install the latest `fzt` binary; backs up current binary to `fzt.old`. |
+| `-update` | — | off | Download and install the latest `fz` binary; backs up current binary to `fz.old`. |
 | `-config` | `<file>` | auto-detect | Path to a YAML configuration file. |
 | `-timeout` | `<sec>` | `60` | Timeout in seconds for each sub-command. |
-| `-manifest` | `<file>` | `.fz.manifest` | Path to the BLAKE3 source manifest used by `fzt verify`. |
+| `-manifest` | `<file>` | `.fz.manifest` | Path to the BLAKE3 source manifest used by `fz verify`. |
 | `-h`, `--help` | — | — | Print help and exit. |
 | `-v`, `--version` | — | — | Print version and exit. |
 
@@ -890,39 +890,39 @@ At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, `sbom`, `audit`,
 
 | Command | Description |
 |---------|-------------|
-| `fzt pm add <repo>[@version]` | Clone a package from a Git repository and register it in `.fz.yaml`. |
-| `fzt pm remove <package>` | Remove a package and clean up `.fz.yaml` and empty parent directories. |
-| `fzt pm list` | List all installed packages. |
-| `fzt pm update` | Update all installed packages to the latest commit or tag. |
-| `fzt pm catalog` | Browse the official ForgeZero package catalog. |
-| `fzt pm search <query>` | Search the catalog by name or keyword. |
-| `fzt pm install <name>` | Install a package from the catalog with BLAKE3 hash verification. |
+| `fz pm add <repo>[@version]` | Clone a package from a Git repository and register it in `.fz.yaml`. |
+| `fz pm remove <package>` | Remove a package and clean up `.fz.yaml` and empty parent directories. |
+| `fz pm list` | List all installed packages. |
+| `fz pm update` | Update all installed packages to the latest commit or tag. |
+| `fz pm catalog` | Browse the official ForgeZero package catalog. |
+| `fz pm search <query>` | Search the catalog by name or keyword. |
+| `fz pm install <name>` | Install a package from the catalog with BLAKE3 hash verification. |
 
 ### Security & Integrity Sub-commands
 
 | Command | Description |
 |---------|-------------|
-| `fzt sbom` | Generate a CycloneDX SBOM with BLAKE3 hashes for all build components. |
-| `fzt sbom -o <path>` | Write the SBOM to a specific output file (default: `sbom.cdx.json`). |
-| `fzt sbom -dir <dir>` | Generate SBOM scoped to a specific source directory. |
-| `fzt audit` | Run the built-in SAST scanner: secrets, license compliance, and dangerous patterns. |
-| `fzt audit -dir <dir>` | Audit a specific directory. |
-| `fzt audit -json` | Emit the audit report as JSON to stdout. |
-| `fzt verify` | Verify the current source tree against the stored BLAKE3 manifest. |
-| `fzt verify --generate` | Generate a new BLAKE3 manifest of the current source tree. |
-| `fzt verify --strict` | Also report UNTRACKED files not present in the manifest. |
-| `fzt verify -manifest <f>` | Use a specific manifest file instead of the default `.fz.manifest`. |
-| `fzt doctor` | Run the Aegis self-audit: toolchain, permissions, platform integrity. |
-| `fzt doctor -root <dir>` | Audit a specific project root (default: current working directory). |
-| `fzt doctor -json` | Emit the audit report as JSON; exit code `1` if `healthy` is false. |
+| `fz sbom` | Generate a CycloneDX SBOM with BLAKE3 hashes for all build components. |
+| `fz sbom -o <path>` | Write the SBOM to a specific output file (default: `sbom.cdx.json`). |
+| `fz sbom -dir <dir>` | Generate SBOM scoped to a specific source directory. |
+| `fz audit` | Run the built-in SAST scanner: secrets, license compliance, and dangerous patterns. |
+| `fz audit -dir <dir>` | Audit a specific directory. |
+| `fz audit -json` | Emit the audit report as JSON to stdout. |
+| `fz verify` | Verify the current source tree against the stored BLAKE3 manifest. |
+| `fz verify --generate` | Generate a new BLAKE3 manifest of the current source tree. |
+| `fz verify --strict` | Also report UNTRACKED files not present in the manifest. |
+| `fz verify -manifest <f>` | Use a specific manifest file instead of the default `.fz.manifest`. |
+| `fz doctor` | Run the Aegis self-audit: toolchain, permissions, platform integrity. |
+| `fz doctor -root <dir>` | Audit a specific project root (default: current working directory). |
+| `fz doctor -json` | Emit the audit report as JSON; exit code `1` if `healthy` is false. |
 
 ### Performance Sub-commands
 
 | Command | Description |
 |---------|-------------|
-| `fzt bench` | Profile the build: nanosecond-precision timing for every phase. |
-| `fzt bench -n <N>` | Run N times; report average and standard deviation per phase. |
-| `fzt bench -json` | Emit the benchmark report as JSON. |
+| `fz bench` | Profile the build: nanosecond-precision timing for every phase. |
+| `fz bench -n <N>` | Run N times; report average and standard deviation per phase. |
+| `fz bench -json` | Emit the benchmark report as JSON. |
 
 ---
 
@@ -943,8 +943,8 @@ When `-strict` is active, `clang` with full sanitizer flags is tried first.
 ### `c` — Force GCC / Clang
 
 ```bash
-fzt -asm program.asm -mode c
-fzt -cc main.c -mode c
+fz -asm program.asm -mode c
+fz -cc main.c -mode c
 ```
 
 Always links using `gcc` (or `clang` in strict mode). Required when code calls libc functions (`printf`, `malloc`, `exit`, etc.) or depends on C runtime initialization.
@@ -952,7 +952,7 @@ Always links using `gcc` (or `clang` in strict mode). Required when code calls l
 ### `raw` — Force LD
 
 ```bash
-fzt -asm kernel.asm -mode raw -out kernel.bin
+fz -asm kernel.asm -mode raw -out kernel.bin
 ```
 
 Bypasses GCC entirely and invokes `ld` directly. Suitable for:
@@ -967,7 +967,7 @@ Bypasses GCC entirely and invokes `ld` directly. Suitable for:
 ### Direct Linker Invocation (`-ld`, v4.1.0)
 
 ```bash
-fzt -asm boot.asm -ld -out boot.elf
+fz -asm boot.asm -ld -out boot.elf
 ```
 
 The `-ld` flag invokes the linker directly, bypassing compiler validation layers entirely. This reduces orchestration overhead by ~3–5% on small projects. Unlike `-mode raw`, `-ld` does not imply a particular linking strategy — it simply removes the `gcc`/`clang` wrapper from the invocation chain. Use this when you need the tightest possible control over linker arguments and accept full responsibility for the link step.
@@ -978,7 +978,7 @@ The `-ld` flag invokes the linker directly, bypassing compiler validation layers
 
 ### 9.1 Strict Warning Flags
 
-Every `.c` file compiled by `fzt` receives these flags unconditionally:
+Every `.c` file compiled by `fz` receives these flags unconditionally:
 
 ```
 -Wall -Wextra -Werror -Wpedantic -Wshadow -Wconversion
@@ -1016,7 +1016,7 @@ Any warning is treated as an error and stops the build immediately. This is inte
 **Disable sanitizers (release build / benchmarking):**
 
 ```bash
-fzt -cc main.c -sanitize=false
+fz -cc main.c -sanitize=false
 ```
 
 > **Note:** Sanitizers are automatically disabled for WebAssembly targets (`wasm32-*`). See [Section 23](#23-webassembly-wasm).
@@ -1036,18 +1036,18 @@ Sanitizers are also enabled by default for C++ in the same way as C.
 **Single C++ file:**
 
 ```bash
-fzt -cc main.cpp
-fzt -cc main.cc
-fzt -cc main.cxx
+fz -cc main.cpp
+fz -cc main.cc
+fz -cc main.cxx
 ```
 
 **Mixed C and C++ project directory:**
 
 ```bash
-fzt -dir ./src
+fz -dir ./src
 ```
 
-`fzt` dispatches `.c` files to `gcc`/`clang`/`zig cc` and `.cpp`/`.cc`/`.cxx` files to `g++`/`clang++`/`zig c++` automatically. All objects are linked in a single step.
+`fz` dispatches `.c` files to `gcc`/`clang`/`zig cc` and `.cpp`/`.cc`/`.cxx` files to `g++`/`clang++`/`zig c++` automatically. All objects are linked in a single step.
 
 ---
 
@@ -1058,19 +1058,19 @@ Added in **v1.9.0**, extended with Zig backend in **v3.0.0**, validated for `amd
 ### Basic Usage
 
 ```bash
-fzt -cc main.c -target arm-linux-gnueabihf
-fzt -cc main.c -target aarch64-linux-gnu
-fzt -cc main.c -target riscv64-linux-gnu
-fzt -dir ./src -target arm-linux-gnueabihf -out firmware
+fz -cc main.c -target arm-linux-gnueabihf
+fz -cc main.c -target aarch64-linux-gnu
+fz -cc main.c -target riscv64-linux-gnu
+fz -dir ./src -target arm-linux-gnueabihf -out firmware
 
 # With Zig backend — no cross-compiler package required
-fzt -cc main.c -zig -target aarch64-linux-musl
-fzt -cc main.c -zig -target riscv64-linux-musl
+fz -cc main.c -zig -target aarch64-linux-musl
+fz -cc main.c -zig -target riscv64-linux-musl
 ```
 
 ### How It Works
 
-Without `-zig`, `fzt` constructs prefixed compiler and linker names by prepending the triple:
+Without `-zig`, `fz` constructs prefixed compiler and linker names by prepending the triple:
 
 - Compiler: `<triple>-gcc`
 - C++ compiler: `<triple>-g++`
@@ -1123,7 +1123,7 @@ flags:
 Added in **v1.8.0**. ForgeZero can produce static libraries (`.a` archives) instead of linked executables.
 
 ```bash
-fzt -dir ./src -type static -lib mylib
+fz -dir ./src -type static -lib mylib
 ```
 
 This compiles all source files in `./src/` into object files, then archives them into `libmylib.a` using `ar`.
@@ -1147,8 +1147,8 @@ lib: mylib
 **Cross-compilation with static library:**
 
 ```bash
-fzt -dir ./src -type static -lib mylib -target arm-linux-gnueabihf
-fzt -dir ./src -type static -lib mylib -zig -target aarch64-linux-musl
+fz -dir ./src -type static -lib mylib -target arm-linux-gnueabihf
+fz -dir ./src -type static -lib mylib -zig -target aarch64-linux-musl
 ```
 
 ---
@@ -1158,8 +1158,8 @@ fzt -dir ./src -type static -lib mylib -zig -target aarch64-linux-musl
 Added in **v2.0.0 NEXUS**.
 
 ```bash
-fzt -cc mylib.c -shared -o libmylib.so
-fzt -cc mylib.c -shared -cc-flag "-O2 -fPIC" -ld-flag "-pthread" -o libmylib.so
+fz -cc mylib.c -shared -o libmylib.so
+fz -cc mylib.c -shared -cc-flag "-O2 -fPIC" -ld-flag "-pthread" -o libmylib.so
 ```
 
 | Flag | Description |
@@ -1172,66 +1172,66 @@ When building shared libraries for Linux, always include `-fPIC` in `-cc-flag`.
 
 ---
 
-## 14. Package Manager (fzt pm)
+## 14. Package Manager (fz pm)
 
-Added in **v2.0.0 NEXUS**. `fzt pm` manages external C/ASM dependencies from Git repositories or the official ForgeZero package catalog.
+Added in **v2.0.0 NEXUS**. `fz pm` manages external C/ASM dependencies from Git repositories or the official ForgeZero package catalog.
 
 ### Sub-commands
 
-#### fzt pm add
+#### fz pm add
 
 ```bash
-fzt pm add github.com/me/my-lib
-fzt pm add github.com/me/my-lib@v1.2.3
+fz pm add github.com/me/my-lib
+fz pm add github.com/me/my-lib@v1.2.3
 ```
 
-Clones the repository into `vendor/`, checks out the version tag if given, and updates `.fz.yaml` (`source_dirs`). All subsequent `fzt` builds include the vendored package.
+Clones the repository into `vendor/`, checks out the version tag if given, and updates `.fz.yaml` (`source_dirs`). All subsequent `fz` builds include the vendored package.
 
-#### fzt pm remove
+#### fz pm remove
 
 ```bash
-fzt pm remove my-lib
+fz pm remove my-lib
 ```
 
 Deletes the package directory from `vendor/`, cleans up `.fz.yaml`, and removes empty parent directories.
 
-#### fzt pm list
+#### fz pm list
 
 ```bash
-fzt pm list
+fz pm list
 ```
 
 Lists all currently installed packages and their versions.
 
-#### fzt pm update
+#### fz pm update
 
 ```bash
-fzt pm update
+fz pm update
 ```
 
 Pulls the latest changes for all installed packages.
 
-#### fzt pm catalog
+#### fz pm catalog
 
 ```bash
-fzt pm catalog
+fz pm catalog
 ```
 
 Fetches and displays the full list of packages from the official ForgeZero catalog (`https://raw.githubusercontent.com/forgezero-cli/catalog/main/catalog.json`).
 
-#### fzt pm search
+#### fz pm search
 
 ```bash
-fzt pm search iot
-fzt pm search crypto
+fz pm search iot
+fz pm search crypto
 ```
 
 Searches the official catalog by name or keyword.
 
-#### fzt pm install
+#### fz pm install
 
 ```bash
-fzt pm install esp-idf
+fz pm install esp-idf
 ```
 
 Installs a named package from the catalog with BLAKE3 hash verification.
@@ -1260,29 +1260,29 @@ ForgeZero caches compiled object files in `.fz_cache/` to skip recompilation of 
 **Disable caching:**
 
 ```bash
-fzt -dir ./src -no-cache
+fz -dir ./src -no-cache
 ```
 
 **Clear cache:**
 
 ```bash
-fzt -dir . -clean
+fz -dir . -clean
 ```
 
 ---
 
 ### 15.2 Pre-link Symbol Check
 
-Before invoking the linker, `fzt` scans all compiled object files for duplicate global symbol definitions.
+Before invoking the linker, `fz` scans all compiled object files for duplicate global symbol definitions.
 
 **Tools used (in order of preference):** `nm` → `objdump` → `readelf`
 
-If a conflict is found, `fzt` reports which files define the duplicate symbol and exits with code `1`.
+If a conflict is found, `fz` reports which files define the duplicate symbol and exits with code `1`.
 
 **Disable the check:**
 
 ```bash
-fzt -dir ./src -no-symbol-check
+fz -dir ./src -no-symbol-check
 ```
 
 ---
@@ -1290,8 +1290,8 @@ fzt -dir ./src -no-symbol-check
 ### 15.3 Watch Mode
 
 ```bash
-fzt -dir ./src -watch
-fzt -asm main.asm -watch
+fz -dir ./src -watch
+fz -asm main.asm -watch
 ```
 
 Uses [fsnotify](https://github.com/fsnotify/fsnotify) for cross-platform filesystem events. Rebuilds are debounced with a **500 ms** delay.
@@ -1317,7 +1317,7 @@ When `-json` is passed, a single JSON object is written to stdout on completion:
 **CI/CD integration:**
 
 ```bash
-result=$(fzt -dir ./src -json)
+result=$(fz -dir ./src -json)
 status=$(echo "$result" | jq -r '.status')
 duration=$(echo "$result" | jq -r '.duration_ms')
 
@@ -1334,7 +1334,7 @@ echo "Build succeeded in ${duration}ms"
 ### 15.5 Clean
 
 ```bash
-fzt -dir . -clean
+fz -dir . -clean
 ```
 
 Removes: `.fz_objs/`, `.fz_cache/`, all `.o` files, and executable files identified by the `+x` permission bit.
@@ -1346,8 +1346,8 @@ Removes: `.fz_objs/`, `.fz_cache/`, all `.o` files, and executable files identif
 ### 15.6 Parallel Builds
 
 ```bash
-fzt -dir ./src -j 4   # compile up to 4 files simultaneously
-fzt -dir ./src -j 0   # auto: use all available CPU cores
+fz -dir ./src -j 4   # compile up to 4 files simultaneously
+fz -dir ./src -j 0   # auto: use all available CPU cores
 ```
 
 As of **v3.0.0 GLORIA**, the parallel build and logging pipeline is race-condition-free, verified with `go test -race`.
@@ -1357,10 +1357,10 @@ As of **v3.0.0 GLORIA**, the parallel build and logging pipeline is race-conditi
 ### 15.7 Interactive Shell
 
 ```bash
-fzt -shell
+fz -shell
 ```
 
-Opens a REPL for issuing `fzt` commands without re-invoking the binary.
+Opens a REPL for issuing `fz` commands without re-invoking the binary.
 
 | Command | Description |
 |---------|-------------|
@@ -1606,7 +1606,7 @@ _start:
 ```
 
 ```bash
-fzt -asm hello.asm
+fz -asm hello.asm
 ./hello
 ```
 
@@ -1638,7 +1638,7 @@ _start:
 ```
 
 ```bash
-fzt -asm hello.s
+fz -asm hello.s
 ./hello
 ```
 
@@ -1672,7 +1672,7 @@ _start:
 ```
 
 ```bash
-fzt -asm hello.fasm
+fz -asm hello.fasm
 ./hello
 ```
 
@@ -1689,12 +1689,12 @@ The Zig compiler ships as a single self-contained binary that includes: a full c
 ### 18.2 Activating the Zig Backend
 
 ```bash
-fzt -cc main.c -zig
-fzt -dir ./src -zig
-fzt -cc main.c -zig -target aarch64-linux-musl
-fzt -cc main.c -zig -target riscv64-linux-musl
-fzt -cc main.c -zig -target x86_64-windows-gnu
-fzt -dir ./src -type static -lib mylib -zig -target aarch64-linux-musl
+fz -cc main.c -zig
+fz -dir ./src -zig
+fz -cc main.c -zig -target aarch64-linux-musl
+fz -cc main.c -zig -target riscv64-linux-musl
+fz -cc main.c -zig -target x86_64-windows-gnu
+fz -dir ./src -type static -lib mylib -zig -target aarch64-linux-musl
 ```
 
 In `.fz.yaml`:
@@ -1750,7 +1750,7 @@ end if
 ```
 
 ```bash
-fzt -asm boot.fasm -debug
+fz -asm boot.fasm -debug
 gdb ./boot
 (gdb) break _start
 (gdb) run
@@ -1762,26 +1762,26 @@ gdb ./boot
 
 > **New in v3.0.0 GLORIA** · atomic SBOM generation hardened in **v4.1.0 Citadel**
 
-### 19.1 SBOM Generation (fzt sbom)
+### 19.1 SBOM Generation (fz sbom)
 
 ```bash
-fzt sbom
-fzt sbom -o /tmp/myproject-sbom.cdx.json
-fzt sbom -dir ./src -o release-sbom.cdx.json
+fz sbom
+fz sbom -o /tmp/myproject-sbom.cdx.json
+fz sbom -dir ./src -o release-sbom.cdx.json
 ```
 
-`fzt sbom` generates a **CycloneDX** SBOM (valid JSON, importable into Dependency-Track, Grype, Syft). As of v4.1.0, SBOM artifacts are produced atomically via internal helpers, preventing partial output files on crash or interrupt.
+`fz sbom` generates a **CycloneDX** SBOM (valid JSON, importable into Dependency-Track, Grype, Syft). As of v4.1.0, SBOM artifacts are produced atomically via internal helpers, preventing partial output files on crash or interrupt.
 
 Each component entry includes: name, version (Git commit SHA for vendored packages), BLAKE3 hash, type (`source-file`, `vendored-package`, `system-library`), and SPDX license identifier.
 
 ---
 
-### 19.2 SAST Audit Scanner (fzt audit)
+### 19.2 SAST Audit Scanner (fz audit)
 
 ```bash
-fzt audit
-fzt audit -dir ./src
-fzt audit -json
+fz audit
+fz audit -dir ./src
+fz audit -json
 ```
 
 Three classes of checks:
@@ -1836,7 +1836,7 @@ ForgeZero eliminates all known sources of non-determinism when `--reproducible` 
 | Object sort order | Lexicographic sort before linker invocation |
 
 ```bash
-fzt -dir ./src --reproducible
+fz -dir ./src --reproducible
 ```
 
 ```yaml
@@ -1847,26 +1847,26 @@ reproducible: true
 
 ```bash
 # Machine A
-fzt -dir ./src --reproducible -out release_a
+fz -dir ./src --reproducible -out release_a
 sha256sum release_a
 
 # Machine B (same source, same commit)
-fzt -dir ./src --reproducible -out release_b
+fz -dir ./src --reproducible -out release_b
 sha256sum release_b
 # Both hashes must match
 ```
 
 ---
 
-## 21. Source Tree Integrity (fzt verify)
+## 21. Source Tree Integrity (fz verify)
 
 > **New in v3.0.0 GLORIA**
 
 **Generate a manifest:**
 
 ```bash
-fzt verify --generate
-fzt verify --generate -manifest ./release.manifest
+fz verify --generate
+fz verify --generate -manifest ./release.manifest
 ```
 
 The manifest is a plain text file (one BLAKE3 hex hash + relative path per line).
@@ -1874,9 +1874,9 @@ The manifest is a plain text file (one BLAKE3 hex hash + relative path per line)
 **Verify against a manifest:**
 
 ```bash
-fzt verify
-fzt verify -manifest ./release.manifest
-fzt verify --strict   # also report UNTRACKED files
+fz verify
+fz verify -manifest ./release.manifest
+fz verify --strict   # also report UNTRACKED files
 ```
 
 Three categories of finding: **MODIFIED**, **MISSING**, **UNTRACKED** (only with `--strict`).
@@ -1884,7 +1884,7 @@ Three categories of finding: **MODIFIED**, **MISSING**, **UNTRACKED** (only with
 **CI/CD integration:**
 
 ```bash
-fzt verify -manifest ./release.manifest
+fz verify -manifest ./release.manifest
 # Exits 1 if any file has been tampered with
 ```
 
@@ -1892,21 +1892,21 @@ fzt verify -manifest ./release.manifest
 
 ---
 
-## 22. Build Profiler (fzt bench)
+## 22. Build Profiler (fz bench)
 
 > **New in v3.0.0 GLORIA**
 
 ```bash
-fzt bench
-fzt bench -dir ./src
-fzt bench -n 5
-fzt bench -json
+fz bench
+fz bench -dir ./src
+fz bench -n 5
+fz bench -json
 ```
 
 **Output format:**
 
 ```
-fzt bench — ForgeZero Build Profiler
+fz bench — ForgeZero Build Profiler
 Project: ./src   Files: 12   Mode: auto   Cache: cold
 
 Phase                       Start (ns)      Duration        % Total
@@ -1948,7 +1948,7 @@ Total                                      349,323,226 ns    100.00%
 **WASI via Zig (recommended — no extra SDK):**
 
 ```bash
-fzt -cc main.c -zig -target wasm32-wasi -out main.wasm
+fz -cc main.c -zig -target wasm32-wasi -out main.wasm
 wasmtime main.wasm
 ```
 
@@ -1956,7 +1956,7 @@ wasmtime main.wasm
 
 ```bash
 source /path/to/emsdk/emsdk_env.sh
-fzt -cc main.c -target wasm32-emscripten -out main.js
+fz -cc main.c -target wasm32-emscripten -out main.js
 # Produces main.wasm + main.js
 ```
 
@@ -1985,14 +1985,14 @@ Added in **v1.6.0**.
 
 ```bash
 mkdir myproject && cd myproject
-fzt -init
+fz -init
 ```
 
 | File | Contents |
 |------|----------|
 | `.fz.yaml` | Minimal project configuration with commented fields |
 | `.fzignore` | Sensible default ignore rules |
-| `README.md` | Project README template with `fzt` build instructions |
+| `README.md` | Project README template with `fz` build instructions |
 
 No existing file is overwritten.
 
@@ -2003,8 +2003,8 @@ No existing file is overwritten.
 Added in **v1.9.0**.
 
 ```bash
-fzt -compile-commands
-fzt -dir ./src -compile-commands
+fz -compile-commands
+fz -dir ./src -compile-commands
 ```
 
 | Editor | Language server | Notes |
@@ -2022,15 +2022,15 @@ fzt -dir ./src -compile-commands
 Added in **v1.9.0**.
 
 ```bash
-fzt -update
+fz -update
 ```
 
-What happens: fetches the latest release binary, backs up the current binary to `fzt.old`, installs the new one, reports version change.
+What happens: fetches the latest release binary, backs up the current binary to `fz.old`, installs the new one, reports version change.
 
 **Rolling back:**
 
 ```bash
-sudo cp /usr/local/bin/fzt.old /usr/local/bin/fzt
+sudo cp /usr/local/bin/fz.old /usr/local/bin/fz
 ```
 
 ---
@@ -2040,101 +2040,101 @@ sudo cp /usr/local/bin/fzt.old /usr/local/bin/fzt
 ### Minimal builds
 
 ```bash
-fzt -asm hello.asm
-fzt -asm hello.s
-fzt -asm hello.fasm
-fzt -cc main.c
-fzt -cc main.cpp
+fz -asm hello.asm
+fz -asm hello.s
+fz -asm hello.fasm
+fz -cc main.c
+fz -cc main.cpp
 ```
 
 ### Initialize a new project
 
 ```bash
 mkdir myproject && cd myproject
-fzt -init
+fz -init
 mkdir src
 echo 'int main(void) { return 0; }' > src/main.c
-fzt
+fz
 ```
 
 ### Debug build with verbose output
 
 ```bash
-fzt -asm hello.asm -debug -verbose
+fz -asm hello.asm -debug -verbose
 gdb ./hello
 ```
 
 ### Bare-metal / bootloader binary
 
 ```bash
-fzt -asm boot.asm -mode raw -format bin -out boot.bin
+fz -asm boot.asm -mode raw -format bin -out boot.bin
 ```
 
 ### Direct linker invocation (v4.1.0)
 
 ```bash
-fzt -asm boot.asm -ld -out boot.elf
+fz -asm boot.asm -ld -out boot.elf
 ```
 
 ### C with strict sanitizers
 
 ```bash
-fzt -cc main.c -strict
+fz -cc main.c -strict
 ```
 
 ### Build a full project directory
 
 ```bash
-fzt -dir ./src
+fz -dir ./src
 ```
 
 ### Parallel build
 
 ```bash
-fzt -dir ./src -j 0
+fz -dir ./src -j 0
 ```
 
 ### Cross-compile for ARM (with system toolchain)
 
 ```bash
-fzt -cc main.c -target arm-linux-gnueabihf -sanitize=false
+fz -cc main.c -target arm-linux-gnueabihf -sanitize=false
 ```
 
 ### Cross-compile for ARM64 musl (Zig — no packages needed)
 
 ```bash
-fzt -cc main.c -zig -target aarch64-linux-musl -sanitize=false
+fz -cc main.c -zig -target aarch64-linux-musl -sanitize=false
 ```
 
 ### Build a static library
 
 ```bash
-fzt -dir ./src -type static -lib mylib
+fz -dir ./src -type static -lib mylib
 ls libmylib.a
 ```
 
 ### Build a shared library
 
 ```bash
-fzt -cc mylib.c -shared -cc-flag "-O2 -fPIC" -o libmylib.so
+fz -cc mylib.c -shared -cc-flag "-O2 -fPIC" -o libmylib.so
 ```
 
 ### Package manager
 
 ```bash
-fzt pm add github.com/me/my-lib
-fzt pm add github.com/me/my-lib@v1.2.3
-fzt pm install esp-idf
-fzt pm search crypto
-fzt pm list
-fzt pm update
-fzt pm remove my-lib
+fz pm add github.com/me/my-lib
+fz pm add github.com/me/my-lib@v1.2.3
+fz pm install esp-idf
+fz pm search crypto
+fz pm list
+fz pm update
+fz pm remove my-lib
 ```
 
 ### Generate LSP compilation database
 
 ```bash
-fzt -dir ./src -compile-commands
+fz -dir ./src -compile-commands
 cat compile_commands.json
 ```
 
@@ -2142,42 +2142,42 @@ cat compile_commands.json
 
 ```bash
 # .fz.yaml: source_dirs: [src, lib], output: release
-fzt
+fz
 ```
 
 ### Generate a Software Bill of Materials
 
 ```bash
-fzt sbom
+fz sbom
 cat sbom.cdx.json
 ```
 
 ### Run the security audit
 
 ```bash
-fzt audit
-fzt audit -json | tee audit_report.json
+fz audit
+fz audit -json | tee audit_report.json
 ```
 
 ### Reproducible build
 
 ```bash
-fzt -dir ./src --reproducible
+fz -dir ./src --reproducible
 sha256sum ./src
 ```
 
 ### Generate and verify source tree manifest
 
 ```bash
-fzt verify --generate
-fzt verify
+fz verify --generate
+fz verify
 ```
 
 ### Profile the build
 
 ```bash
-fzt bench -dir ./src
-fzt bench -dir ./src -n 5 -json | tee bench_report.json
+fz bench -dir ./src
+fz bench -dir ./src -n 5 -json | tee bench_report.json
 ```
 
 ### Reproduce the official benchmark
@@ -2185,21 +2185,21 @@ fzt bench -dir ./src -n 5 -json | tee bench_report.json
 ```bash
 git clone https://github.com/forgezero-cli/ForgeZero
 cd ForgeZero
-go build -o fzt ./cmd/fzt
+go build -o fz ./cmd/fz
 
 # Run benchmark script (edit NUM_MODULES in script for different sizes)
 ./bench.sh
 
 # Export results to Markdown
 hyperfine --warmup 3 --prepare 'make clean && rm -rf .fz_objs fz_out' \
-  './fzt -dir . -out fz_out' 'make -j4' \
+  './fz -dir . -out fz_out' 'make -j4' \
   --export-markdown results.md
 ```
 
 ### Build for WebAssembly (WASI, via Zig)
 
 ```bash
-fzt -cc main.c -zig -target wasm32-wasi -out main.wasm
+fz -cc main.c -zig -target wasm32-wasi -out main.wasm
 wasmtime main.wasm
 ```
 
@@ -2207,56 +2207,56 @@ wasmtime main.wasm
 
 ```bash
 source /path/to/emsdk/emsdk_env.sh
-fzt -cc main.c -target wasm32-emscripten -out main.js
+fz -cc main.c -target wasm32-emscripten -out main.js
 ```
 
 ### Directory build with JSON output (CI/CD)
 
 ```bash
-fzt -dir ./src -json | tee build_report.json
+fz -dir ./src -json | tee build_report.json
 ```
 
 ### Watch mode during development
 
 ```bash
-fzt -dir ./kernel -watch
+fz -dir ./kernel -watch
 ```
 
 ### Disable sanitizers for release
 
 ```bash
-fzt -cc main.c -sanitize=false -out main_release
+fz -cc main.c -sanitize=false -out main_release
 ```
 
 ### Keep object files for inspection
 
 ```bash
-fzt -dir ./src -keep-obj -verbose
+fz -dir ./src -keep-obj -verbose
 ls .fz_objs/
 ```
 
 ### Interactive shell session
 
 ```bash
-fzt -shell
-# fzt> build main.c
-# fzt> set mode raw
-# fzt> build boot.asm
-# fzt> exit
+fz -shell
+# fz> build main.c
+# fz> set mode raw
+# fz> build boot.asm
+# fz> exit
 ```
 
 ### Clean all build artifacts
 
 ```bash
-fzt -dir . -clean
+fz -dir . -clean
 ```
 
-### Update fzt with rollback
+### Update fz with rollback
 
 ```bash
-sudo fzt -update
+sudo fz -update
 # If something breaks:
-sudo cp /usr/local/bin/fzt.old /usr/local/bin/fzt
+sudo cp /usr/local/bin/fz.old /usr/local/bin/fz
 ```
 
 ---
@@ -2265,15 +2265,15 @@ sudo cp /usr/local/bin/fzt.old /usr/local/bin/fzt
 
 | Code | Meaning |
 |------|---------|
-| `0` | Success — binary produced; or `fzt verify` / `fzt audit` found no violations; or `fzt doctor` is healthy. |
-| `1` | Build error — assembler, compiler, or linker failed; duplicate global symbol; `fzt verify` found MODIFIED or MISSING files; `fzt audit` found WARNING or above; `fzt doctor` is degraded. |
+| `0` | Success — binary produced; or `fz verify` / `fz audit` found no violations; or `fz doctor` is healthy. |
+| `1` | Build error — assembler, compiler, or linker failed; duplicate global symbol; `fz verify` found MODIFIED or MISSING files; `fz audit` found WARNING or above; `fz doctor` is degraded. |
 | `2` | Argument error — invalid or missing flags, source file not found, cross-compiler not on PATH, unreadable config file. |
 
 ---
 
 ## 29. Troubleshooting
 
-### `fzt: command not found`
+### `fz: command not found`
 
 ```bash
 export PATH="$PATH:$(go env GOPATH)/bin"
@@ -2329,7 +2329,7 @@ sudo dnf install gcc-arm-linux-gnu
 sudo pacman -S arm-linux-gnueabihf-gcc
 
 # Or switch to the Zig backend to avoid all of this:
-fzt -cc main.c -zig -target arm-linux-gnueabihf
+fz -cc main.c -zig -target arm-linux-gnueabihf
 ```
 
 ### `undefined reference to _start`
@@ -2345,7 +2345,7 @@ _start:
 Or use the C runtime:
 
 ```bash
-fzt -asm program.asm -mode c
+fz -asm program.asm -mode c
 ```
 
 ### Binary crashes immediately (segfault on startup)
@@ -2353,7 +2353,7 @@ fzt -asm program.asm -mode c
 Likely `-mode raw` used with code referencing libc symbols. Switch to:
 
 ```bash
-fzt -asm program.asm -mode c
+fz -asm program.asm -mode c
 ```
 
 ### Pre-link duplicate symbol error
@@ -2361,7 +2361,7 @@ fzt -asm program.asm -mode c
 Check for conflicting `global` declarations. Skip the check when using weak symbols intentionally:
 
 ```bash
-fzt -dir ./src -no-symbol-check
+fz -dir ./src -no-symbol-check
 ```
 
 ### Sanitizer error at runtime
@@ -2369,22 +2369,22 @@ fzt -dir ./src -no-symbol-check
 Fix the reported memory/UB issue. To temporarily disable:
 
 ```bash
-fzt -cc main.c -sanitize=false
+fz -cc main.c -sanitize=false
 ```
 
 ### Sanitizers silently disabled for WASM target
 
 Expected behavior. Pass `-sanitize=false` to suppress the notice.
 
-### `fzt verify` reports MODIFIED files unexpectedly
+### `fz verify` reports MODIFIED files unexpectedly
 
 Re-generate the manifest from the current known-good state:
 
 ```bash
-fzt verify --generate
+fz verify --generate
 ```
 
-### `fzt audit` false positive on a secret pattern
+### `fz audit` false positive on a secret pattern
 
 Annotate the line with a suppression comment:
 
@@ -2395,19 +2395,19 @@ const char *example = "not-a-real-key"; // fz-audit: ignore
 ### Build hangs / times out
 
 ```bash
-fzt -asm big_program.asm -timeout 300
+fz -asm big_program.asm -timeout 300
 ```
 
 ### Cache returns stale results
 
 ```bash
-fzt -dir . -clean
-fzt -dir ./src
+fz -dir . -clean
+fz -dir ./src
 # Or one-off:
-fzt -dir ./src -no-cache
+fz -dir ./src -no-cache
 ```
 
-### `fzt pm add` fails / git not found
+### `fz pm add` fails / git not found
 
 ```bash
 sudo apt install git
@@ -2416,7 +2416,7 @@ sudo pacman -S git
 brew install git
 ```
 
-### `fzt pm install` hash mismatch
+### `fz pm install` hash mismatch
 
 The downloaded package content does not match the BLAKE3 hash in the catalog manifest. Do not use the package. Report the issue at [github.com/forgezero-cli/catalog](https://github.com/forgezero-cli/catalog).
 
@@ -2425,13 +2425,13 @@ The downloaded package content does not match the BLAKE3 hash in the catalog man
 Ensure the file is in the **project root**. Regenerate after adding new source files:
 
 ```bash
-fzt -compile-commands
+fz -compile-commands
 ```
 
-### `fzt -update` fails with permission denied
+### `fz -update` fails with permission denied
 
 ```bash
-sudo fzt -update
+sudo fz -update
 ```
 
 ### Watch mode does not detect changes on WSL2
@@ -2460,10 +2460,10 @@ C:\msys64\mingw64\bin
 | `flags.cc` for C compiler flags | ✅ Done (v1.5.0) |
 | `.fzignore` file support | ✅ Done (v1.5.0) |
 | Multi-level config merging | ✅ Done (v1.5.0) |
-| `fzt -init` project scaffolding | ✅ Done (v1.6.0) |
+| `fz -init` project scaffolding | ✅ Done (v1.6.0) |
 | `-format bin` flat binary output | ✅ Done (v1.6.0) |
 | Parallel builds (`-j N`) | ✅ Done (v1.7.0) |
-| Interactive shell (`fzt -shell`) | ✅ Done (v1.7.0) |
+| Interactive shell (`fz -shell`) | ✅ Done (v1.7.0) |
 | C++ support (`.cpp`, `.cc`, `.cxx`) | ✅ Done (v1.7.0) |
 | Static library mode (`-type static`) | ✅ Done (v1.8.0) |
 | Unique object file names (path-based) | ✅ Done (v1.8.0) |
@@ -2471,16 +2471,16 @@ C:\msys64\mingw64\bin
 | LSP integration (`-compile-commands`) | ✅ Done (v1.9.0) |
 | Smart self-update with rollback | ✅ Done (v1.9.0) |
 | BLAKE3 hashing (7× faster cache) | ✅ Done (v2.0.0) |
-| Package manager (`fzt pm`) | ✅ Done (v2.0.0) |
+| Package manager (`fz pm`) | ✅ Done (v2.0.0) |
 | Official package catalog | ✅ Done (v2.0.0) |
 | Shared library support (`-shared`) | ✅ Done (v2.0.0) |
 | Zig toolchain backend (`-zig`) | ✅ Done (v3.0.0) |
 | SBOM generation (CycloneDX + BLAKE3) | ✅ Done (v3.0.0) |
-| SAST audit scanner (`fzt audit`) | ✅ Done (v3.0.0) |
+| SAST audit scanner (`fz audit`) | ✅ Done (v3.0.0) |
 | Reproducible builds (`--reproducible`) | ✅ Done (v3.0.0) |
-| Source tree verification (`fzt verify`) | ✅ Done (v3.0.0) |
+| Source tree verification (`fz verify`) | ✅ Done (v3.0.0) |
 | Symlink boundary protection | ✅ Done (v3.0.0) |
-| Build profiler (`fzt bench`) | ✅ Done (v3.0.0) |
+| Build profiler (`fz bench`) | ✅ Done (v3.0.0) |
 | Race-condition-free parallel pipeline | ✅ Done (v3.0.0) |
 | FASM native ELF64 auto-injection | ✅ Done (v3.0.0) |
 | WebAssembly (`wasm32-emscripten` / `wasm32-wasi`) | ✅ Done (v3.0.0) |
@@ -2488,7 +2488,7 @@ C:\msys64\mingw64\bin
 | Aegis hardened `RunCommand` wrapper | ✅ Done (v3.1.0) |
 | `SecureWriteFile` atomic write pipeline | ✅ Done (v3.1.0) |
 | Constant-time toolchain checksum verify | ✅ Done (v3.1.0) |
-| `fzt doctor` self-audit command | ✅ Done (v3.1.0) |
+| `fz doctor` self-audit command | ✅ Done (v3.1.0) |
 | Native Windows `fs.Windows` + rename retry | ✅ Done (v3.1.0) |
 | 90%+ coverage + `fs.Mock` fault injection | ✅ Done (v3.1.0) |
 | Zero-allocation linker hot-path (`0 allocs/op`) | ✅ Done (v4.1.0) |
@@ -2503,7 +2503,7 @@ C:\msys64\mingw64\bin
 | Atomic SBOM generation helpers | ✅ Done (v4.1.0) |
 | Colored terminal output (green success / red error) | Planned |
 | GDB integration and improved debug workflow | Planned |
-| Man page (`man fzt`) | Planned |
+| Man page (`man fz`) | Planned |
 | Windows native support without WSL2 | In progress |
 | macOS full support and tested runtime | In progress |
 
@@ -2647,7 +2647,7 @@ Every external process spawned by ForgeZero — `git`, `ar`, `zig`, `fasm`, `gcc
 5. `renameResolved(tmpName, resolved)`.
 6. `Chmod(resolved, 0600)`.
 
-Files written through this path include: `.fz.yaml` updates from `fzt pm`, `.fz.manifest`, `compile_commands.json`, SBOM outputs, and `fzt -init` templates.
+Files written through this path include: `.fz.yaml` updates from `fz pm`, `.fz.manifest`, `compile_commands.json`, SBOM outputs, and `fz -init` templates.
 
 ### 32.3 Constant-Time Toolchain Checksum Verification
 
@@ -2667,19 +2667,19 @@ Comparison uses `crypto/subtle.ConstantTimeCompare` to remove timing side-channe
 
 ---
 
-## 33. System Self-Audit (`fzt doctor`)
+## 33. System Self-Audit (`fz doctor`)
 
-> **Package:** `internal/doctor` · **Entry point:** `fzt doctor [options]`
+> **Package:** `internal/doctor` · **Entry point:** `fz doctor [options]`
 
-`fzt doctor` is a pre-flight diagnostic. It does not compile code. It answers whether the current machine satisfies ForgeZero's minimum operational requirements.
+`fz doctor` is a pre-flight diagnostic. It does not compile code. It answers whether the current machine satisfies ForgeZero's minimum operational requirements.
 
 ### 33.1 Invocation
 
 ```bash
-fzt doctor
-fzt doctor -root /path/to/project
-fzt doctor -json
-fzt doctor -root ./myapp -json
+fz doctor
+fz doctor -root /path/to/project
+fz doctor -json
+fz doctor -root ./myapp -json
 ```
 
 ### 33.2 Audit Pipeline (Four Stages)
@@ -2703,7 +2703,7 @@ fzt doctor -root ./myapp -json
 ### 33.3 Human-Readable Output
 
 ```
-fzt doctor: ok
+fz doctor: ok
 platform: linux/amd64 fs=unix sep="/" root=/home/dev/myproject cpus=16
 toolchain:
   zig (required): /usr/local/bin/zig
@@ -2745,7 +2745,7 @@ permissions: root=/home/dev/myproject readable=true writable=true dirs=42 files=
 **CI gate usage:**
 
 ```bash
-fzt doctor -json | jq -e '.healthy'
+fz doctor -json | jq -e '.healthy'
 ```
 
 ---
