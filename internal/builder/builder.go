@@ -186,11 +186,18 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 					return err
 				}
 				if info.IsDir() {
+					name := info.Name()
+					if name == ".git" || name == ".svn" || name == "node_modules" || matchExclude(path, exclude) {
+						if verbose {
+							fmt.Printf("Skipping directory tree: %s\n", path)
+						}
+						return filepath.SkipDir
+					}
 					return nil
 				}
 				if matchExclude(path, exclude) {
 					if verbose {
-						fmt.Printf("Excluding %s\n", path)
+						fmt.Printf("Excluding file: %s\n", path)
 					}
 					return nil
 				}
@@ -573,11 +580,15 @@ func CollectSourceFiles(cfg *config.Config, dirs []string) ([]string, error) {
 		return cfg.SourceFiles, nil
 	}
 	for _, dir := range dirs {
-		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
-			if info.IsDir() {
+			if d.IsDir() {
+				name := d.Name()
+				if name == ".git" || name == ".svn" || name == "node_modules" {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 			ext := strings.ToLower(filepath.Ext(path))
