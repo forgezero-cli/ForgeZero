@@ -168,6 +168,7 @@ type parser struct {
 		typ    uint32
 		addend int64
 	}
+	argsPool [][]byte
 }
 
 func emitSourceObject(src []byte, profile targetEmitterProfile) ([]byte, error) {
@@ -414,7 +415,7 @@ func (p *parser) findSymbol(name []byte) int {
 }
 
 func (p *parser) emitBytes(rest []byte) error {
-	items := splitArgs(rest)
+	items := p.splitArgs(rest)
 	for _, item := range items {
 		item = trimSpace(item)
 		if len(item) == 0 {
@@ -438,7 +439,7 @@ func (p *parser) emitBytes(rest []byte) error {
 }
 
 func (p *parser) emitWords(rest []byte, width int) error {
-	items := splitArgs(rest)
+	items := p.splitArgs(rest)
 	for _, item := range items {
 		item = trimSpace(item)
 		if len(item) == 0 {
@@ -989,8 +990,9 @@ func readToken(line []byte) ([]byte, []byte) {
 	return line[start:i], line[i:]
 }
 
-func splitArgs(data []byte) [][]byte {
-	var parts [][]byte
+func (p *parser) splitArgs(data []byte) [][]byte {
+	p.argsPool = p.argsPool[:0]
+
 	start := 0
 	in := false
 	var q byte
@@ -1008,14 +1010,14 @@ func splitArgs(data []byte) [][]byte {
 			continue
 		}
 		if c == ',' {
-			parts = append(parts, data[start:i])
+			p.argsPool = append(p.argsPool, data[start:i])
 			start = i + 1
 		}
 	}
 	if start <= len(data) {
-		parts = append(parts, data[start:])
+		p.argsPool = append(p.argsPool, data[start:])
 	}
-	return parts
+	return p.argsPool
 }
 
 type registerInfo struct {
@@ -1068,7 +1070,7 @@ func parseImmediate(tok []byte) (uint64, error) {
 }
 
 func (p *parser) emitMov(rest []byte) error {
-	args := splitArgs(trimSpace(rest))
+	args := p.splitArgs(trimSpace(rest))
 	if len(args) != 2 {
 		return fmt.Errorf("invalid mov operands: %s", string(rest))
 	}
@@ -1141,7 +1143,7 @@ func (p *parser) emitMov(rest []byte) error {
 }
 
 func (p *parser) emitXor(rest []byte) error {
-	args := splitArgs(trimSpace(rest))
+	args := p.splitArgs(trimSpace(rest))
 	if len(args) != 2 {
 		return fmt.Errorf("invalid xor operands: %s", string(rest))
 	}
@@ -1188,7 +1190,7 @@ func (p *parser) emitCall(rest []byte) error {
 }
 
 func (p *parser) emitImul(rest []byte) error {
-	args := splitArgs(trimSpace(rest))
+	args := p.splitArgs(trimSpace(rest))
 	if len(args) != 2 {
 		return fmt.Errorf("invalid imul operands: %s", string(rest))
 	}
@@ -1229,7 +1231,7 @@ func (p *parser) emitDec(rest []byte) error {
 }
 
 func (p *parser) emitCmp(rest []byte) error {
-	args := splitArgs(trimSpace(rest))
+	args := p.splitArgs(trimSpace(rest))
 	if len(args) != 2 {
 		return fmt.Errorf("invalid cmp operands: %s", string(rest))
 	}
