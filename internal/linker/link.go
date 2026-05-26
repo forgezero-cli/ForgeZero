@@ -1,6 +1,7 @@
 package linker
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -62,41 +63,42 @@ func shouldUseResponseFile(args []string) bool {
 }
 
 func createResponseFile(args []string) (string, error) {
-	if len(args) > 512 {
-		return createMmapResponseFile(args)
-	}
 	f, err := os.CreateTemp("", "fz_link_args_*.rsp")
 	if err != nil {
 		return "", err
 	}
+	name := f.Name()
 	_ = f.Chmod(utils.FilePerm)
+
+	writer := bufio.NewWriterSize(f, 64*1024)
+
 	for _, arg := range args {
 		if strings.ContainsAny(arg, "\n\r\x00") {
-			f.Close()
-			os.Remove(f.Name())
+			_ = f.Close()
+			_ = os.Remove(name)
 			return "", fmt.Errorf("invalid argument for response file")
 		}
 		if err := utils.ValidateCLIArg(arg); err != nil {
-			f.Close()
-			os.Remove(f.Name())
+			_ = f.Close()
+			_ = os.Remove(name)
 			return "", fmt.Errorf("invalid argument for response file: %w", err)
 		}
-		if _, err := f.WriteString(arg + "\n"); err != nil {
-			f.Close()
-			os.Remove(f.Name())
-			return "", err
-		}
+		_, _ = writer.WriteString(arg)
+		_ = writer.WriteByte('\n')
 	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		os.Remove(f.Name())
+
+	if err := writer.Flush(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(name)
 		return "", err
 	}
+
 	if err := f.Close(); err != nil {
-		os.Remove(f.Name())
+		_ = os.Remove(name)
 		return "", err
 	}
-	return f.Name(), nil
+
+	return name, nil
 }
 
 func runLinkerCommand(ctx context.Context, verbose bool, name string, args []string) (string, error) {
@@ -160,8 +162,6 @@ func runLinkerCombinedOutput(ctx context.Context, verbose bool, name string, arg
 	}
 	if cfg := utils.ConfigFromContext(ctx); cfg != nil && cfg.Isolation != config.IsolationNone {
 		cmd.Env = utils.SafeEnv(cfg)
-	} else {
-		cmd.Env = os.Environ()
 	}
 	output, err := cmd.CombinedOutput()
 	out := string(output)
