@@ -1,5 +1,12 @@
 package main
 
+/*
+#cgo CFLAGS: -I${SRCDIR}/../../internal/cplugin
+#include <stdlib.h>
+#include "fz_module.h"
+*/
+import "C"
+
 import (
 	"context"
 	"encoding/json"
@@ -14,6 +21,7 @@ import (
 
 	"fz/internal/assembler"
 	"fz/internal/audit"
+	"fz/internal/cplugin"
 	"fz/internal/bench"
 	"fz/internal/builder"
 	"fz/internal/compilecommands"
@@ -786,6 +794,7 @@ func main() {
 		clean              bool
 		noCache            bool
 		configPath         string
+		pluginPath         string
 		noSymbolCheck      bool
 		watch              bool
 		sanitize           bool
@@ -858,6 +867,7 @@ func main() {
 	flag.BoolVar(&noCache, "no-cache", false, "disable incremental cache")
 	flag.BoolVar(&noSymbolCheck, "no-symbol-check", false, "skip duplicate symbol pre-check")
 	flag.StringVar(&configPath, "config", "", "config file (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)")
+	flag.StringVar(&pluginPath, "plugin", "", "shared object plugin file to load before build")
 	flag.BoolVar(&clean, "clean", false, "remove all build artifacts (.fz_objs, .fz_cache, binaries)")
 	flag.Usage = printHelp
 	flag.Parse()
@@ -893,6 +903,12 @@ func main() {
 	if err := utils.ValidateCLIPath(textAddr); err != nil {
 		writeFmt(2, "invalid text address: %v\n", err)
 		os.Exit(2)
+	}
+	if pluginPath != "" {
+		if err := utils.ValidateCLIPath(pluginPath); err != nil {
+			writeFmt(2, "invalid plugin path: %v\n", err)
+			os.Exit(2)
+		}
 	}
 	if err := utils.ValidateCLIArg(mode); err != nil {
 		writeFmt(2, "invalid mode: %v\n", err)
@@ -1263,6 +1279,83 @@ func main() {
 		}
 		if cfg.NoCache {
 			noCache = true
+		}
+	}
+
+	if pluginPath != "" {
+		var cctx C.fz_context_t
+		cPluginPath := C.CString(pluginPath)
+		cConfigPath := C.CString(configPath)
+		cSourcePath := C.CString(srcPath)
+		cDirPath := C.CString(dirPath)
+		cOutBin := C.CString(outBin)
+		cOutObj := C.CString(outObj)
+		cBuildType := C.CString(buildType)
+		cTarget := C.CString(target)
+		cToolchain := C.CString(toolchain)
+		cMode := C.CString(mode)
+		cCcFlags := C.CString(ccFlags)
+		cLdFlags := C.CString(ldFlags)
+		cFormat := C.CString(format)
+		cIsolation := C.CString(isolation)
+		defer C.free(unsafe.Pointer(cPluginPath))
+		defer C.free(unsafe.Pointer(cConfigPath))
+		defer C.free(unsafe.Pointer(cSourcePath))
+		defer C.free(unsafe.Pointer(cDirPath))
+		defer C.free(unsafe.Pointer(cOutBin))
+		defer C.free(unsafe.Pointer(cOutObj))
+		defer C.free(unsafe.Pointer(cBuildType))
+		defer C.free(unsafe.Pointer(cTarget))
+		defer C.free(unsafe.Pointer(cToolchain))
+		defer C.free(unsafe.Pointer(cMode))
+		defer C.free(unsafe.Pointer(cCcFlags))
+		defer C.free(unsafe.Pointer(cLdFlags))
+		defer C.free(unsafe.Pointer(cFormat))
+		defer C.free(unsafe.Pointer(cIsolation))
+		cctx.plugin_path = cPluginPath
+		cctx.config_path = cConfigPath
+		cctx.source_path = cSourcePath
+		cctx.dir_path = cDirPath
+		cctx.out_bin = cOutBin
+		cctx.out_obj = cOutObj
+		cctx.build_type = cBuildType
+		cctx.target = cTarget
+		cctx.toolchain = cToolchain
+		cctx.mode = cMode
+		cctx.cc_flags = cCcFlags
+		cctx.ld_flags = cLdFlags
+		cctx.format = cFormat
+		cctx.isolation = cIsolation
+		var cSourceDirs []*C.char
+		if dirPath != "" {
+			cSourceDirs = append(cSourceDirs, cDirPath)
+		}
+		if cfg != nil {
+			for _, d := range cfg.SourceDirs {
+				cSourceDirs = append(cSourceDirs, C.CString(d))
+				defer C.free(unsafe.Pointer(cSourceDirs[len(cSourceDirs)-1]))
+			}
+		}
+		if len(cSourceDirs) > 0 {
+			cctx.source_dir_count = C.int(len(cSourceDirs))
+			cctx.source_dirs = (**C.char)(C.malloc(C.size_t(len(cSourceDirs)) * C.size_t(unsafe.Sizeof(uintptr(0)))))
+			arr := (*[1 << 30]*C.char)(unsafe.Pointer(cctx.source_dirs))
+			for i, s := range cSourceDirs {
+				arr[i] = s
+			}
+			defer C.free(unsafe.Pointer(cctx.source_dirs))
+		}
+		m, err := cplugin.Load(pluginPath)
+		if err != nil {
+			writeStderr(err.Error())
+			writeStderr("\n")
+			os.Exit(1)
+		}
+		defer m.Close()
+		if err := m.CallEntryBySymbol("fz_init_module", unsafe.Pointer(&cctx)); err != nil {
+			writeStderr(err.Error())
+			writeStderr("\n")
+			os.Exit(1)
 		}
 	}
 
