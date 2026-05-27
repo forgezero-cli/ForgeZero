@@ -20,6 +20,8 @@ fzt
 fzt.exe
 fzt.old
 
+# Script for build release binaries 
+release.sh
 # Build artifacts
 *.o
 *.a
