@@ -10,17 +10,17 @@
         <h3 style="margin:0 0 8px 0;">ForgeZero — zero-overhead build tool for assembly & C</h3>
         <p style="margin:0; color:#555;">One command. Any assembler. Any platform. Zero allocations.</p>
         <br/>
-        <img src="https://img.shields.io/github/go-mod/go-version/alexvoste/ForgeZero" alt="Go Version"/>
+        <img src="https://img.shields.io/github/go-mod/go-version/forgezero-cli/ForgeZero" alt="Go Version"/>
         &nbsp;
-        <img src="https://img.shields.io/github/license/alexvoste/ForgeZero" alt="License"/>
+        <img src="https://img.shields.io/github/license/forgezero-cli/ForgeZero" alt="License"/>
         &nbsp;
-        <img src="https://img.shields.io/github/commits-since/alexvoste/ForgeZero/v4.1.0" alt="Commits"/>
+        <img src="https://img.shields.io/github/commits-since/forgezero-cli/ForgeZero/v4.1.0" alt="Commits"/>
       </td>
     </tr>
   </table>
 </div>
 
-> **Version:** 4.1.0 Citadel &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
+> **Version:** 4.2.0 Citadel &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
 
 ForgeZero is a high-performance, zero-overhead build tool for assembly and C developers. It wraps NASM, GAS, FASM, GCC, Clang, Zig, and LD into a single unified command-line interface — no Makefiles, no build scripts, no configuration required to get started.
 
