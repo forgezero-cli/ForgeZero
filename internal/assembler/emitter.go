@@ -1,6 +1,7 @@
 package assembler
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -282,14 +283,20 @@ func (p *parser) emitRaw(profile targetEmitterProfile) ([]byte, error) {
 }
 
 func (p *parser) readLine() []byte {
+	if p.pos >= len(p.src) {
+		return nil
+	}
 	start := p.pos
-	for p.pos < len(p.src) && p.src[p.pos] != '\n' {
-		p.pos++
+
+	idx := bytes.IndexByte(p.src[p.pos:], '\n')
+	if idx == -1 {
+		p.pos = len(p.src)
+		return p.src[start:]
 	}
+
+	p.pos += idx
 	line := p.src[start:p.pos]
-	if p.pos < len(p.src) && p.src[p.pos] == '\n' {
-		p.pos++
-	}
+	p.pos++
 	return line
 }
 
@@ -1322,25 +1329,36 @@ func (p *parser) emitJump(opcode byte, rest []byte) error {
 	return nil
 }
 
+var asciiSpaceTable = [256]bool{
+	' ':  true,
+	'\t': true,
+	'\r': true,
+	'\n': true,
+}
+
 func trimSpace(data []byte) []byte {
 	start := 0
 	end := len(data)
-	for start < end && (data[start] == ' ' || data[start] == '\t' || data[start] == '\r' || data[start] == '\n') {
+
+	for start < end && asciiSpaceTable[data[start]] {
 		start++
 	}
-	for end > start && (data[end-1] == ' ' || data[end-1] == '\t' || data[end-1] == '\r' || data[end-1] == '\n') {
+
+	for end > start && asciiSpaceTable[data[end-1]] {
 		end--
 	}
+
 	return data[start:end]
 }
 
 func removeComment(line []byte) []byte {
-	for i := 0; i < len(line); i++ {
-		if line[i] == ';' || line[i] == '#' {
-			return line[:i]
-		}
+	idx := bytes.IndexAny(line, ";#")
+
+	if idx == -1 {
+		return line
 	}
-	return line
+
+	return line[:idx]
 }
 
 func parseString(token []byte) ([]byte, error) {
