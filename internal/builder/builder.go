@@ -503,42 +503,57 @@ func createArchive(ctx context.Context, objFiles []string, outBin string, verbos
 	return err
 }
 
-func CleanDir(dir string, verbose bool) error {
-	objDir := joinPath(dir, ".fz_objs")
-	cacheDir := joinPath(dir, ".fz_cache")
-	for _, d := range []string{objDir, cacheDir} {
-		if _, err := os.Stat(d); err == nil {
-			if verbose {
-				fmt.Printf("Removing %s\n", d)
-			}
-			if err := os.RemoveAll(d); err != nil {
-				return fmt.Errorf("failed to remove %s: %w", d, err)
-			}
+func removeIfExists(path string, isDir bool, verbose bool) error {
+	if _, err := os.Stat(path); err == nil {
+		if verbose {
+			fmt.Printf("Removing %s\n", path)
 		}
-	}
-	base := filepath.Base(dir)
-	patterns := []string{base + ".out", base + ".exe"}
-	for _, p := range patterns {
-		path := joinPath(dir, p)
-		if _, err := os.Stat(path); err == nil {
-			if verbose {
-				fmt.Printf("Removing %s\n", path)
+		if isDir {
+			if err := os.RemoveAll(path); err != nil {
+				return fmt.Errorf("failed to remove %s: %w", path, err)
 			}
+		} else {
 			if err := os.Remove(path); err != nil {
 				return fmt.Errorf("failed to remove %s: %w", path, err)
 			}
 		}
 	}
+	return nil
+}
+
+func CleanDir(dir string, verbose bool) error {
+	objDir := joinPath(dir, ".fz_objs")
+	if err := removeIfExists(objDir, true, verbose); err != nil {
+		return err
+	}
+	cacheDir := joinPath(dir, ".fz_cache")
+	if err := removeIfExists(cacheDir, true, verbose); err != nil {
+		return err
+	}
+
+	base := filepath.Base(dir)
+	outPath := joinPath(dir, base+".out")
+	if err := removeIfExists(outPath, false, verbose); err != nil {
+		return err
+	}
+	exePath := joinPath(dir, base+".exe")
+	if err := removeIfExists(exePath, false, verbose); err != nil {
+		return err
+	}
+
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("cannot read directory %s: %w", dir, err)
 	}
+
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
+
 		name := entry.Name()
 		path := joinPath(dir, name)
+
 		if strings.HasSuffix(name, ".o") {
 			if verbose {
 				fmt.Printf("Removing object file %s\n", path)
@@ -548,10 +563,12 @@ func CleanDir(dir string, verbose bool) error {
 			}
 			continue
 		}
+
 		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
+
 		if info.Mode()&0o111 != 0 {
 			ext := strings.ToLower(filepath.Ext(name))
 			if !utils.SupportedExtension(ext) && ext != "" {
@@ -571,6 +588,7 @@ func CleanDir(dir string, verbose bool) error {
 			}
 		}
 	}
+
 	return nil
 }
 
