@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"fz/internal/config"
@@ -49,23 +48,16 @@ func LinkObjects(ctx context.Context, target string, objs []string, cfg *config.
 	return nil
 }
 
-func dedupObjects(objs []string) []string {
-	seen := make(map[string]struct{}, len(objs))
-	unique := make([]string, 0, len(objs))
-
-	for _, obj := range objs {
-		if obj == "" {
-			continue
-		}
-
-		if _, ok := seen[obj]; !ok {
-			seen[obj] = struct{}{}
-			unique = append(unique, obj)
+func dedupObjects(elements []string) []string {
+	encountered := make(map[string]struct{}, len(elements))
+	result := make([]string, 0, len(elements))
+	for _, v := range elements {
+		if _, ok := encountered[v]; !ok {
+			encountered[v] = struct{}{}
+			result = append(result, v)
 		}
 	}
-
-	sort.Strings(unique)
-	return unique
+	return result
 }
 
 func fnv1aString(s string) uint64 {
