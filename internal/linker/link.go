@@ -2,6 +2,7 @@ package linker
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -163,11 +164,19 @@ func runLinkerCombinedOutput(ctx context.Context, verbose bool, name string, arg
 	if cfg := utils.ConfigFromContext(ctx); cfg != nil && cfg.Isolation != config.IsolationNone {
 		cmd.Env = utils.SafeEnv(cfg)
 	}
-	output, err := cmd.CombinedOutput()
-	out := string(output)
+
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+
+	err := cmd.Run()
+
+	out := buf.String()
+
 	if verbose && len(out) > 0 {
 		fmt.Fprint(os.Stdout, out)
 	}
+
 	return out, err
 }
 
