@@ -33,6 +33,10 @@ func (m *Module) Lookup(sym string) (unsafe.Pointer, error) {
 	return unsafe.Pointer(proc), nil
 }
 
+func (m *Module) CallInitWithGoContext(goCtx GoContext) error {
+	return errors.New("cplugin exectuin is not supported on Windows")
+}
+
 func (m *Module) Close() error {
 	if m == nil || m.h == 0 {
 		return nil
