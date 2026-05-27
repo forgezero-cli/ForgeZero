@@ -62,11 +62,11 @@ func (helperFakeRunner) Run(ctx context.Context, verbose bool, name string, args
 }
 
 const (
-	versionCore     = "4.1.0"
+	versionCore     = "4.2.0"
 	versionCodename = "CITADEL"
 )
 
-var version = "4.1.0 CITADEL"
+var version = "4.2.0 CITADEL"
 
 func versionText() string {
 	var b strings.Builder
