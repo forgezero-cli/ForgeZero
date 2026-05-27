@@ -1,7 +1,6 @@
 package linker
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -153,8 +152,7 @@ func hasUndefinedSymbol(output string) bool {
 	if output == "" {
 		return false
 	}
-	raw := []byte(output)
-	return bytes.Contains(raw, []byte("undefined reference")) || bytes.Contains(raw, []byte("undefined symbol")) || bytes.Contains(raw, []byte("unresolved symbol"))
+	return strings.Contains(output, "undefined reference") || strings.Contains(output, "undefined symbol") || strings.Contains(output, "unresolved symbol")
 }
 
 func newLinkError(cmd string, verbose bool, err error, output string) error {

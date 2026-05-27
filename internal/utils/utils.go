@@ -246,11 +246,41 @@ func fnv1aHexUint64(h uint64) string {
 		out[i*2] = hextable[b>>4]
 		out[i*2+1] = hextable[b&0x0f]
 	}
+
 	return string(out[:])
 }
 
 func fnv1aHex(data []byte) string {
 	return fnv1aHexUint64(fnv1aHash(data))
+}
+
+func fnv1aHashString(s string) uint64 {
+	const (
+		offset uint64 = 1469598103934665603
+		prime  uint64 = 1099511628211
+	)
+
+	h := offset
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= prime
+	}
+
+	return h
+}
+
+func fnv1aHashAppendString(h uint64, s string) uint64 {
+	const prime uint64 = 1099511628211
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= prime
+	}
+
+	return h
+}
+
+func fnv1aHexFromString(s string) string {
+	return fnv1aHexUint64(fnv1aHashString(s))
 }
 
 func ShadowCacheRoot() string {
@@ -265,13 +295,20 @@ func ShadowCacheRoot() string {
 		root = filepath.Join(home, ".cache", "aegis", "shadow")
 	}
 	if mid, err := seal.MachineID(); err == nil && mid != "" {
-		root = filepath.Join(root, fnv1aHex([]byte(mid)))
+		root = filepath.Join(root, fnv1aHexFromString(mid))
 	}
 	return root
 }
 
 func ShadowCachePath(key string) string {
 	return filepath.Join(ShadowCacheRoot(), key+".o")
+}
+
+func fnv1aHashAppendByte(h uint64, b byte) uint64 {
+	const prime uint64 = 1099511628211
+	h ^= uint64(b)
+	h *= prime
+	return h
 }
 
 func ShadowCacheKey(src string, flags []string) (string, error) {
@@ -285,22 +322,22 @@ func ShadowCacheKey(src string, flags []string) (string, error) {
 	}
 	sort.Strings(flags)
 	sort.Strings(files)
-	h := fnv1aHash(nil)
+	h := uint64(1469598103934665603)
 	for _, f := range flags {
-		h = fnv1aHashAppend(h, []byte(f))
-		h = fnv1aHashAppend(h, []byte{0})
+		h = fnv1aHashAppendString(h, f)
+		h = fnv1aHashAppendByte(h, 0)
 	}
 	if mid, err := seal.MachineID(); err == nil && mid != "" {
-		h = fnv1aHashAppend(h, []byte(mid))
-		h = fnv1aHashAppend(h, []byte{0})
+		h = fnv1aHashAppendString(h, mid)
+		h = fnv1aHashAppendByte(h, 0)
 	}
 	for _, file := range files {
 		hv, err := HashFile(file)
 		if err != nil {
 			return "", err
 		}
-		h = fnv1aHashAppend(h, []byte(hv))
-		h = fnv1aHashAppend(h, []byte{0})
+		h = fnv1aHashAppendString(h, hv)
+		h = fnv1aHashAppendByte(h, 0)
 	}
 	return fnv1aHexUint64(h), nil
 }
@@ -1080,17 +1117,18 @@ func mmapPath(path string) ([]byte, error) {
 	return data, nil
 }
 
-func scanFileIncludes(path string) ([]string, error) {
+func scanFileIncludes(path string, buf []string) ([]string, error) {
 	data, err := mmapPath(path)
 	if err != nil {
-		return nil, err
+		return buf, err
 	}
 	if len(data) == 0 {
-		return nil, nil
+		return buf, nil
 	}
 	defer func() { _ = unmapFile(data) }()
+
 	currentDir := filepath.Dir(path)
-	list := make([]string, 0, 8)
+
 	for i := 0; i < len(data); i++ {
 		if data[i] != '#' {
 			continue
@@ -1131,7 +1169,7 @@ func scanFileIncludes(path string) ([]string, error) {
 			}
 			resolved, err := resolveIncludePathBytes(currentDir, data[start:k])
 			if err == nil {
-				list = append(list, resolved)
+				buf = append(buf, resolved)
 			}
 		case '<':
 			start := j + 1
@@ -1144,11 +1182,11 @@ func scanFileIncludes(path string) ([]string, error) {
 			}
 			resolved, err := resolveIncludePathBytes(currentDir, data[start:k])
 			if err == nil {
-				list = append(list, resolved)
+				buf = append(buf, resolved)
 			}
 		}
 	}
-	return list, nil
+	return buf, nil
 }
 
 func ScanDependencies(path string) ([]string, error) {
@@ -1160,6 +1198,9 @@ func ScanDependencies(path string) ([]string, error) {
 	stack := []string{resolved}
 	visited := make(map[uint64]struct{}, 64)
 	deps := make([]string, 0, 64)
+
+	incBuffer := make([]string, 0, 16)
+
 	for len(stack) > 0 {
 		cur := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -1169,10 +1210,14 @@ func ScanDependencies(path string) ([]string, error) {
 		}
 		visited[h] = struct{}{}
 		deps = append(deps, cur)
-		includes, err := scanFileIncludes(cur)
+
+		incBuffer = incBuffer[:0]
+
+		includes, err := scanFileIncludes(cur, incBuffer)
 		if err != nil {
 			return nil, err
 		}
+
 		for _, inc := range includes {
 			if !pathWithinRoot(rootDir, inc) {
 				warnOutsideRoot(inc)
@@ -1183,6 +1228,8 @@ func ScanDependencies(path string) ([]string, error) {
 				continue
 			}
 			stack = append(stack, inc)
+
+			incBuffer = includes
 		}
 	}
 	return deps, nil
