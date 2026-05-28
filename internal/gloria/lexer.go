@@ -1,36 +1,5 @@
 package gloria
 
-type TokenType string
-
-const (
-	ILLEGAL TokenType = "ILLEGAL"
-	EOF     TokenType = "EOF"
-
-	IDENT TokenType = "IDENT"
-	INT   TokenType = "INT"
-	ATREG TokenType = "ATREG"
-
-	PLUS         TokenType = "+"
-	MINUS        TokenType = "-"
-	PLUS_ASSIGN  TokenType = "+="
-	MINUS_ASSIGN TokenType = "-="
-	ASSIGN       TokenType = "="
-	LBRACE       TokenType = "{"
-	RBRACE       TokenType = "}"
-	LPAREN       TokenType = "("
-	RPAREN       TokenType = ")"
-
-	FN     TokenType = "FN"
-	LET    TokenType = "LET"
-	RETURN TokenType = "RETURN"
-	REG    TokenType = "REG"
-)
-
-type Token struct {
-	Type TokenType
-	Lit  string
-}
-
 var keywords = map[string]TokenType{
 	"fn":     FN,
 	"let":    LET,
@@ -51,6 +20,15 @@ func NewLexer(input string) *Lexer {
 	return l
 }
 
+func (l *Lexer) scanIdentifier() (int, int) {
+	start := l.pos
+	for isLetter(l.ch) || isDigit(l.ch) {
+		l.readChar()
+	}
+
+	return start, l.pos
+}
+
 func (l *Lexer) readChar() {
 	if l.readPos >= len(l.input) {
 		l.ch = 0
@@ -68,8 +46,33 @@ func (l *Lexer) peekChar() byte {
 	return l.input[l.readPos]
 }
 
+func (l *Lexer) scanNumber() (int, int) {
+	start := l.pos
+
+	for isDigit(l.ch) {
+		l.readChar()
+	}
+	return start, l.pos
+}
+
+func (l *Lexer) scanAtReg() (int, int) {
+	start := l.pos
+	l.readChar()
+	for isLetter(l.ch) || isDigit(l.ch) {
+		l.readChar()
+	}
+
+	return start, l.pos
+}
+
 func (l *Lexer) skipWhitespace() {
 	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
+		l.readChar()
+	}
+}
+
+func (l *Lexer) skipComment() {
+	for l.ch != '\n' && l.ch != '\r' && l.ch != 0 {
 		l.readChar()
 	}
 }
@@ -107,58 +110,127 @@ func isDigit(ch byte) bool {
 	return ch >= '0' && ch <= '9'
 }
 
+func lookupIdent(lit string) TokenType {
+	switch lit {
+	case "fn":
+		return FN
+	case "let":
+		return LET
+	case "return":
+		return RETURN
+	case "reg":
+		return REG
+	case "if":
+		return IF
+	}
+
+	return IDENT
+}
+
 func (l *Lexer) NextToken() Token {
-	l.skipWhitespace()
+	for {
+		l.skipWhitespace()
+
+		if l.ch == '/' && l.peekChar() == '/' {
+			l.skipComment()
+			continue
+		}
+		break
+	}
 
 	var tok Token
+	tok.Start = l.pos
 
 	switch l.ch {
 	case '+':
 		if l.peekChar() == '=' {
 			l.readChar()
-			tok = Token{Type: PLUS_ASSIGN, Lit: "+="}
+			tok.Type = PLUS_ASSIGN
+			l.readChar()
 		} else {
-			tok = Token{Type: PLUS, Lit: "+"}
+			tok.Type = PLUS
+			l.readChar()
 		}
+	case '"':
+		tok.Type = STRING
+		tok.Start = l.pos + 1
+		l.readChar()
+		for l.ch != '"' && l.ch != 0 {
+			l.readChar()
+		}
+		tok.End = l.pos
+		if l.ch == '"' {
+			l.readChar()
+		} else {
+			tok.Type = ILLEGAL
+		}
+		return tok
 	case '-':
 		if l.peekChar() == '=' {
 			l.readChar()
-			tok = Token{Type: MINUS_ASSIGN, Lit: "-="}
+			tok.Type = MINUS_ASSIGN
+			l.readChar()
 		} else {
-			tok = Token{Type: MINUS, Lit: "-"}
+			tok.Type = MINUS
+			l.readChar()
 		}
 	case '=':
-		tok = Token{Type: ASSIGN, Lit: "="}
+		if l.peekChar() == '=' {
+			l.readChar()
+			tok.Type = EQ
+			l.readChar()
+		} else {
+			tok.Type = ASSIGN
+			l.readChar()
+		}
+	case '/':
+		tok.Type = SLASH
+		l.readChar()
 	case '{':
-		tok = Token{Type: LBRACE, Lit: "{"}
+		tok.Type = LBRACE
+		l.readChar()
 	case '}':
-		tok = Token{Type: RBRACE, Lit: "}"}
+		tok.Type = RBRACE
+		l.readChar()
 	case '(':
-		tok = Token{Type: LPAREN, Lit: "("}
+		tok.Type = LPAREN
+		l.readChar()
 	case ')':
-		tok = Token{Type: RPAREN, Lit: ")"}
+		tok.Type = RPAREN
+		l.readChar()
+	case '<':
+		tok.Type = LT
+		l.readChar()
+	case '>':
+		tok.Type = GT
+		l.readChar()
 	case '@':
-		lit := l.readAtReg()
-		tok = Token{Type: ATREG, Lit: lit}
-		return tok
+		start, end := l.scanAtReg()
+		return Token{Type: ATREG, Start: start, End: end}
 	case 0:
-		tok = Token{Type: EOF, Lit: ""}
-		return tok
+		tok.Type = EOF
+		tok.Start = l.pos
+		tok.End = l.pos
 	default:
 		if isLetter(l.ch) {
-			lit := l.readIdentifier()
-			if typ, ok := keywords[lit]; ok {
-				return Token{Type: typ, Lit: lit}
-			}
-			return Token{Type: IDENT, Lit: lit}
+			start, end := l.scanIdentifier()
+			lit := l.input[start:end]
+			tok.Type = lookupIdent(lit)
+			tok.Start = start
+			tok.End = end
+			return tok
 		} else if isDigit(l.ch) {
-			lit := l.readNumber()
-			return Token{Type: INT, Lit: lit}
+			start, end := l.scanNumber()
+			tok.Type = INT
+			tok.Start = start
+			tok.End = end
+			return tok
 		} else {
-			tok = Token{Type: ILLEGAL, Lit: string(l.ch)}
+			tok.Type = ILLEGAL
+			l.readChar()
 		}
 	}
 
-	l.readChar()
+	tok.End = l.pos
 	return tok
 }
