@@ -21,6 +21,7 @@ import (
 	"fz/internal/cplugin"
 	"fz/internal/doctor"
 	fzvfs "fz/internal/fs"
+	"fz/internal/gloria"
 	"fz/internal/ignore"
 	initpkg "fz/internal/init"
 	"fz/internal/linker"
@@ -816,6 +817,7 @@ func main() {
 		forceFASM          bool
 		rawFlag            bool
 		forceLdFlag        bool
+		gloriaPath         string
 	)
 
 	flag.BoolVar(&watch, "watch", false, "")
@@ -862,11 +864,17 @@ func main() {
 	flag.StringVar(&configPath, "config", "", "config file (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)")
 	flag.StringVar(&pluginPath, "plugin", "", "shared object plugin file to load before build")
 	flag.BoolVar(&clean, "clean", false, "remove all build artifacts (.fz_objs, .fz_cache, binaries)")
+	flag.StringVar(&gloriaPath, "gloria", "", "path to .glo file")
+
 	flag.Usage = printHelp
 	flag.Parse()
 
 	if err := utils.ValidateCLIPath(configPath); err != nil {
 		writeFmt(2, "invalid config path: %v\n", err)
+		os.Exit(2)
+	}
+	if err := utils.ValidateCLIPath(gloriaPath); err != nil {
+		writeFmt(2, "error: %v\n", err)
 		os.Exit(2)
 	}
 	if err := utils.ValidateCLIPath(asmPath); err != nil {
@@ -1117,11 +1125,14 @@ func main() {
 	if ccPath != "" {
 		srcProvided++
 	}
+	if gloriaPath != "" {
+		srcProvided++
+	}
 	if dirPath != "" {
 		srcProvided++
 	}
 	if srcProvided > 1 {
-		errMsg := "specify only one of -asm, -cc, or -dir"
+		errMsg := "specify only one of -asm, -cc, -gloria or -dir"
 		if jsonOutput {
 			report := BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: errMsg}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
@@ -1134,7 +1145,9 @@ func main() {
 	if ccPath != "" {
 		srcPath = ccPath
 	}
-
+	if gloriaPath != "" {
+		srcPath = gloriaPath
+	}
 	var cfg *config.Config
 	if configPath != "" {
 		cfg, err = config.Load(configPath)
@@ -1149,6 +1162,43 @@ func main() {
 		}
 	} else {
 		cfg, err = config.LoadMerged("")
+	}
+	if gloriaPath != "" {
+		if filepath.Ext(gloriaPath) != ".glo" {
+			writeFmt(2, "error: Gloria file must have .glo extension!\n")
+			os.Exit(2)
+		}
+
+		srcBytes, err := os.ReadFile(gloriaPath)
+		if err != nil {
+			writeFmt(2, "error reading Gloria file: %v\n", err)
+			os.Exit(2)
+		}
+
+		machineCode, err := gloria.Emit(string(srcBytes))
+		if err != nil {
+			writeFmt(2, "Gloria compiler error: %v\n", err)
+			os.Exit(2)
+		}
+
+		outName := outBin
+		if outName == "" {
+			outName = "gloria.bin"
+		}
+
+		err = utils.SecureWriteFile(outName, machineCode)
+		if err != nil {
+			writeFmt(2, "error writing output binary: %v\n", err)
+			os.Exit(2)
+		}
+
+		writeFmt(1, "[ForgeZero] Gloria successfully compiled to raw binary: %s (%d bytes)\n", outName, len(machineCode))
+
+		writeFmt(1, "[Gloria JIT] Running JIT-execution...\n")
+		result := utils.ExecRawRet(machineCode)
+
+		writeFmt(1, "[Gloria JIT] Program exited with RAX = %d\n", result)
+		os.Exit(0)
 	}
 	if err != nil {
 		if jsonOutput {
