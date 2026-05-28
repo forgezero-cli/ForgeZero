@@ -1,0 +1,75 @@
+package gloria
+
+import (
+	"errors"
+)
+
+func ParseFunctionHeader(l *Lexer, src string) ([]string, error) {
+	if l.NextToken().Type != IDENT {
+		return nil, errors.New("expected function name")
+	}
+	if l.NextToken().Type != LPAREN {
+		return nil, errors.New("expected (")
+	}
+
+	var args []string
+	for {
+		tok := l.NextToken()
+		if tok.Type == RPAREN {
+			break
+		}
+		if tok.Type == IDENT {
+			args = append(args, tok.Literal(src))
+			next := l.NextToken()
+			if next.Type == RPAREN {
+				break
+			}
+			if next.Literal(src) == "," || next.Type == COMMA {
+				continue
+			}
+			if next.Type == IDENT {
+				args = append(args, next.Literal(src))
+				continue
+			}
+		} else {
+			if tok.Literal(src) == "," || tok.Type == COMMA {
+				continue
+			}
+			return nil, errors.New("expected argument name or ')'")
+		}
+	}
+
+	if len(args) > 6 {
+		return nil, errors.New("gloria supports max 6 arguments for now (system V ABI limits)")
+	}
+
+	if l.NextToken().Type != LBRACE {
+		return nil, errors.New("expected {")
+	}
+
+	return args, nil
+}
+
+func EmitPrologue(out []byte, state *compilerState, args []string) ([]byte, error) {
+	// push rbp; mov rbp, rsp
+	out = append(out, 0x55)
+	out = append(out, 0x48, 0x89, 0xE5)
+
+	out = append(out, 0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00) // sub rsp, 128
+
+	for i, argName := range args {
+		offset, err := state.declareAndAlloc(argName)
+		if err != nil {
+			return nil, err
+		}
+		out = emitMovRegToStack(out, abiArgRegs[i], offset)
+	}
+
+	return out, nil
+}
+
+func EmitEpilogue(out []byte) []byte {
+	out = append(out, 0xC9) // leave
+	out = append(out, 0xC3) // ret
+	return out
+}
