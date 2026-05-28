@@ -15,7 +15,8 @@ TEXT ·callRaw2(SB), NOSPLIT, $0-32
     CALL AX
     RET
 
-TEXT ·callRawRet(SB), NOSPLIT, $0-8
-    MOVQ code+0(FP), AX
-    CALL AX
-    RET
+TEXT ·callRawRet(SB), NOSPLIT, $0-16 
+    MOVQ code+0(FP), AX 
+    CALL AX 
+    MOVQ AX, ret+8(FP)
+    RET 
