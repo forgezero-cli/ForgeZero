@@ -1,0 +1,12 @@
+fn main() {
+    let x = 10
+    let y = 5
+
+    print("hello")
+    return add(x, y)
+}
+
+fn add(a, b) {
+    return a + b 
+}
+
