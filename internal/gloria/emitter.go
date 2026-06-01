@@ -148,6 +148,76 @@ func Emit(src string) ([]byte, error) {
 	return out, nil
 }
 
+func parseBuiltinArgs(nextToken func() Token, src string) ([]string, error) {
+	var args []string
+	for {
+		argTok := nextToken()
+		if argTok.Type == RPAREN || argTok.Type == EOF {
+			break
+		}
+		if argTok.Type != IDENT && argTok.Type != INT {
+			return nil, errors.New("expected identifier or integer inside call")
+		}
+		args = append(args, argTok.Literal(src))
+		next := nextToken()
+		if next.Type == RPAREN {
+			break
+		}
+		if next.Type == COMMA || next.Literal(src) == "," {
+			continue
+		}
+		return nil, errors.New("expected ',' or ')' after argument")
+	}
+	return args, nil
+}
+
+func emitBuiltinCall(out []byte, name string, args []string, state *compilerState) ([]byte, error) {
+	switch name {
+	case "out8":
+		if len(args) != 2 {
+			return nil, errors.New("out8 expects exactly 2 arguments")
+		}
+		for i, arg := range args {
+			if v, err := strconv.ParseUint(arg, 10, 64); err == nil {
+				if i == 0 {
+					out = emitMovImm16ToReg(out, 2, uint16(v))
+				} else {
+					out = emitMovImm8ToReg(out, 0, byte(v))
+				}
+			} else {
+				offset, err := state.getStackOffset(arg)
+				if err != nil {
+					return nil, err
+				}
+				if i == 0 {
+					out = emitMovStackToReg(out, 2, offset)
+				} else {
+					out = emitMovStackToReg(out, 0, offset)
+				}
+			}
+		}
+		out = append(out, 0xEE)
+		return out, nil
+	case "in8":
+		if len(args) != 1 {
+			return nil, errors.New("in8 expects exactly 1 argument")
+		}
+		if v, err := strconv.ParseUint(args[0], 10, 64); err == nil {
+			out = emitMovImm16ToReg(out, 2, uint16(v))
+		} else {
+			offset, err := state.getStackOffset(args[0])
+			if err != nil {
+				return nil, err
+			}
+			out = emitMovStackToReg(out, 2, offset)
+		}
+		out = append(out, 0xEC)
+		out = append(out, 0x48, 0x0F, 0xB6, 0xC0)
+		return out, nil
+	}
+	return out, nil
+}
+
 func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]byte, []Relocation, error) {
 	state := newCompilerState()
 	out := make([]byte, 0, 128)
@@ -203,8 +273,50 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 				v, _ := strconv.ParseUint(rhs.Literal(src), 10, 64)
 				out = emitMovImm64ToReg(out, 0, v)
 				out = emitMovRegToStack(out, 0, offset)
+			} else if rhs.Type == IDENT && rhs.Literal(src) == "peek" {
+				if nextToken().Type != LPAREN {
+					return nil, nil, errors.New("expected '(' after peek")
+				}
+
+				addrTok := nextToken()
+				if addrTok.Type != IDENT && addrTok.Type != INT {
+					return nil, nil, errors.New("expected address inside peek(...)")
+				}
+
+				if nextToken().Type != RPAREN {
+					return nil, nil, errors.New("expected ')' after peek address")
+				}
+
+				if v, err := strconv.ParseUint(addrTok.Literal(src), 10, 64); err == nil {
+					out = emitMovImm64ToReg(out, abiArgRegs[0], v)
+				} else {
+					addrOffset, err := state.getStackOffset(addrTok.Literal(src))
+					if err != nil {
+						return nil, nil, err
+					}
+					out = emitMovStackToReg(out, abiArgRegs[0], addrOffset)
+				}
+
+				out = append(out, 0x0F, 0xB7, 0x07)
+
+				out = emitMovRegToStack(out, 0, offset)
+			} else if rhs.Type == IDENT && rhs.Literal(src) == "in8" {
+				if nextToken().Type != LPAREN {
+					return nil, nil, errors.New("expected '(' after in8")
+				}
+
+				args, err := parseBuiltinArgs(nextToken, src)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				out, err = emitBuiltinCall(out, "in8", args, state)
+				if err != nil {
+					return nil, nil, err
+				}
+				out = emitMovRegToStack(out, 0, offset)
 			} else {
-				return nil, nil, errors.New("let only supports immediate integers on RHS for now")
+				return nil, nil, errors.New("let only supports immediate integers or peek() on RHS")
 			}
 			continue
 		}
@@ -273,12 +385,26 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 					if nextToken().Type != RPAREN {
 						return nil, nil, errors.New("expected ')'")
 					}
-					out = emitLowLevelPrint(out, strTok.Literal(src))
+					out = emitBareMetalPrint(out, strTok.Literal(src))
 					continue
 				}
 
 				if bodyTok.Type == IDENT {
 					name := bodyTok.Literal(src)
+					if name == "out8" || name == "in8" {
+						if nextToken().Type != LPAREN {
+							return nil, nil, errors.New("expected '(' after " + name)
+						}
+						args, err := parseBuiltinArgs(nextToken, src)
+						if err != nil {
+							return nil, nil, err
+						}
+						out, err = emitBuiltinCall(out, name, args, state)
+						if err != nil {
+							return nil, nil, err
+						}
+						continue
+					}
 					offset, err := state.getStackOffset(name)
 					if err != nil {
 						return nil, nil, err
@@ -317,6 +443,135 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 			continue
 		}
 
+		if t.Type == WHILE {
+			condTok := nextToken()
+			if condTok.Type != IDENT {
+				return nil, nil, errors.New("expected variable name after while")
+			}
+
+			condOffset, err := state.getStackOffset(condTok.Literal(src))
+			if err != nil {
+				return nil, nil, err
+			}
+
+			if nextToken().Type != LBRACE {
+				return nil, nil, errors.New("expected '{' after while condition")
+			}
+
+			loopStartOffset := len(out)
+
+			out = emitMovStackToReg(out, 0, condOffset)
+			out = emitMovImm64ToReg(out, 1, 0)
+			out = emitCmpRegToReg(out, 1, 0)
+
+			jzOffsetInCode := len(out)
+			out = append(out, 0x0F, 0x84, 0x00, 0x00, 0x00, 0x00)
+
+			for {
+				bodyTok := nextToken()
+				if bodyTok.Type == RBRACE || bodyTok.Type == EOF {
+					if bodyTok.Type == EOF {
+						return nil, nil, errors.New("unclosed '{' in while loop")
+					}
+					break
+				}
+
+				if bodyTok.Type == IDENT && bodyTok.Literal(src) == "print" {
+					if nextToken().Type != LPAREN {
+						return nil, nil, errors.New("expected '('")
+					}
+					strTok := nextToken()
+					if strTok.Type != STRING {
+						return nil, nil, errors.New("print expects string")
+					}
+					if nextToken().Type != RPAREN {
+						return nil, nil, errors.New("expected ')'")
+					}
+					out = emitBareMetalPrint(out, strTok.Literal(src))
+					continue
+				}
+
+				if bodyTok.Type == IDENT {
+					name := bodyTok.Literal(src)
+					if name == "out8" || name == "in8" {
+						if nextToken().Type != LPAREN {
+							return nil, nil, errors.New("expected '(' after " + name)
+						}
+						args, err := parseBuiltinArgs(nextToken, src)
+						if err != nil {
+							return nil, nil, err
+						}
+						out, err = emitBuiltinCall(out, name, args, state)
+						if err != nil {
+							return nil, nil, err
+						}
+						continue
+					}
+
+					offset, err := state.getStackOffset(name)
+					if err != nil {
+						return nil, nil, err
+					}
+
+					assignOp := nextToken()
+					if assignOp.Type == ASSIGN {
+						rhs := nextToken()
+						if rhs.Type == INT {
+							v, _ := strconv.ParseUint(rhs.Literal(src), 10, 64)
+							out = emitMovImm64ToReg(out, 0, v)
+							out = emitMovRegToStack(out, 0, offset)
+						} else if rhs.Type == IDENT && rhs.Literal(src) == "in8" {
+							if nextToken().Type != LPAREN {
+								return nil, nil, errors.New("expected '(' after in8")
+							}
+							args, err := parseBuiltinArgs(nextToken, src)
+							if err != nil {
+								return nil, nil, err
+							}
+							out, err = emitBuiltinCall(out, "in8", args, state)
+							if err != nil {
+								return nil, nil, err
+							}
+							out = emitMovRegToStack(out, 0, offset)
+						}
+					} else if assignOp.Type == PLUS_ASSIGN || assignOp.Type == MINUS_ASSIGN {
+						rhs := nextToken()
+						if rhs.Type == INT {
+							v, _ := strconv.ParseUint(rhs.Literal(src), 10, 64)
+							out = emitMovStackToReg(out, 0, offset)
+							if assignOp.Type == PLUS_ASSIGN {
+								out = emitAddImm64ToReg(out, 0, v)
+							} else {
+								out = emitSubImm64ToReg(out, 0, v)
+							}
+							out = emitMovRegToStack(out, 0, offset)
+						}
+					}
+					continue
+				}
+			}
+
+			out = append(out, 0xE9)
+			jmpAddrOffset := len(out)
+			out = append(out, 0x00, 0x00, 0x00, 0x00)
+
+			currentLen := len(out)
+			dispBack := int32(loopStartOffset - currentLen)
+			out[jmpAddrOffset] = byte(dispBack)
+			out[jmpAddrOffset+1] = byte(dispBack >> 8)
+			out[jmpAddrOffset+2] = byte(dispBack >> 16)
+			out[jmpAddrOffset+3] = byte(dispBack >> 24)
+
+			loopEndOffset := len(out)
+			dispForward := int32(loopEndOffset - (jzOffsetInCode + 6))
+			out[jzOffsetInCode+2] = byte(dispForward)
+			out[jzOffsetInCode+3] = byte(dispForward >> 8)
+			out[jzOffsetInCode+4] = byte(dispForward >> 16)
+			out[jzOffsetInCode+5] = byte(dispForward >> 24)
+
+			continue
+		}
+
 		if t.Type == IDENT && t.Literal(src) == "print" {
 			if nextToken().Type != LPAREN {
 				return nil, nil, errors.New("expected '(' after print")
@@ -330,7 +585,66 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 			}
 
 			strVal := strTok.Literal(src)
-			out = emitLowLevelPrint(out, strVal)
+			out = emitBareMetalPrint(out, strVal)
+			continue
+		}
+
+		if t.Type == IDENT && (t.Literal(src) == "out8" || t.Literal(src) == "in8") {
+			name := t.Literal(src)
+			if nextToken().Type != LPAREN {
+				return nil, nil, errors.New("expected '(' after " + name)
+			}
+			args, err := parseBuiltinArgs(nextToken, src)
+			if err != nil {
+				return nil, nil, err
+			}
+			out, err = emitBuiltinCall(out, name, args, state)
+			if err != nil {
+				return nil, nil, err
+			}
+			continue
+		}
+
+		if t.Type == IDENT && t.Literal(src) == "poke" {
+			if nextToken().Type != LPAREN {
+				return nil, nil, errors.New("expected '(' after poke")
+			}
+
+			var args []string
+			for {
+				tok := nextToken()
+				if tok.Type == RPAREN || tok.Type == EOF {
+					break
+				}
+				if tok.Type == IDENT || tok.Type == INT {
+					args = append(args, tok.Literal(src))
+				}
+				next := nextToken()
+				if next.Type == RPAREN {
+					break
+				}
+				if next.Type == COMMA || next.Literal(src) == "," {
+					continue
+				}
+			}
+
+			if len(args) != 2 {
+				return nil, nil, errors.New("poke expects exactly 2 arguments: poke(address, value)")
+			}
+
+			for i, arg := range args {
+				if v, err := strconv.ParseUint(arg, 10, 64); err == nil {
+					out = emitMovImm64ToReg(out, abiArgRegs[i], v)
+				} else {
+					offset, err := state.getStackOffset(arg)
+					if err != nil {
+						return nil, nil, err
+					}
+					out = emitMovStackToReg(out, abiArgRegs[i], offset)
+				}
+			}
+
+			out = append(out, 0x66, 0x89, 0x37)
 			continue
 		}
 
@@ -348,12 +662,42 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 					v, _ := strconv.ParseUint(rhs.Literal(src), 10, 64)
 					out = emitMovImm64ToReg(out, 0, v)
 					out = emitMovRegToStack(out, 0, offset)
-				} else if rhs.Type == IDENT {
-					rOffset, err := state.getStackOffset(rhs.Literal(src))
+				} else if rhs.Type == IDENT && rhs.Literal(src) == "in8" {
+					if nextToken().Type != LPAREN {
+						return nil, nil, errors.New("expected '(' after in8")
+					}
+					args, err := parseBuiltinArgs(nextToken, src)
+					out, err = emitBuiltinCall(out, "in8", args, state)
 					if err != nil {
 						return nil, nil, err
 					}
-					out = emitMovStackToReg(out, 0, rOffset)
+
+					out = emitMovRegToStack(out, 0, offset)
+
+				} else if rhs.Type == IDENT && rhs.Literal(src) == "peek" {
+					if nextToken().Type != LPAREN {
+						return nil, nil, errors.New("expected '(' after peek")
+					}
+
+					addrTok := nextToken()
+
+					if v, err := strconv.ParseUint(addrTok.Literal(src), 10, 64); err == nil {
+						out = emitMovImm64ToReg(out, abiArgRegs[0], v)
+					} else {
+						addrOffset, err := state.getStackOffset(addrTok.Literal(src))
+						if err != nil {
+							return nil, nil, err
+						}
+						out = emitMovStackToReg(out, abiArgRegs[0], addrOffset)
+					}
+					out = append(out, 0x0F, 0xB7, 0x07) // movzx eax, word[rdi]
+					out = emitMovRegToStack(out, 0, offset)
+				} else if rhs.Type == IDENT {
+					r0ffset, err := state.getStackOffset(rhs.Literal(src))
+					if err != nil {
+						return nil, nil, err
+					}
+					out = emitMovRegToStack(out, 0, r0ffset)
 					out = emitMovRegToStack(out, 0, offset)
 				}
 			} else if op.Type == PLUS_ASSIGN || op.Type == MINUS_ASSIGN {
@@ -390,10 +734,66 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 
 			if nxt.Type == IDENT && peekToken().Type == LPAREN {
 				calledFuncName := nxt.Literal(src)
-
-				nextToken()
-
 				var callArgs []string
+
+				if calledFuncName == "out8" || calledFuncName == "in8" {
+					nextToken()
+					args, err := parseBuiltinArgs(nextToken, src)
+					if err != nil {
+						return nil, nil, err
+					}
+					out, err = emitBuiltinCall(out, calledFuncName, args, state)
+					if err != nil {
+						return nil, nil, err
+					}
+					out = EmitEpilogue(out)
+					return peephole(out), relocs, nil
+				}
+
+				if calledFuncName == "poke" {
+					nextToken() // skip '('
+
+					var args []string
+					for {
+						tok := nextToken()
+
+						if tok.Type == RPAREN || tok.Type == EOF {
+							break
+						}
+
+						if tok.Type == IDENT || tok.Type == INT {
+							args = append(args, tok.Literal(src))
+						}
+						next := nextToken()
+						if next.Type == RPAREN {
+							break
+						}
+						if next.Type == COMMA || next.Literal(src) == "," {
+							continue
+						}
+					}
+
+					if len(args) != 2 {
+						return nil, nil, errors.New("poke expects exactly 2 arguments: poke(address, value)")
+					}
+
+					for i, arg := range args {
+						if v, err := strconv.ParseUint(arg, 10, 64); err == nil {
+							out = emitMovImm64ToReg(out, abiArgRegs[i], v)
+						} else {
+							offset, err := state.getStackOffset(arg)
+							if err != nil {
+								return nil, nil, err
+							}
+							out = emitMovStackToReg(out, abiArgRegs[i], offset)
+						}
+					}
+
+					out = append(out, 0x66, 0x89, 0x37) // mov [rdi], si
+					out = EmitEpilogue(out)
+					return peephole(out), relocs, nil
+
+				}
 				for {
 					argTok := nextToken()
 					if argTok.Type == RPAREN {
