@@ -1,0 +1,12 @@
+
+fn main() {
+    let screen = 753664;
+    
+    let original_char = peek(screen);
+    
+    return print_vga(screen, 2631) 
+}
+
+fn print_vga(screen, number) {
+    return poke(screen, number)
+}
