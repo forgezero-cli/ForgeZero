@@ -5,6 +5,8 @@ var keywords = map[string]TokenType{
 	"let":    LET,
 	"return": RETURN,
 	"reg":    REG,
+	"if":     IF,
+	"while":  WHILE,
 }
 
 type Lexer struct {
@@ -122,6 +124,8 @@ func lookupIdent(lit string) TokenType {
 		return REG
 	case "if":
 		return IF
+	case "while":
+		return WHILE
 	}
 
 	return IDENT
