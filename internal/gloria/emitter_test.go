@@ -39,13 +39,40 @@ fn add(a, b) {
 	result := int(out)
 	expected := 15
 	if result != expected {
+
 		t.Errorf("Unexpected result: got %d, want %d", result, expected)
 	}
 
 	t.Logf("Gloria Register Carnage success! Result: %d, Machine code size: %d bytes", out, len(code))
 }
 
+func TestGloriaWhile(t *testing.T) {
+	src := `
+	fn main() {
+		let running = 3
+		while running {
+			print("x")
+			running -= 1
+		}
+		return running
+	}
+	`
+
+	code, err := Emit(src)
+	if err != nil {
+		t.Fatalf("compiler err: %v", err)
+	}
+
+	out := utils.ExecRawRet(code)
+	result := int(out)
+	expected := 0
+	if result != expected {
+		t.Errorf("unexpected result: got %d, want %d", result, expected)
+	}
+}
+
 func TestGloriaMath(t *testing.T) {
+
 	src := `
 	fn main() {
 		let a = 150 
