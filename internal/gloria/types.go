@@ -32,6 +32,7 @@ const (
 	RETURN
 	REG
 	IF
+	WHILE
 )
 
 func (t TokenType) String() string {
@@ -39,7 +40,7 @@ func (t TokenType) String() string {
 		"ILLEGAL", "EOF", "IDENT", "INT", "STRING", "ATREG", ",",
 		"+", "-", "+=", "-=", "=", "/", "{", "}", "(", ")",
 		"==", "<", ">",
-		"FN", "LET", "RETURN", "REG", "IF",
+		"FN", "LET", "RETURN", "REG", "IF", "WHILE",
 	}
 
 	if int(t) < len(names) {
