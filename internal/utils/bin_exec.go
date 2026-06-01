@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"os"
 	"runtime"
-	"syscall"
 	"unsafe"
 )
 
@@ -45,9 +44,7 @@ func patchVGA(bin []byte) ([]byte, []byte) {
 func dumpVGA(fakeVGA []byte) {
 	if len(fakeVGA) == 0 {
 		return
-
 	}
-	stdout := os.Stdout.Fd()
 
 	var line []byte
 	for i := 0; i < len(fakeVGA); i += 2 {
@@ -62,9 +59,8 @@ func dumpVGA(fakeVGA []byte) {
 
 	trimmed := bytes.TrimRight(line, " ")
 	if len(trimmed) > 0 {
-		syscall.Write(int(stdout), trimmed)
+		_, _ = os.Stdout.Write(trimmed)
 	}
-
 }
 
 func ExecRaw(bin []byte) {
