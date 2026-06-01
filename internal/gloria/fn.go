@@ -51,11 +51,14 @@ func ParseFunctionHeader(l *Lexer, src string) ([]string, error) {
 }
 
 func EmitPrologue(out []byte, state *compilerState, args []string) ([]byte, error) {
-	// push rbp; mov rbp, rsp
+	// push rbp (0x55)
 	out = append(out, 0x55)
+
+	// mov rbp, rsp (0x48 0x89 0xE5)
 	out = append(out, 0x48, 0x89, 0xE5)
 
-	out = append(out, 0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00) // sub rsp, 128
+	// sub rsp, 128 (allocate 128 bytes for locals: 0x48 0x81 0xEC 0x80 0x00 0x00 0x00)
+	out = append(out, 0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00)
 
 	for i, argName := range args {
 		offset, err := state.declareAndAlloc(argName)
@@ -69,7 +72,11 @@ func EmitPrologue(out []byte, state *compilerState, args []string) ([]byte, erro
 }
 
 func EmitEpilogue(out []byte) []byte {
-	out = append(out, 0xC9) // leave
-	out = append(out, 0xC3) // ret
+	// leave (0xC9): equivalent to mov rsp, rbp; pop rbp
+	out = append(out, 0xC9)
+
+	// ret (0xC3)
+	out = append(out, 0xC3)
+
 	return out
 }
