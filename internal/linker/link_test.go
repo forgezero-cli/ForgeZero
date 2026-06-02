@@ -65,6 +65,243 @@ func buildNasmObject(t *testing.T, dir, name, asmContent string) string {
 	return obj
 }
 
+func TestDiscoverSourceFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	files := []string{
+		"main.c", "helper.c", "test.cpp", "asm.s", "test.asm", "test.nasm", "test.fasm",
+		"skip.go", "skip.rs", "skip.txt", "README.md",
+	}
+	for _, f := range files {
+		path := filepath.Join(dir, f)
+		if err := os.WriteFile(path, []byte(""), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	subDir := filepath.Join(dir, "sub")
+	if err := os.Mkdir(subDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	subFile := filepath.Join(subDir, "sub.c")
+	if err := os.WriteFile(subFile, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := discoverSourceFiles(dir)
+
+	expected := []string{
+		"main.c", "helper.c", "test.cpp", "asm.s", "test.asm", "test.nasm", "test.fasm", "sub/sub.c",
+	}
+
+	for _, exp := range expected {
+		found := false
+		for _, r := range result {
+			if strings.HasSuffix(r, exp) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected file %s not found in result: %v", exp, result)
+		}
+	}
+
+	for _, skip := range []string{"skip.go", "skip.rs", "skip.txt", "README.md"} {
+		for _, r := range result {
+			if strings.HasSuffix(r, skip) {
+				t.Errorf("unexpected file %s found", skip)
+			}
+		}
+	}
+}
+
+func TestDiscoverSourceFilesEmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	result := discoverSourceFiles(dir)
+	if len(result) != 0 {
+		t.Errorf("expected empty result, got %d files", len(result))
+	}
+}
+
+func TestDiscoverSourceFilesWithSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks test skipped on windows")
+	}
+
+	dir := t.TempDir()
+	realDir := t.TempDir()
+	realFile := filepath.Join(realDir, "real.c")
+	if err := os.WriteFile(realFile, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	symlink := filepath.Join(dir, "link.c")
+	if err := os.Symlink(realFile, symlink); err != nil {
+		t.Skip("cannot create symlink")
+	}
+
+	result := discoverSourceFiles(dir)
+	found := false
+	for _, r := range result {
+		if strings.HasSuffix(r, "link.c") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("symlinked .c file not found: %v", result)
+	}
+}
+
+func TestDetectBackend(t *testing.T) {
+	tests := []struct {
+		name     string
+		files    []string
+		expected string
+	}{
+		{"c files", []string{"main.c", "helper.c"}, "gcc"},
+		{"cpp files", []string{"main.cpp", "test.cc"}, "gcc"},
+		{"cxx files", []string{"main.cxx"}, "gcc"},
+		{"gas files", []string{"start.s"}, "gas"},
+		{"gas uppercase", []string{"start.S"}, "gas"},
+		{"nasm files", []string{"boot.asm"}, "nasm"},
+		{"nasm explicit", []string{"test.nasm"}, "nasm"},
+		{"fasm files", []string{"kernel.fasm"}, "fasm"},
+		{"mixed c and asm", []string{"main.c", "boot.asm"}, "gcc"},
+		{"asm only", []string{"pure.asm"}, "nasm"},
+		{"unknown extension", []string{"main.xyz"}, "gcc"},
+		{"empty files", []string{}, "gcc"},
+		{"mixed with non-source", []string{"main.c", "README.md", "makefile"}, "gcc"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := detectBackend(tt.files)
+			if result != tt.expected {
+				t.Errorf("detectBackend(%v) = %s, want %s", tt.files, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestAutoBuildProjectDisabled(t *testing.T) {
+	oldAutoBuild := AutoBuild
+	AutoBuild = false
+	defer func() { AutoBuild = oldAutoBuild }()
+
+	err := AutoBuildProject(context.Background())
+	if err != nil {
+		t.Errorf("expected nil when AutoBuild is false, got %v", err)
+	}
+}
+
+func TestRunBuildGcc(t *testing.T) {
+	if _, err := exec.LookPath("gcc"); err != nil {
+		t.Skip("gcc not installed")
+	}
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "test.c")
+	content := `#include <stdio.h>
+int main() { printf("ok\n"); return 0; }`
+	if err := os.WriteFile(src, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldWd, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(oldWd)
+
+	err := runBuild([]string{"test.c"}, "gcc")
+	if err != nil {
+		t.Errorf("runBuild with gcc failed: %v", err)
+	}
+
+	bin := "./a.out"
+	if runtime.GOOS == "windows" {
+		bin = "./a.exe"
+	}
+	if _, err := os.Stat(bin); err != nil {
+		t.Error("output binary not created")
+	}
+	os.Remove(bin)
+}
+
+func TestRunBuildGccNotFound(t *testing.T) {
+	oldPath := os.Getenv("PATH")
+	os.Setenv("PATH", "")
+	defer os.Setenv("PATH", oldPath)
+
+	err := runBuild([]string{"test.c"}, "gcc")
+	if err == nil {
+		t.Error("expected error when gcc not found")
+	}
+}
+
+func TestRunBuildNasm(t *testing.T) {
+	if _, err := exec.LookPath("nasm"); err != nil {
+		t.Skip("nasm not installed")
+	}
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "test.asm")
+	content := `section .text
+global _start
+_start:
+    mov eax, 60
+    xor edi, edi
+    syscall`
+	if err := os.WriteFile(src, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldWd, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(oldWd)
+
+	err := runBuild([]string{"test.asm"}, "nasm")
+	if err != nil {
+		t.Errorf("runBuild with nasm failed: %v", err)
+	}
+}
+
+func TestAutoBuildProjectIntegration(t *testing.T) {
+	if _, err := exec.LookPath("gcc"); err != nil {
+		t.Skip("gcc not installed")
+	}
+
+	oldAutoBuild := AutoBuild
+	AutoBuild = true
+	defer func() { AutoBuild = oldAutoBuild }()
+
+	dir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(oldWd)
+
+	src := filepath.Join(dir, "main.c")
+	content := `#include <stdio.h>
+int main() { printf("autobuild works\n"); return 0; }`
+	if err := os.WriteFile(src, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := AutoBuildProject(context.Background())
+	if err != nil {
+		t.Errorf("AutoBuildProject failed: %v", err)
+	}
+
+	bin := "./a.out"
+	if runtime.GOOS == "windows" {
+		bin = "./a.exe"
+	}
+	if _, err := os.Stat(bin); err != nil {
+		t.Error("output binary not created by AutoBuild")
+	}
+	os.Remove(bin)
+}
+
 func TestLink(t *testing.T) {
 	if _, err := exec.LookPath("gcc"); err != nil {
 		t.Skip("gcc not installed")
@@ -624,7 +861,7 @@ func TestLinkWithLdMissingLib(t *testing.T) {
 }
 
 func TestValidateLinkCallErrors(t *testing.T) {
-	if err := validateLinkCall(nil, "out"); err == nil { //nolint:staticcheck
+	if err := validateLinkCall(nil, "out"); err == nil {
 		t.Error("expected invalid linking context error")
 	}
 	if err := validateLinkCall(context.Background(), ""); err == nil {
