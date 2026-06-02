@@ -12,7 +12,9 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
+	"unsafe"
 
 	"fz/internal/config"
 	"fz/internal/utils"
@@ -29,6 +31,7 @@ var (
 	ZigRequested bool
 	ZigEnabled   bool
 	ForceLD      bool
+	AutoBuild    bool
 )
 
 func SetRunner(r CmdRunner) {
@@ -62,7 +65,6 @@ func shouldUseResponseFile(args []string) bool {
 	}
 	return total > 8192
 }
-
 func createResponseFile(args []string) (string, error) {
 	f, err := os.CreateTemp("", "fz_link_args_*.rsp")
 	if err != nil {
@@ -349,6 +351,99 @@ func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bo
 		_, _ = utils.ScrubHostPaths(bin, utils.GetExecutionRoot())
 	}
 	return nil
+}
+
+func writeStderr(s string) {
+	if len(s) == 0 {
+		return
+	}
+
+	ptr := (*struct {
+		str unsafe.Pointer
+		len int
+	})(unsafe.Pointer(&s)).str
+
+	_, _, _ = syscall.Syscall(
+		syscall.SYS_WRITE,
+		uintptr(2), // stderr
+		uintptr(ptr),
+		uintptr(len(s)),
+	)
+}
+func AutoBuildProject(ctx context.Context) error {
+
+	if !AutoBuild {
+		return nil
+	}
+
+	toolchain := gccForTarget()
+	if err := utils.CheckTool(toolchain); err != nil {
+		writeStderr("toolchain: ")
+		writeStderr(toolchain)
+		writeStderr(" not found\n")
+		return err
+	}
+
+	files := discoverSourceFiles(".")
+	if len(files) == 0 {
+		writeStderr("no source files found\n")
+		return nil
+	}
+
+	backend := detectBackend(files)
+	return runBuild(files, backend)
+}
+
+func discoverSourceFiles(root string) []string {
+	var files []string
+	exts := map[string]bool{
+		".c": true, ".cpp": true, ".cc": true, ".cxx": true,
+		".s": true, ".S": true,
+		".asm": true, ".nasm": true,
+		".fasm": true,
+	}
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() && exts[filepath.Ext(path)] {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files
+}
+
+func detectBackend(files []string) string {
+	for _, f := range files {
+		ext := filepath.Ext(f)
+		switch ext {
+		case ".c", ".cpp", ".cc", ".cxx":
+			return "gcc"
+		case ".s", ".S":
+			return "gas"
+		case ".asm", ".nasm":
+			return "nasm"
+		case ".fasm":
+			return "fasm"
+		}
+	}
+	return "gcc"
+}
+
+func runBuild(files []string, backend string) error {
+	var args []string
+	switch backend {
+	case "gcc":
+		args = append([]string{"gcc"}, files...)
+	case "nasm":
+		args = append([]string{"nasm", "-f", "elf64"}, files...)
+	case "fasm":
+		args = append([]string{"fasm"}, files...)
+	case "gas":
+		args = append([]string{"gcc", "-c"}, files...)
+	}
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bool, strict bool, libs []string) error {
