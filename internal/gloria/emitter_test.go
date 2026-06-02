@@ -22,7 +22,7 @@ func TestGloriaRegisterCarnage(t *testing.T) {
 }
 
 fn add(a, b) {
-    return a + b 
+    return a + b
 }
 
 
@@ -75,10 +75,10 @@ func TestGloriaMath(t *testing.T) {
 
 	src := `
 	fn main() {
-		let a = 150 
+		let a = 150
 		let b = 20
 
-		return a - b 
+		return a - b
 	}
 	`
 
