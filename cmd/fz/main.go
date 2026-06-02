@@ -280,7 +280,8 @@ Options:
   -compile-commands      Generate compile_commands.json for LSP and exit
   -init                  Initialize project: create .fz.yaml and .fzignore
   -shell                 Run interactive shell
-  -update                Update fz to the latest version
+	-build 								 Auto build project with auto backend(c/c++, asm)
+	-update                Update fz to the latest version
   -h, --help             Show this help
   -v, --version          Show version
 
@@ -818,6 +819,7 @@ func main() {
 		rawFlag            bool
 		forceLdFlag        bool
 		gloriaPath         string
+		autoBuild          bool
 	)
 
 	flag.BoolVar(&watch, "watch", false, "")
@@ -865,7 +867,7 @@ func main() {
 	flag.StringVar(&pluginPath, "plugin", "", "shared object plugin file to load before build")
 	flag.BoolVar(&clean, "clean", false, "remove all build artifacts (.fz_objs, .fz_cache, binaries)")
 	flag.StringVar(&gloriaPath, "gloria", "", "path to .glo file")
-
+	flag.BoolVar(&autoBuild, "autoBuild", false, "auto build project")
 	flag.Usage = printHelp
 	flag.Parse()
 
@@ -1052,6 +1054,14 @@ func main() {
 			writeFmt(1, "Unknown pm subcommand: %s\n", subcmd)
 		}
 		return
+	}
+
+	autoBuild = linker.AutoBuild
+
+	if autoBuild {
+		if err := linker.AutoBuildProject(ctx); err != nil {
+			writeStderr("auto build failed!\n")
+		}
 	}
 
 	assembler.CcFlags = ccFlags
