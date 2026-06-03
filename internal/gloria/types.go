@@ -30,6 +30,13 @@ const (
 	LT
 	GT
 
+	AMP
+	STAR 
+	PERCENT 
+
+	PIPE
+	CARET 
+
 	FN
 	LET
 	RETURN
