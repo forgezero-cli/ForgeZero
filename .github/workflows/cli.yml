@@ -39,7 +39,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y nasm fasm gcc clang zig
+          sudo apt-get install -y nasm fasm gcc clang
+          wget -q https://ziglang.org/builds/zig-linux-x86_64-0.14.0-dev.3872+ef1b28667.tar.xz
+          sudo tar -xf zig-linux-x86_64-*.tar.xz -C /usr/local
+          sudo mv /usr/local/zig-linux-x86_64-* /usr/local/zig
+          sudo ln -s /usr/local/zig/zig /usr/local/bin/zig
       - name: Install tools (macOS)
         if: runner.os == 'macOS'
         run: brew install nasm gcc zig
