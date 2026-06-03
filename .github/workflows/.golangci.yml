@@ -1,0 +1,29 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - gosimple
+    - ineffassign
+    - typecheck
+    - unused
+    - gofmt
+    - goimports
+    - misspell
+    - unconvert
+    - gocritic
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: fz
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
