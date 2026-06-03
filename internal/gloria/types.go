@@ -11,6 +11,10 @@ const (
 	STRING
 	ATREG
 	COMMA
+	NUMBER // int 
+
+	LIT_INT
+	CONST_INT
 
 	PLUS         // +
 	MINUS        // -
@@ -22,7 +26,6 @@ const (
 	RBRACE       // }
 	LPAREN       // (
 	RPAREN       // )
-
 	EQ
 	LT
 	GT
