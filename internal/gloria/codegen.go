@@ -2,6 +2,7 @@
 
 package gloria
 
+
 // rdi = 7, rsi = 6, rdx = 2, rcx = 1, r8 = 8, r9 = 9
 // r15 = 15 (reserved for VGA cursor in bare-metal mode)
 var abiArgRegs = []int{7, 6, 2, 1, 8, 9}
@@ -228,10 +229,9 @@ func peephole(ins []byte) []byte {
 	return out
 }
 
-// emitPushReg: push a 64-bit register (0x50 + reg for RAX-RDI, 0x41 prefix for R8-R15)
 func emitPushReg(out []byte, reg int) []byte {
 	if reg >= 8 {
-		out = append(out, 0x41) // REX.B prefix for R8-R15
+		out = append(out, 0x41)
 		out = append(out, 0x50+byte(reg-8))
 	} else {
 		out = append(out, 0x50+byte(reg))
@@ -239,10 +239,9 @@ func emitPushReg(out []byte, reg int) []byte {
 	return out
 }
 
-// emitPopReg: pop a 64-bit register
 func emitPopReg(out []byte, reg int) []byte {
 	if reg >= 8 {
-		out = append(out, 0x41) // REX.B prefix for R8-R15
+		out = append(out, 0x41)
 		out = append(out, 0x58+byte(reg-8))
 	} else {
 		out = append(out, 0x58+byte(reg))
@@ -251,22 +250,20 @@ func emitPopReg(out []byte, reg int) []byte {
 }
 
 func emitMovMemToReg64(out []byte, addr uint64, dstReg int) []byte {
-	out = emitMovImm64ToReg(out, regRAX, addr) // mov rax, addr
-	out = append(out, 0x48, 0x8B, 0x00)        // mov rax, [rax]
+	out = emitMovImm64ToReg(out, regRAX, addr)
+	out = append(out, 0x48, 0x8B, 0x00)
 	if dstReg != regRAX {
 		out = emitMovRegToReg(out, regRAX, dstReg)
 	}
 	return out
 }
 
-// emitMovRegToMem64: mov qword [address], reg
 func emitMovRegToMem64(out []byte, srcReg int, addr uint64) []byte {
-	// Preserve working register
-	out = emitMovImm64ToReg(out, regRAX, addr) // mov rax, addr
+	out = emitMovImm64ToReg(out, regRAX, addr)
 	if srcReg != regRAX {
-		out = append(out, 0x48, 0x89, 0x00) // mov [rax], srcReg
+		out = append(out, 0x48, 0x89, 0x00)
 	} else {
-		out = append(out, 0x48, 0x89, 0x00) // mov [rax], rax
+		out = append(out, 0x48, 0x89, 0x00)
 	}
 	return out
 }
@@ -274,80 +271,142 @@ func emitMovRegToMem64(out []byte, srcReg int, addr uint64) []byte {
 func emitVGAPrintWithR15(out []byte, str string) []byte {
 	strBytes := parseStringLiteral(str)
 
-	// Save working registers
-	out = emitPushReg(out, regRCX) // push rcx
-	out = emitPushReg(out, regRAX) // push rax
-	out = emitPushReg(out, regRDX) // push rdx
+	out = emitPushReg(out, regRCX)
+	out = emitPushReg(out, regRAX)
+	out = emitPushReg(out, regRDX)
 
-	// Test if R15 is zero: test r15, r15
 	out = append(out, 0x49, 0x85, 0xFF)
 
-	// If R15 == 0, initialize it to 0xB8000
-	out = append(out, 0x75, 0x0B) // jnz +11 bytes
+	out = append(out, 0x75, 0x0B)
 
-	// Initialize R15: mov r15, 0xB8000
 	out = append(out, 0x49, 0xC7, 0xC7, 0x00, 0x80, 0x0B, 0x00)
 
 	for _, ch := range strBytes {
-		// mov al, ch
 		out = emitMovImm8ToReg(out, regRAX, ch)
-
-		// mov byte [r15], al
 		out = append(out, 0x41, 0x88, 0x07)
-
-		// mov byte [r15+1], 0x0A (light green attribute)
 		out = append(out, 0x41, 0xC6, 0x47, 0x01, 0x0A)
-
-		// add r15, 2 (move to next char cell)
 		out = append(out, 0x49, 0x83, 0xC7, 0x02)
 	}
 
-	// Restore working registers
-	out = emitPopReg(out, regRDX) // pop rdx
-	out = emitPopReg(out, regRAX) // pop rax
-	out = emitPopReg(out, regRCX) // pop rcx
+	out = emitPopReg(out, regRDX)
+	out = emitPopReg(out, regRAX)
+	out = emitPopReg(out, regRCX)
 
 	return out
 }
 
 func emitIn8WithPreserve(out []byte, portVal uint16) []byte {
-	out = emitPushReg(out, regRCX) // push rcx
-	out = emitPushReg(out, regRDI) // push rdi
+	out = emitPushReg(out, regRCX)
+	out = emitPushReg(out, regRDI)
 
 	out = emitMovImm16ToReg(out, regRDX, portVal)
 
-	// in al, dx
 	out = append(out, 0xEC)
 
-	// movzx rax, al (zero-extend AL to RAX)
 	out = append(out, 0x48, 0x0F, 0xB6, 0xC0)
 
-	// Restore registers
-	out = emitPopReg(out, regRDI) // pop rdi
-	out = emitPopReg(out, regRCX) // pop rcx
+	out = emitPopReg(out, regRDI)
+	out = emitPopReg(out, regRCX)
 
 	return out
 }
 
 func emitOut8WithPreserve(out []byte, portVal uint16, dataVal byte) []byte {
-	// Save registers
-	out = emitPushReg(out, regRCX) // push rcx
-	out = emitPushReg(out, regRDI) // push rdi
-	out = emitPushReg(out, regRAX) // push rax
+	out = emitPushReg(out, regRCX)
+	out = emitPushReg(out, regRDI)
+	out = emitPushReg(out, regRAX)
 
-	// mov dx, portVal
 	out = emitMovImm16ToReg(out, regRDX, portVal)
 
-	// mov al, dataVal
 	out = emitMovImm8ToReg(out, regRAX, dataVal)
 
-	// out dx, al
 	out = append(out, 0xEE)
 
-	// Restore registers
-	out = emitPopReg(out, regRAX) // pop rax
-	out = emitPopReg(out, regRDI) // pop rdi
-	out = emitPopReg(out, regRCX) // pop rcx
+	out = emitPopReg(out, regRAX)
+	out = emitPopReg(out, regRDI)
+	out = emitPopReg(out, regRCX)
 
+	return out
+}
+
+func emitNumberPrint(out []byte, numLit string) ([]byte, error) {
+	var num int64
+	i := 0
+	for i < len(numLit) && numLit[i] >= '0' && numLit[i] <= '9' {
+		num = num*10 + int64(numLit[i]-'0')
+		i++
+	}
+
+	if num == 0 {
+		out = append(out, 0x6A, '0')
+		out = append(out, 0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00)
+		out = append(out, 0x48, 0xC7, 0xC7, 0x01, 0x00, 0x00, 0x00)
+		out = append(out, 0x48, 0x8D, 0x74, 0x24, 0x00)
+		out = append(out, 0x48, 0xC7, 0xC2, 0x01, 0x00, 0x00, 0x00)
+		out = append(out, 0x0F, 0x05)
+		out = append(out, 0x48, 0x83, 0xC4, 0x08)
+		return out, nil
+	}
+
+	var digits [20]byte
+	n := num
+	idx := 20
+	for n > 0 {
+		idx--
+		digits[idx] = byte('0' + n%10)
+		n /= 10
+	}
+
+	for j := idx; j < 20; j++ {
+		out = append(out, 0x6A, digits[j])
+		out = append(out, 0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00)
+		out = append(out, 0x48, 0xC7, 0xC7, 0x01, 0x00, 0x00, 0x00)
+		out = append(out, 0x48, 0x8D, 0x74, 0x24, 0x00)
+		out = append(out, 0x48, 0xC7, 0xC2, 0x01, 0x00, 0x00, 0x00)
+		out = append(out, 0x0F, 0x05)
+		out = append(out, 0x48, 0x83, 0xC4, 0x08)
+	}
+	return out, nil
+}
+
+func emitRegisterPrint(out []byte, regName string) ([]byte, error) {
+	regMap := map[string]int{
+		"rax": 0, "rcx": 1, "rdx": 2, "rbx": 3,
+		"rsi": 6, "rdi": 7, "r8": 8, "r9": 9,
+		"r10": 10, "r11": 11, "r12": 12, "r13": 13, "r14": 14, "r15": 15,
+	}
+	regIdx, ok := regMap[regName]
+	if !ok {
+		return out, nil
+	}
+
+	out = emitPushReg(out, regRAX)
+	out = emitPushReg(out, regRCX)
+	out = emitPushReg(out, regRDX)
+
+	if regIdx != regRAX {
+		if regIdx <= 7 {
+			out = emitMovRegToReg(out, regIdx, regRAX)
+		} else {
+			out = append(out, 0x49, 0x89, 0xC0+byte(regIdx-8))
+		}
+	}
+
+	out = emitSyscallPrintReg(out)
+
+	out = emitPopReg(out, regRDX)
+	out = emitPopReg(out, regRCX)
+	out = emitPopReg(out, regRAX)
+
+	return out, nil
+}
+
+func emitSyscallPrintReg(out []byte) []byte {
+	out = append(out, 0x50)
+	out = append(out, 0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00)
+	out = append(out, 0x48, 0xC7, 0xC7, 0x01, 0x00, 0x00, 0x00)
+	out = emitPopReg(out, regRSI)
+	out = append(out, 0x48, 0xC7, 0xC2, 0x01, 0x00, 0x00, 0x00)
+	out = append(out, 0x0F, 0x05)
 	return out
 }
