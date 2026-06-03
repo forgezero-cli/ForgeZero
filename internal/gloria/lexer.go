@@ -211,6 +211,18 @@ func (l *Lexer) NextToken() Token {
 	case '@':
 		start, end := l.scanAtReg()
 		return Token{Type: ATREG, Start: start, End: end}
+	case '*':
+		tok.Type = STAR 
+		l.readChar()
+	case '%':
+		tok.Type = PERCENT
+		l.readChar()
+	case '|':
+		tok.Type = PIPE 
+		l.readChar()
+	case '^':
+		tok.Type = CARET 
+		l.readChar()
 	case 0:
 		tok.Type = EOF
 		tok.Start = l.pos
