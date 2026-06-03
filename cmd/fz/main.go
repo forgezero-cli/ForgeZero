@@ -1204,10 +1204,12 @@ func main() {
 
 		writeFmt(1, "[ForgeZero] Gloria successfully compiled to raw binary: %s (%d bytes)\n", outName, len(machineCode))
 
-		writeFmt(1, "[Gloria JIT] Running JIT-execution...\n")
-		result := utils.ExecRawRet(machineCode)
+		result := utils.ExecRawRet(machineCode);
 
-		writeFmt(1, "[Gloria JIT] Program exited with RAX = %d\n", result)
+		if err != nil {
+			_ = result
+		}
+		
 		os.Exit(0)
 	}
 	if err != nil {
