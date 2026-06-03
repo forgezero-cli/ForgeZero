@@ -376,16 +376,42 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 
 				if bodyTok.Type == IDENT && bodyTok.Literal(src) == "print" {
 					if nextToken().Type != LPAREN {
-						return nil, nil, errors.New("expected '('")
+						return nil, nil, errors.New("expected '(' after print")
 					}
-					strTok := nextToken()
-					if strTok.Type != STRING {
-						return nil, nil, errors.New("print expects string")
+					argTok := nextToken()
+					if argTok.Type == RPAREN {
+						return nil, nil, errors.New("print expects an argument")
 					}
-					if nextToken().Type != RPAREN {
-						return nil, nil, errors.New("expected ')'")
+
+					if argTok.Type == STRING {
+						strVal := argTok.Literal(src)
+						if nextToken().Type != RPAREN {
+							return nil, nil, errors.New("expected ')' after print string")
+						}
+						out = emitBareMetalPrint(out, strVal)
+					} else if argTok.Type == INT {
+						numVal := argTok.Literal(src)
+						if nextToken().Type != RPAREN {
+							return nil, nil, errors.New("expected ')' after print number")
+						}
+						var err error
+						out, err = emitNumberPrint(out, numVal)
+						if err != nil {
+							return nil, nil, err
+						}
+					} else if argTok.Type == IDENT {
+						regName := argTok.Literal(src)
+						if nextToken().Type != RPAREN {
+							return nil, nil, errors.New("expected ')' after print register")
+						}
+						var err error
+						out, err = emitRegisterPrint(out, regName)
+						if err != nil {
+							return nil, nil, err
+						}
+					} else {
+						return nil, nil, errors.New("print expects string, number, or register")
 					}
-					out = emitBareMetalPrint(out, strTok.Literal(src))
 					continue
 				}
 
@@ -478,16 +504,42 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 
 				if bodyTok.Type == IDENT && bodyTok.Literal(src) == "print" {
 					if nextToken().Type != LPAREN {
-						return nil, nil, errors.New("expected '('")
+						return nil, nil, errors.New("expected '(' after print")
 					}
-					strTok := nextToken()
-					if strTok.Type != STRING {
-						return nil, nil, errors.New("print expects string")
+					argTok := nextToken()
+					if argTok.Type == RPAREN {
+						return nil, nil, errors.New("print expects an argument")
 					}
-					if nextToken().Type != RPAREN {
-						return nil, nil, errors.New("expected ')'")
+
+					if argTok.Type == STRING {
+						strVal := argTok.Literal(src)
+						if nextToken().Type != RPAREN {
+							return nil, nil, errors.New("expected ')' after print string")
+						}
+						out = emitBareMetalPrint(out, strVal)
+					} else if argTok.Type == INT {
+						numVal := argTok.Literal(src)
+						if nextToken().Type != RPAREN {
+							return nil, nil, errors.New("expected ')' after print number")
+						}
+						var err error
+						out, err = emitNumberPrint(out, numVal)
+						if err != nil {
+							return nil, nil, err
+						}
+					} else if argTok.Type == IDENT {
+						regName := argTok.Literal(src)
+						if nextToken().Type != RPAREN {
+							return nil, nil, errors.New("expected ')' after print register")
+						}
+						var err error
+						out, err = emitRegisterPrint(out, regName)
+						if err != nil {
+							return nil, nil, err
+						}
+					} else {
+						return nil, nil, errors.New("print expects string, number, or register")
 					}
-					out = emitBareMetalPrint(out, strTok.Literal(src))
 					continue
 				}
 
@@ -576,16 +628,40 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 			if nextToken().Type != LPAREN {
 				return nil, nil, errors.New("expected '(' after print")
 			}
-			strTok := nextToken()
-			if strTok.Type != STRING {
-				return nil, nil, errors.New("print only supports raw strings for now")
-			}
-			if nextToken().Type != RPAREN {
-				return nil, nil, errors.New("expected ')' after print string")
+			argTok := nextToken()
+			if argTok.Type == RPAREN {
+				return nil, nil, errors.New("print expects an argument")
 			}
 
-			strVal := strTok.Literal(src)
-			out = emitBareMetalPrint(out, strVal)
+			if argTok.Type == STRING {
+				strVal := argTok.Literal(src)
+				if nextToken().Type != RPAREN {
+					return nil, nil, errors.New("expected ')' after print string")
+				}
+				out = emitBareMetalPrint(out, strVal)
+			} else if argTok.Type == INT {
+				numVal := argTok.Literal(src)
+				if nextToken().Type != RPAREN {
+					return nil, nil, errors.New("expected ')' after print number")
+				}
+				var err error
+				out, err = emitNumberPrint(out, numVal)
+				if err != nil {
+					return nil, nil, err
+				}
+			} else if argTok.Type == IDENT {
+				regName := argTok.Literal(src)
+				if nextToken().Type != RPAREN {
+					return nil, nil, errors.New("expected ')' after print register")
+				}
+				var err error
+				out, err = emitRegisterPrint(out, regName)
+				if err != nil {
+					return nil, nil, err
+				}
+			} else {
+				return nil, nil, errors.New("print expects string, number, or register")
+			}
 			continue
 		}
 
@@ -690,7 +766,7 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 						}
 						out = emitMovStackToReg(out, abiArgRegs[0], addrOffset)
 					}
-					out = append(out, 0x0F, 0xB7, 0x07) // movzx eax, word[rdi]
+					out = append(out, 0x0F, 0xB7, 0x07)
 					out = emitMovRegToStack(out, 0, offset)
 				} else if rhs.Type == IDENT {
 					r0ffset, err := state.getStackOffset(rhs.Literal(src))
@@ -751,7 +827,7 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 				}
 
 				if calledFuncName == "poke" {
-					nextToken() // skip '('
+					nextToken()
 
 					var args []string
 					for {
@@ -789,7 +865,7 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 						}
 					}
 
-					out = append(out, 0x66, 0x89, 0x37) // mov [rdi], si
+					out = append(out, 0x66, 0x89, 0x37)
 					out = EmitEpilogue(out)
 					return peephole(out), relocs, nil
 
