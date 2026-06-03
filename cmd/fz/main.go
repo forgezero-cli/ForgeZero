@@ -86,6 +86,7 @@ func versionText() string {
 	b.WriteString(fzvfs.ImplName())
 	b.WriteString(" | Security: Aegis-Hardened\n")
 	b.WriteString("(c) Alex Voste. Binary Integrity: Verified.\n")
+	b.WriteString("github: forgezero-cli/forgezero\nOrg: forgezero-cli\n")
 	return b.String()
 }
 
@@ -1204,12 +1205,12 @@ func main() {
 
 		writeFmt(1, "[ForgeZero] Gloria successfully compiled to raw binary: %s (%d bytes)\n", outName, len(machineCode))
 
-		result := utils.ExecRawRet(machineCode);
+		result := utils.ExecRawRet(machineCode)
 
 		if err != nil {
 			_ = result
 		}
-		
+
 		os.Exit(0)
 	}
 	if err != nil {
