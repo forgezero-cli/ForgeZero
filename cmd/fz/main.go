@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -26,6 +28,7 @@ import (
 	initpkg "fz/internal/init"
 	"fz/internal/linker"
 	"fz/internal/man"
+	"fz/internal/musl"
 	"fz/internal/pkgman"
 	"fz/internal/sbom"
 	"fz/internal/seal"
@@ -821,6 +824,7 @@ func main() {
 		forceLdFlag        bool
 		gloriaPath         string
 		autoBuild          bool
+		muslFlag           bool
 	)
 
 	flag.BoolVar(&watch, "watch", false, "")
@@ -869,6 +873,7 @@ func main() {
 	flag.BoolVar(&clean, "clean", false, "remove all build artifacts (.fz_objs, .fz_cache, binaries)")
 	flag.StringVar(&gloriaPath, "gloria", "", "path to .glo file")
 	flag.BoolVar(&autoBuild, "autoBuild", false, "auto build project")
+	flag.BoolVar(&muslFlag, "musl", false, "musl cross compile static binary files")
 	flag.Usage = printHelp
 	flag.Parse()
 
@@ -1446,6 +1451,38 @@ func main() {
 			if err := assembler.Assemble(ctx, srcPath, objName, debug, verbose, mode); err != nil {
 				return err
 			}
+			if muslFlag {
+				muslDir := musl.NewToolchain("x86_64")
+
+				tmpPath, err := muslDir.Prepare()
+
+				if err != nil {
+					return errorf("musl extract failed: %w", err)
+				}
+
+				defer muslDir.Close()
+
+				argsCount := len(objName) + 9
+				args := make([]string, argsCount)
+				userObjs := [...]string{objName}
+
+				musl.GetLinkerArgsZeroAlloc(args, tmpPath, userObjs[:], binName)
+
+				cmd := exec.Command("ld.lld", args...)
+
+				var errBuf bytes.Buffer
+				cmd.Stderr = &errBuf
+
+				if err := cmd.Run(); err != nil {
+					return errorf("musl link failed: %v\n%s", err, errBuf.String())
+				}
+
+				if !jsonOutput {
+					writeFmt(1, "built(static musl): %s\n", binName)
+				}
+
+				return nil
+			}
 			if format == "bin" {
 				if objName != binName {
 					if err := linker.Link(ctx, objName, binName, verbose, mode, noSymbolCheck, sanitize, strict, nil); err != nil {
@@ -1522,10 +1559,55 @@ func main() {
 			if cfg != nil {
 				libs = cfg.Libs
 			}
+			if muslFlag {
+				keepObj = true
+				noCache = true
+				buildType = "obj"
+			}
 			res, err := builder.BuildDir(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude, sourceFilesList, ignoreMatcher, includes, libs, jobs, buildType)
 			if err != nil {
 				return err
 			}
+			objectFiles = res.ObjectFiles
+			finalBinary = res.Binary
+
+			if muslFlag {
+				muslDir := musl.NewToolchain("x86_64")
+
+				tmpPath, err := muslDir.Prepare()
+
+				if err != nil {
+					return errorf("musl extract failed: %w", err)
+				}
+
+				defer muslDir.Close()
+
+				argsCount := len(res.ObjectFiles) + 9
+				args := make([]string, argsCount)
+
+				musl.GetLinkerArgsZeroAlloc(args, tmpPath, res.ObjectFiles, finalBinary)
+
+				if verbose && !jsonOutput {
+					writeFmt(1, "Linking %d object files with static Musl -> %s\n", len(res.ObjectFiles), finalBinary)
+				}
+
+				cmd := exec.Command("ld.lld", args...)
+
+				var errBuf bytes.Buffer
+				cmd.Stderr = &errBuf
+
+				if err := cmd.Run(); err != nil {
+
+					return errorf("musl link failed: %v\n%s", err, errBuf.String())
+
+				}
+
+				if !jsonOutput {
+					writeFmt(1, "build(static musl): %s\n", finalBinary)
+				}
+				return nil
+			}
+
 			objectFiles = res.ObjectFiles
 			finalBinary = res.Binary
 			if !jsonOutput {
@@ -1534,6 +1616,7 @@ func main() {
 				}
 				writeFmt(1, "Built: %s\n", res.Binary)
 			}
+
 			return nil
 		}
 		return errorf("no source to build")
