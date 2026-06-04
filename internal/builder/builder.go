@@ -386,19 +386,23 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 	for i, p := range pairs {
 		objFiles[i] = p.obj
 	}
-	if buildType == "static" {
+
+	if buildType == "obj" {
+		cleanupObjDir = false
+	} else if buildType == "static" {
 		if verbose {
-			fmt.Printf("Creating static library %s from %d object files\n", outBin, len(objFiles))
+			_, _ = os.Stdout.WriteString("Creating static library " + outBin + "\n")
 		}
+
 		if err := createArchive(ctx, objFiles, outBin, verbose); err != nil {
 			if cleanupObjDir {
 				os.RemoveAll(objDir)
 			}
-			return nil, fmt.Errorf("archive creation failed: %w", err)
+			return nil, fmt.Errorf("Archive creation failed: %w", err)
 		}
 	} else {
 		if verbose {
-			fmt.Printf("Linking %d object files -> %s (mode: %s)\n", len(objFiles), outBin, mode)
+			_, _ = os.Stdout.WriteString("Linking object files -> " + outBin + "\n")
 		}
 		if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck, sanitize, strict, libs); err != nil {
 			if cleanupObjDir {
@@ -406,10 +410,6 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 			}
 			return nil, fmt.Errorf("link failed: %w", err)
 		}
-	}
-
-	if cleanupObjDir {
-		os.RemoveAll(objDir)
 	}
 
 	return &BuildResult{
