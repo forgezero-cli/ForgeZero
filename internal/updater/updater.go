@@ -1,7 +1,6 @@
 package updater
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,12 +19,11 @@ var (
 	executablePathFunc = os.Executable
 	httpClient         = &http.Client{Timeout: 30 * time.Second}
 	httpGet            = func(u string) (*http.Response, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		req, err := http.NewRequest(http.MethodGet, u, nil)
 		if err != nil {
 			return nil, fmt.Errorf("create request: %w", err)
 		}
+
 		return httpClient.Do(req)
 	}
 )
