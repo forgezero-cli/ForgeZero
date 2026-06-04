@@ -2,7 +2,6 @@
 
 package gloria
 
-
 // rdi = 7, rsi = 6, rdx = 2, rcx = 1, r8 = 8, r9 = 9
 // r15 = 15 (reserved for VGA cursor in bare-metal mode)
 var abiArgRegs = []int{7, 6, 2, 1, 8, 9}
@@ -246,52 +245,6 @@ func emitPopReg(out []byte, reg int) []byte {
 	} else {
 		out = append(out, 0x58+byte(reg))
 	}
-	return out
-}
-
-func emitMovMemToReg64(out []byte, addr uint64, dstReg int) []byte {
-	out = emitMovImm64ToReg(out, regRAX, addr)
-	out = append(out, 0x48, 0x8B, 0x00)
-	if dstReg != regRAX {
-		out = emitMovRegToReg(out, regRAX, dstReg)
-	}
-	return out
-}
-
-func emitMovRegToMem64(out []byte, srcReg int, addr uint64) []byte {
-	out = emitMovImm64ToReg(out, regRAX, addr)
-	if srcReg != regRAX {
-		out = append(out, 0x48, 0x89, 0x00)
-	} else {
-		out = append(out, 0x48, 0x89, 0x00)
-	}
-	return out
-}
-
-func emitVGAPrintWithR15(out []byte, str string) []byte {
-	strBytes := parseStringLiteral(str)
-
-	out = emitPushReg(out, regRCX)
-	out = emitPushReg(out, regRAX)
-	out = emitPushReg(out, regRDX)
-
-	out = append(out, 0x49, 0x85, 0xFF)
-
-	out = append(out, 0x75, 0x0B)
-
-	out = append(out, 0x49, 0xC7, 0xC7, 0x00, 0x80, 0x0B, 0x00)
-
-	for _, ch := range strBytes {
-		out = emitMovImm8ToReg(out, regRAX, ch)
-		out = append(out, 0x41, 0x88, 0x07)
-		out = append(out, 0x41, 0xC6, 0x47, 0x01, 0x0A)
-		out = append(out, 0x49, 0x83, 0xC7, 0x02)
-	}
-
-	out = emitPopReg(out, regRDX)
-	out = emitPopReg(out, regRAX)
-	out = emitPopReg(out, regRCX)
-
 	return out
 }
 
