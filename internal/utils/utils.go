@@ -39,6 +39,10 @@ var (
 	fileExistsCache sync.Map
 )
 
+type TargetKeyType string
+
+const TargetCtxKey TargetKeyType = "target-arch"
+
 func IsLimitedMode() bool { return limitedMode.Load() }
 
 func SelfAttest() error {
