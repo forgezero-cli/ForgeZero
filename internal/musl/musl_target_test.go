@@ -7,40 +7,150 @@ import (
 	"testing"
 )
 
-func TestMuslIntegration(t *testing.T) {
-	tmpDir, err := ExtractMusl("x86_64")
+func TestToolchainPrepareSuccess(t *testing.T) {
+	tc := NewToolchain("x86_64")
+	defer tc.Close()
+
+	dir, err := tc.Prepare()
 	if err != nil {
-		t.Fatalf("ExtractMusl failed: %v", err)
+		t.Fatalf("Prepare failed: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	if dir == "" {
+		t.Error("Prepare returned empty directory")
+	}
+	if tc.tmpDir != dir {
+		t.Error("tmpDir not set correctly")
+	}
 
-	testC := `#include <stdio.h>
-int main() {
-    printf("Hello from Musl static binary!\n");
-    return 0;
+	files := []string{"crt1.o", "crti.o", "crtn.o", "libc.a"}
+	for _, f := range files {
+		path := filepath.Join(dir, f)
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("missing file: %s", f)
+		}
+	}
 }
-`
 
-	cFile := filepath.Join(tmpDir, "test_musl.c")
-	if err := os.WriteFile(cFile, []byte(testC), 0644); err != nil {
+func TestToolchainPrepareInvalidArch(t *testing.T) {
+	tc := NewToolchain("invalid-arch")
+	defer tc.Close()
+
+	_, err := tc.Prepare()
+	if err == nil {
+		t.Error("expected error for invalid architecture")
+	}
+}
+
+func TestToolchainGetLinkerArgsWithoutPrepare(t *testing.T) {
+	tc := NewToolchain("x86_64")
+	_, err := tc.GetLinkerArgs([]string{"a.o"}, "out")
+	if err == nil {
+		t.Error("expected error when not prepared")
+	}
+}
+
+func TestToolchainGetLinkerArgsAfterPrepare(t *testing.T) {
+	tc := NewToolchain("x86_64")
+	dir, err := tc.Prepare()
+	if err != nil {
+		t.Fatalf("Prepare failed: %v", err)
+	}
+	defer tc.Close()
+
+	userObjs := []string{"main.o", "utils.o"}
+	output := "test_bin"
+
+	args, err := tc.GetLinkerArgs(userObjs, output)
+	if err != nil {
+		t.Fatalf("GetLinkerArgs failed: %v", err)
+	}
+
+	expected := []string{
+		"-static",
+		"-nostdlib",
+		filepath.Join(dir, "crt1.o"),
+		filepath.Join(dir, "crti.o"),
+		"main.o",
+		"utils.o",
+		"-L" + dir,
+		"-lc",
+		filepath.Join(dir, "crtn.o"),
+		"-o",
+		output,
+	}
+
+	if len(args) != len(expected) {
+		t.Errorf("expected %d args, got %d", len(expected), len(args))
+	}
+	for i := range expected {
+		if i >= len(args) {
+			break
+		}
+		if args[i] != expected[i] {
+			t.Errorf("arg[%d]: expected %q, got %q", i, expected[i], args[i])
+		}
+	}
+}
+
+func TestToolchainClose(t *testing.T) {
+	tc := NewToolchain("x86_64")
+	dir, err := tc.Prepare()
+	if err != nil {
+		t.Fatalf("Prepare failed: %v", err)
+	}
+
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("temp dir should exist: %v", err)
+	}
+
+	err = tc.Close()
+	if err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	if _, err := os.Stat(dir); err == nil {
+		t.Error("temp dir still exists after Close")
+	}
+	if tc.tmpDir != "" {
+		t.Error("tmpDir not cleared")
+	}
+}
+
+func TestToolchainIntegration(t *testing.T) {
+	tc := NewToolchain("x86_64")
+	dir, err := tc.Prepare()
+	if err != nil {
+		t.Fatalf("Prepare failed: %v", err)
+	}
+	defer tc.Close()
+
+	cFile := filepath.Join(dir, "test.c")
+	cContent := `#include <stdio.h>
+int main() {
+    printf("Hello from musl\n");
+    return 0;
+}`
+	if err := os.WriteFile(cFile, []byte(cContent), 0644); err != nil {
 		t.Fatalf("write c file: %v", err)
 	}
 
-	objFile := filepath.Join(tmpDir, "test_musl.o")
+	objFile := filepath.Join(dir, "test.o")
 	compileCmd := exec.Command("gcc", "-c", cFile, "-o", objFile)
 	if out, err := compileCmd.CombinedOutput(); err != nil {
-		t.Fatalf("gcc compile failed: %v\n%s", err, out)
+		t.Skipf("gcc not available or compile failed: %v\n%s", err, out)
 	}
 
-	outputBin := "test_static_bin"
-	flags := GetMuslLinkerFlags(tmpDir, []string{objFile}, outputBin)
-
-	ldPath := "ld"
-	if _, err := exec.LookPath("ld.lld"); err == nil {
-		ldPath = "ld.lld"
+	outputBin := filepath.Join(dir, "static_bin")
+	args, err := tc.GetLinkerArgs([]string{objFile}, outputBin)
+	if err != nil {
+		t.Fatalf("GetLinkerArgs failed: %v", err)
 	}
 
-	linkCmd := exec.Command(ldPath, flags...)
+	linker := "ld.lld"
+	if _, err := exec.LookPath("ld.lld"); err != nil {
+		linker = "ld"
+	}
+	linkCmd := exec.Command(linker, args...)
 	if out, err := linkCmd.CombinedOutput(); err != nil {
 		t.Fatalf("link failed: %v\n%s", err, out)
 	}
@@ -49,5 +159,8 @@ int main() {
 		t.Fatalf("binary not created: %v", err)
 	}
 
-	t.Logf("Static binary created: %s", outputBin)
+	runCmd := exec.Command(outputBin)
+	if out, err := runCmd.CombinedOutput(); err != nil {
+		t.Fatalf("run failed: %v\n%s", err, out)
+	}
 }
