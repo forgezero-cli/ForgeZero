@@ -743,6 +743,9 @@ func CompileFunc(f FuncAST, src string, funcTable map[string]FunctionProto) ([]b
 						return nil, nil, errors.New("expected '(' after in8")
 					}
 					args, err := parseBuiltinArgs(nextToken, src)
+					if err != nil {
+						return nil, nil, err
+					}
 					out, err = emitBuiltinCall(out, "in8", args, state)
 					if err != nil {
 						return nil, nil, err
