@@ -1,6 +1,7 @@
 package assembler
 
 import (
+	"flag"
 	"runtime"
 	"strings"
 )
@@ -29,6 +30,9 @@ func DefaultTargetFromGOARCH() string {
 }
 
 func ApplyDefaultTarget() {
+	if muslFlag := flag.Lookup("musl"); muslFlag != nil && muslFlag.Value.String() != "" {
+		return
+	}
 	if Target == "" || Target == "x86_64-linux-gnu" {
 		Target = DefaultTargetFromGOARCH()
 	}
