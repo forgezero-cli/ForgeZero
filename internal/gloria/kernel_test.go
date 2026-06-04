@@ -2,7 +2,6 @@ package gloria
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 	"unsafe"
@@ -13,7 +12,7 @@ import (
 func callUint64(ptr unsafe.Pointer) uint64
 
 func TestKernelPokeAndPeek(t *testing.T) {
-	src, err := ioutil.ReadFile("test_kernel.glo")
+	src, err := os.ReadFile("test_kernel.glo")
 	if err != nil {
 		t.Fatalf("read test_kernel.glo: %v", err)
 	}
@@ -37,7 +36,12 @@ func TestKernelPokeAndPeek(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mmap exec: %v", err)
 	}
-	defer unix.Munmap(execArea)
+
+	defer func() {
+		if err := unix.Munmap(execArea); err != nil {
+			t.Fatalf("failed to mummap: %v", err)
+		}
+	}()
 
 	dataArea, err := unix.Mmap(-1, 0, pageSize,
 		unix.PROT_READ|unix.PROT_WRITE,
@@ -45,7 +49,12 @@ func TestKernelPokeAndPeek(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mmap data: %v", err)
 	}
-	defer unix.Munmap(dataArea)
+
+	defer func() {
+		if err := unix.Munmap(dataArea); err != nil {
+			t.Fatalf("failed to munmap: %v", err)
+		}
+	}()
 
 	videoMemAddr := uintptr(unsafe.Pointer(&dataArea[0]))
 	*(*uint16)(unsafe.Pointer(videoMemAddr)) = 0x0F41
@@ -78,7 +87,13 @@ fn main() {
 	if err != nil {
 		t.Fatalf("mmap simple: %v", err)
 	}
-	defer unix.Munmap(simplePage)
+
+	defer func() {
+		if err := unix.Munmap(simplePage); err != nil {
+			t.Fatalf("failed to munmap: %v", err)
+		}
+	}()
+
 	copy(simplePage, simpleCode)
 	if err := unix.Mprotect(simplePage, unix.PROT_READ|unix.PROT_EXEC); err != nil {
 		t.Fatalf("mprotect simple: %v", err)
