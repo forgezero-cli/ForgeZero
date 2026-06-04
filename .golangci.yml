@@ -1,0 +1,16 @@
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - os.Chdir
+      - fmt.Fprintf 
+  unused:
+    ignore:
+      - fz/internal/assembler/emitter.go:appendElf64Sym
+      - fz/internal/assembler/emitter.go:appendUint32
+  staticcheck:
+    checks: ["all", "-SA9003", "-SA1012"] 
+  linters:
+    disable:
+      -unused
+      -deadcode 
+      -ineffassign
