@@ -2,6 +2,7 @@ package assembler
 
 import (
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -29,6 +30,20 @@ func TestCcCxxGasForAllTargets(t *testing.T) {
 			}
 			if _, err := exec.LookPath("em++"); err == nil {
 				tc.wantCXX = "em++"
+			}
+		}
+
+		if tc.target == "riscv64-unknown-elf" {
+			gotCC := ccForTarget()
+			if strings.Contains(gotCC, "zig") {
+				tc.wantCC = gotCC
+			}
+
+			gotCXX := cxxForTarget()
+			if strings.Contains(gotCXX, "zig") {
+				tc.wantCXX = gotCXX
+			} else {
+				tc.wantCXX = "riscv64-unknown-elf-g++"
 			}
 		}
 		if got := ccForTarget(); got != tc.wantCC {
