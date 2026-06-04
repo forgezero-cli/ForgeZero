@@ -14,7 +14,7 @@ rustcache/Cargo.lock
 # OS stuff
 .DS_Store
 fz/
-
+x86_64-linux-musl-cross/
 # Binaries
 fzt
 fzt.exe
