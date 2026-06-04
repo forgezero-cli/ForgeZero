@@ -24,9 +24,6 @@ type Toolchain struct {
 var (
 	staticFlag   = "-static"
 	nostdlibFlag = "-nostdlib"
-	lFlag        = "-L"
-	lcFlag       = "-lc"
-	oFlag        = "-o"
 )
 
 func GetLinkerArgsZeroAlloc(dst []string, muslDir string, objFiles []string, outputFile string) []string {
