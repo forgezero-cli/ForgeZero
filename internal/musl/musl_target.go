@@ -8,6 +8,11 @@ import (
 	"path/filepath"
 )
 
+// TODO:
+// PLATFORM RISC-V X86_64
+// ARM / AARCH64
+// RISC-V [X]
+
 //go:embed assets/musl/*
 var muslAssets embed.FS
 
@@ -25,24 +30,30 @@ var (
 )
 
 func GetLinkerArgsZeroAlloc(dst []string, muslDir string, objFiles []string, outputFile string) []string {
-	dst[0] = staticFlag
-	dst[1] = nostdlibFlag
-	dst[2] = muslDir + "/crt1.o"
-	dst[3] = muslDir + "/crti.o"
-
-	offset := 4
-	for i := 0; i < len(objFiles); i++ {
-		dst[offset+i] = objFiles[i]
+	args := []string{
+		"-static",
+		"-nostdlib",
+		filepath.Join(muslDir, "crt1.o"),
+		filepath.Join(muslDir, "crti.o"),
 	}
 
-	offset += len(objFiles)
-	dst[offset] = lFlag + muslDir
-	dst[offset+1] = lcFlag
-	dst[offset+2] = muslDir + "/crtn.o"
-	dst[offset+3] = oFlag
-	dst[offset+4] = outputFile
+	args = append(args, objFiles...)
+	args = append(args,
+		"-L"+muslDir,
+		"-lc",
+		filepath.Join(muslDir, "libgcc.a"),
+		filepath.Join(muslDir, "crtn.o"),
+		"-o", outputFile,
+	)
+
+	for i, arg := range args {
+		if i < len(dst) {
+			dst[i] = arg
+		}
+	}
 
 	return dst
+
 }
 
 func NewToolchain(arch string) *Toolchain {
