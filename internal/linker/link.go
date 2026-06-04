@@ -394,12 +394,21 @@ func discoverSourceFiles(root string) []string {
 		".asm": true, ".nasm": true,
 		".fasm": true,
 	}
-	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
 		if !info.IsDir() && exts[filepath.Ext(path)] {
 			files = append(files, path)
 		}
 		return nil
 	})
+
+	if err != nil {
+		_ = err
+	}
+
 	return files
 }
 
