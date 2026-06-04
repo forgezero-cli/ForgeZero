@@ -60,19 +60,6 @@ func dedupObjects(elements []string) []string {
 	return result
 }
 
-func fnv1aString(s string) uint64 {
-	const (
-		offset uint64 = 1469598103934665603
-		prime  uint64 = 1099511628211
-	)
-	h := offset
-	for i := 0; i < len(s); i++ {
-		h ^= uint64(s[i])
-		h *= prime
-	}
-	return h
-}
-
 func buildLinkCommand(objs []string, target string, cfg *config.Config) (string, []string, error) {
 	mode := "auto"
 	toolchain := "auto"
