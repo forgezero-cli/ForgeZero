@@ -1444,7 +1444,7 @@ func main() {
 			writeStderr("\n")
 			os.Exit(1)
 		}
-		m, err = cplugin.Load(pluginPath)
+		_, err = cplugin.Load(pluginPath)
 		if err != nil {
 			writeStderr(err.Error())
 			writeStderr("\n")

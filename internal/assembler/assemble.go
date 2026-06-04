@@ -51,19 +51,6 @@ func validateArgs(args []string) error {
 	return nil
 }
 
-func asmCmdForTarget() string {
-	switch {
-	case isWasmTarget():
-		return "clang"
-	case strings.Contains(Target, "arm"):
-		return "arm-linux-gnueabihf-as"
-	case strings.Contains(Target, "riscv"):
-		return "riscv64-unknown-elf-as"
-	default:
-		return "nasm"
-	}
-}
-
 func CCForTarget() string {
 	return ccForTarget()
 }
@@ -202,10 +189,6 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 func assembleS(ctx context.Context, src, obj string, verbose bool) error {
 	_, err := runCommand(ctx, verbose, gasCmdForTarget(), "-o", obj, src)
 	return err
-}
-
-func writeStderr(s string, args ...any) {
-	_, _ = os.Stderr.WriteString(s)
 }
 
 func compileC(ctx context.Context, src, obj string, verbose bool, compiler string) error {
