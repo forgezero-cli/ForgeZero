@@ -99,9 +99,7 @@ func (m *Module) CallInitWithGoContext(goCtx GoContext) error {
 		cctx.source_dir_count = C.int(len(cSourceDirs))
 		cctx.source_dirs = (**C.char)(C.malloc(C.size_t(len(cSourceDirs)) * C.size_t(unsafe.Sizeof(uintptr(0)))))
 		arr := (*[1 << 30]*C.char)(unsafe.Pointer(cctx.source_dirs))
-		for i, s := range cSourceDirs {
-			arr[i] = s
-		}
+		copy(arr[0:len(cSourceDirs)], cSourceDirs)
 		defer C.free(unsafe.Pointer(cctx.source_dirs))
 	}
 
