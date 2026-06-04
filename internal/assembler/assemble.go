@@ -2,6 +2,7 @@ package assembler
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -80,6 +81,18 @@ func FormatFlagForTarget() string {
 }
 
 func ccForTarget() string {
+	// If target choise riscv
+	if strings.Contains(Target, "riscv") {
+		// check access zig cc with cross-target :)
+		if err := utils.CheckTool("zig"); err == nil {
+			return "zig"
+		} else {
+		}
+
+		// if zig not defined then try using system cross-gcc ;0
+		return "riscv64-unknown-elf-gcc"
+	}
+
 	switch {
 	case isWasmTarget():
 		if err := utils.CheckTool("emcc"); err == nil {
@@ -89,6 +102,10 @@ func ccForTarget() string {
 	case strings.Contains(Target, "arm"):
 		return "arm-linux-gnueabihf-gcc"
 	case strings.Contains(Target, "riscv"):
+		if err := utils.CheckTool("zig"); err == nil {
+			return "zig"
+		} else {
+		}
 		return "riscv64-unknown-elf-gcc"
 	default:
 		return "gcc"
@@ -125,6 +142,22 @@ func gasCmdForTarget() string {
 }
 
 func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode string) error {
+	if ctxTarget, ok := ctx.Value(utils.TargetCtxKey).(string); ok {
+		Target = ctxTarget
+	}
+
+	if muslFlag := flag.Lookup("musl"); muslFlag != nil && muslFlag.Value.String() != "" {
+		muslVal := muslFlag.Value.String()
+
+		if muslVal == "riscv64" {
+			Target = "riscv64-linux-musl"
+		} else if muslVal != "true" && muslVal != "false" {
+			Target = muslVal + "-linux-musl"
+		} else if muslVal == "true" {
+			Target = "x86_64-linux-musl"
+		}
+	}
+
 	src = filepath.Clean(src)
 	obj = filepath.Clean(obj)
 	if seal.IsDecoyMode() {
@@ -171,8 +204,29 @@ func assembleS(ctx context.Context, src, obj string, verbose bool) error {
 	return err
 }
 
+func writeStderr(s string, args ...any) {
+	_, _ = os.Stderr.WriteString(s)
+}
+
 func compileC(ctx context.Context, src, obj string, verbose bool, compiler string) error {
+	if ctxTarget, ok := ctx.Value(utils.TargetCtxKey).(string); ok && ctxTarget != "" {
+		Target = ctxTarget
+	}
+
+	compilerParts := strings.Fields(compiler)
+	compilerBin := compilerParts[0]
+
 	args := []string{"-c", src, "-o", obj}
+
+	if compilerBin == "zig" && Target != "" {
+		args = append([]string{"cc", "-target", Target}, args...)
+	}
+	if len(compilerParts) > 1 {
+		if compilerBin != "zig" || compilerParts[1] != "cc" {
+			args = append(compilerParts[1:], args...)
+		}
+	}
+
 	CcFlagsOnce.Do(func() {
 		if CcFlags != "" {
 			CcFLagsParsed = strings.Fields(CcFlags)
@@ -183,7 +237,7 @@ func compileC(ctx context.Context, src, obj string, verbose bool, compiler strin
 		args = append(args, CcFLagsParsed...)
 	}
 
-	_, err := runCommand(ctx, verbose, compiler, args...)
+	_, err := runCommand(ctx, verbose, compilerBin, args...)
 	return err
 }
 
