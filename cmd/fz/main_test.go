@@ -120,7 +120,7 @@ func TestFullCliFlowInitBuildSeal(t *testing.T) {
 	}
 
 	versionOutput := runFzArgs(t, []string{"fz", "version"})
-	if !strings.Contains(versionOutput, "[MIL-SPEC]") {
+	if !strings.Contains(versionOutput, "Corp") {
 		t.Fatalf("unexpected version banner: %s", versionOutput)
 	}
 
