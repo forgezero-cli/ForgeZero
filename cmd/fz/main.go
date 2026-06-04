@@ -66,11 +66,11 @@ func (helperFakeRunner) Run(ctx context.Context, verbose bool, name string, args
 }
 
 const (
-	versionCore     = "4.5.0"
+	versionCore     = "4.5.1"
 	versionCodename = "THINK"
 )
 
-var version = "4.5.0 THINK"
+var version = "4.5.1 THINK"
 
 func versionText() string {
 	var b strings.Builder
@@ -198,6 +198,37 @@ func formatAppend(dst []byte, format string, a ...any) []byte {
 	return dst
 }
 
+func findLibGccPath() string {
+	execRoot := utils.GetExecutionRoot()
+
+	if execRoot != "" {
+		localPath := filepath.Join(execRoot, "riscv64-linux-musl-cross", "lib", "gcc", "riscv64-linux-musl")
+
+		if files, err := os.ReadDir(localPath); err == nil && len(files) > 0 {
+			for _, f := range files {
+				if f.IsDir() {
+					candidate := filepath.Join(localPath, f.Name(), "libgcc.a")
+					if _, err := os.Stat(candidate); err == nil {
+						return candidate
+					}
+				}
+			}
+		}
+	}
+
+	if gccBin, err := exec.LookPath("riscv64-linux-musl-gcc"); err == nil {
+		cmd := exec.Command(gccBin, "-print-libgcc-file-name")
+		if out, err := cmd.Output(); err == nil {
+			candidate := strings.TrimSpace(string(out))
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+	}
+
+	return ""
+}
+
 func writeFmt(fd int, format string, a ...any) {
 	var buf [4096]byte
 	b := formatAppend(buf[:0], format, a...)
@@ -288,6 +319,10 @@ Options:
 	-update                Update fz to the latest version
   -h, --help             Show this help
   -v, --version          Show version
+
+[NEW]: -musl -> compile ur binaries without VERY BIG glibc!
+	Supported architecture (X86_64, RISC-V).
+	future evo: aarch64, arm
 
 Examples:
   fz -asm boot.asm
@@ -779,6 +814,7 @@ func main() {
 			return
 		}
 	}
+
 	var (
 		asmPath            string
 		ccPath             string
@@ -824,8 +860,11 @@ func main() {
 		forceLdFlag        bool
 		gloriaPath         string
 		autoBuild          bool
-		muslFlag           bool
+		muslOpt            string
 	)
+
+	type targetKeyType string
+	const targetCtxKey targetKeyType = "target-arch"
 
 	flag.BoolVar(&watch, "watch", false, "")
 	flag.BoolVar(&sanitize, "sanitize", true, "")
@@ -873,9 +912,27 @@ func main() {
 	flag.BoolVar(&clean, "clean", false, "remove all build artifacts (.fz_objs, .fz_cache, binaries)")
 	flag.StringVar(&gloriaPath, "gloria", "", "path to .glo file")
 	flag.BoolVar(&autoBuild, "autoBuild", false, "auto build project")
-	flag.BoolVar(&muslFlag, "musl", false, "musl cross compile static binary files")
+	flag.StringVar(&muslOpt, "musl", "", "use static musl toolchain(e.g -musl=riscv64")
 	flag.Usage = printHelp
 	flag.Parse()
+
+	var muslArch string
+	var muslUse bool
+
+	if muslOpt != "" {
+		muslUse = true
+		if muslOpt == "true" {
+			muslArch = "x86_64"
+		} else {
+			muslArch = muslOpt
+		}
+
+		if muslArch == "riscv64" {
+			assembler.Target = "riscv64-linux-musl"
+		} else {
+			assembler.Target = "x86_64-linux-musl"
+		}
+	}
 
 	if err := utils.ValidateCLIPath(configPath); err != nil {
 		writeFmt(2, "invalid config path: %v\n", err)
@@ -966,7 +1023,6 @@ func main() {
 			os.Exit(2)
 		}
 	}
-
 	if initMode {
 		if err := initpkg.Run(); err != nil {
 			writeFmt(2, "init failed: %v\n", err)
@@ -984,6 +1040,10 @@ func main() {
 		linker.ForceLD = true
 	}
 	ctx := context.Background()
+
+	if muslUse {
+		ctx = context.WithValue(ctx, utils.TargetCtxKey, assembler.Target)
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "pm" {
 		if len(os.Args) < 3 {
 			writeFmt(1, "%s\n", "Usage: fz pm <add|remove|list|update|catalog|search|install> [args]")
@@ -1243,6 +1303,15 @@ func main() {
 		}
 		if len(cfg.Flags.Asm) > 0 {
 			assembler.AsmFlags = cfg.Flags.Asm
+			writeFmt(1, "Loaded config from %s\n", func() string {
+				if configPath != "" {
+					return configPath
+				}
+				return config.DefaultConfigPath()
+			}())
+		}
+		if len(cfg.Flags.Asm) > 0 {
+			assembler.AsmFlags = cfg.Flags.Asm
 		}
 		if len(cfg.Flags.Cc) > 0 {
 			assembler.CcFlags = strings.Join(cfg.Flags.Cc, " ")
@@ -1427,6 +1496,7 @@ func main() {
 
 	build := func() error {
 		if srcPath != "" {
+
 			sourceFiles = append(sourceFiles, srcPath)
 			if err := utils.CheckFileExists(srcPath); err != nil {
 				return err
@@ -1451,8 +1521,9 @@ func main() {
 			if err := assembler.Assemble(ctx, srcPath, objName, debug, verbose, mode); err != nil {
 				return err
 			}
-			if muslFlag {
-				muslDir := musl.NewToolchain("x86_64")
+			if muslUse {
+
+				muslDir := musl.NewToolchain(muslArch)
 
 				tmpPath, err := muslDir.Prepare()
 
@@ -1462,7 +1533,7 @@ func main() {
 
 				defer muslDir.Close()
 
-				argsCount := len(objName) + 9
+				argsCount := len(objName) + 10
 				args := make([]string, argsCount)
 				userObjs := [...]string{objName}
 
@@ -1478,7 +1549,7 @@ func main() {
 				}
 
 				if !jsonOutput {
-					writeFmt(1, "built(static musl): %s\n", binName)
+					writeFmt(1, "built(static musl [%s]): %s\n", muslArch, binName)
 				}
 
 				return nil
@@ -1559,7 +1630,7 @@ func main() {
 			if cfg != nil {
 				libs = cfg.Libs
 			}
-			if muslFlag {
+			if muslUse {
 				keepObj = true
 				noCache = true
 				buildType = "obj"
@@ -1571,8 +1642,8 @@ func main() {
 			objectFiles = res.ObjectFiles
 			finalBinary = res.Binary
 
-			if muslFlag {
-				muslDir := musl.NewToolchain("x86_64")
+			if muslUse {
+				muslDir := musl.NewToolchain(muslArch)
 
 				tmpPath, err := muslDir.Prepare()
 
@@ -1582,10 +1653,19 @@ func main() {
 
 				defer muslDir.Close()
 
-				argsCount := len(res.ObjectFiles) + 9
+				argsCount := len(res.ObjectFiles) + 10
 				args := make([]string, argsCount)
 
 				musl.GetLinkerArgsZeroAlloc(args, tmpPath, res.ObjectFiles, finalBinary)
+
+				if strings.Contains(assembler.Target, "riscv") {
+					if lgcc := findLibGccPath(); lgcc != "" {
+						if verbose {
+							writeFmt(1, "Using detected libgcc: %s\n", lgcc)
+						}
+						args = append(args, lgcc)
+					}
+				}
 
 				if verbose && !jsonOutput {
 					writeFmt(1, "Linking %d object files with static Musl -> %s\n", len(res.ObjectFiles), finalBinary)
@@ -1603,7 +1683,7 @@ func main() {
 				}
 
 				if !jsonOutput {
-					writeFmt(1, "build(static musl): %s\n", finalBinary)
+					writeFmt(1, "build(static musl [%s]): %s\n", muslArch, finalBinary)
 				}
 				return nil
 			}
