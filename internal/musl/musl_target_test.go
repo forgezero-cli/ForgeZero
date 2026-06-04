@@ -164,3 +164,114 @@ int main() {
 		t.Fatalf("run failed: %v\n%s", err, out)
 	}
 }
+
+func TestGetLinkerArgsZeroAlloc(t *testing.T) {
+	objs := []string{"a.o", "b.o"}
+
+	dst := make([]string, len(objs)+10)
+
+	res := GetLinkerArgsZeroAlloc(
+		dst,
+		"/tmp/musl",
+		objs,
+		"app",
+	)
+
+	expected := []string{
+		"-static",
+		"-nostdlib",
+		"/tmp/musl/crt1.o",
+		"/tmp/musl/crti.o",
+		"a.o",
+		"b.o",
+		"-L/tmp/musl",
+		"-lc",
+		"/tmp/musl/libgcc.a",
+		"/tmp/musl/crtn.o",
+		"-o",
+		"app",
+	}
+
+	for i := range expected {
+		if res[i] != expected[i] {
+			t.Fatalf("arg[%d]: expected %q got %q",
+				i, expected[i], res[i])
+		}
+	}
+}
+
+func TestSupportedArchitectures(t *testing.T) {
+	tests := []string{
+		"x86_64",
+		"riscv64",
+	}
+
+	for _, arch := range tests {
+		t.Run(arch, func(t *testing.T) {
+			tc := NewToolchain(arch)
+			defer tc.Close()
+
+			_, err := tc.Prepare()
+			if err != nil {
+				t.Fatalf("arch %s: %v", arch, err)
+			}
+		})
+	}
+}
+
+func TestToolchainRuntimeFiles(t *testing.T) {
+	tc := NewToolchain("x86_64")
+	defer tc.Close()
+
+	dir, err := tc.Prepare()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	required := []string{
+		"crt1.o",
+		"crti.o",
+		"crtn.o",
+		"libc.a",
+	}
+
+	for _, file := range required {
+		if _, err := os.Stat(filepath.Join(dir, file)); err != nil {
+			t.Fatalf("%s missing", file)
+		}
+	}
+}
+
+func TestGetLinkerArgsOrder(t *testing.T) {
+	tc := NewToolchain("x86_64")
+
+	dir, err := tc.Prepare()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tc.Close()
+
+	args, err := tc.GetLinkerArgs(
+		[]string{"main.o"},
+		"app",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if args[0] != "-static" {
+		t.Fatal("invalid arg order")
+	}
+
+	if args[len(args)-2] != "-o" {
+		t.Fatal("output flag must be last pair")
+	}
+
+	if args[len(args)-1] != "app" {
+		t.Fatal("invalid output file")
+	}
+
+	if args[2] != filepath.Join(dir, "crt1.o") {
+		t.Fatal("crt1.o must precede user objects")
+	}
+}
