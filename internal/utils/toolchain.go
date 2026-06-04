@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -98,6 +99,9 @@ func toolCandidates(tool, target string) []string {
 		}
 		return []string{"as"}
 	case "gcc":
+		if strings.Contains(target, "riscv") && flag.Lookup("toolchain") != nil && flag.Lookup("toolchain").Value.String() == "zig" {
+			return []string{"zig", "gcc"}
+		}
 		if strings.Contains(target, "wasm") {
 			return []string{"emcc", "gcc"}
 		}
