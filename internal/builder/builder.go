@@ -27,8 +27,6 @@ type BuildResult struct {
 	CacheDir    string
 }
 
-var targetArch string
-
 type pathBuffer struct {
 	buf [2048]byte
 	n   int
@@ -390,7 +388,7 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 	}
 
 	if buildType == "obj" {
-		cleanupObjDir = false
+		// no action
 	} else if buildType == "static" {
 		if verbose {
 			_, _ = os.Stdout.WriteString("Creating static library " + outBin + "\n")
