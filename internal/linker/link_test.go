@@ -210,8 +210,10 @@ int main() { printf("ok\n"); return 0; }`
 	}
 
 	oldWd, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(oldWd)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("failed to change dir to %s: %v", dir, err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
 
 	err := runBuild([]string{"test.c"}, "gcc")
 	if err != nil {
@@ -257,8 +259,10 @@ _start:
 	}
 
 	oldWd, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(oldWd)
+	if err := os.Chdir(dir); err != nil {
+		t.Errorf("failed to change dir %s: %v", dir, err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
 
 	err := runBuild([]string{"test.asm"}, "nasm")
 	if err != nil {
@@ -277,8 +281,10 @@ func TestAutoBuildProjectIntegration(t *testing.T) {
 
 	dir := t.TempDir()
 	oldWd, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(oldWd)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("failed to chdir to %s: %v", dir, err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
 
 	src := filepath.Join(dir, "main.c")
 	content := `#include <stdio.h>
@@ -861,6 +867,7 @@ func TestLinkWithLdMissingLib(t *testing.T) {
 }
 
 func TestValidateLinkCallErrors(t *testing.T) {
+	//nolint:staticcheck
 	if err := validateLinkCall(nil, "out"); err == nil {
 		t.Error("expected invalid linking context error")
 	}
