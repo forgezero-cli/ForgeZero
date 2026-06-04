@@ -729,51 +729,6 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	return out, nil
 }
 
-func buildStringTable(names [][]byte) []byte {
-	outPtr := emitterBufferPool.Get().(*[]byte)
-	out := *outPtr
-	out = out[:0]
-	out = append(out, 0)
-	for _, name := range names {
-		out = append(out, name...)
-		out = append(out, 0)
-	}
-	*outPtr = out
-	return out
-}
-
-func buildSymbolStringTable(p *parser) []byte {
-	outPtr := emitterBufferPool.Get().(*[]byte)
-	out := *outPtr
-	out = out[:0]
-	out = append(out, 0)
-	for i := 0; i < p.symCount; i++ {
-		p.symbols[i].nameOffset = uint32(len(out))
-		out = append(out, p.symbols[i].name...)
-		out = append(out, 0)
-	}
-	*outPtr = out
-	return out
-}
-
-func buildSymbolTable(p *parser, strtab []byte, profile targetEmitterProfile) []byte {
-	outPtr := emitterBufferPool.Get().(*[]byte)
-	out := *outPtr
-	out = out[:0]
-	out = appendElf64Sym(out, 0, 0, 0, 0, 0, 0)
-	if profile.elfClass == elfClass32 {
-		for i := 0; i < p.symCount; i++ {
-			out = appendElf32Sym(out, p.symbols[i].nameOffset, p.symbols[i].bind<<4|p.symbols[i].typ, 0, p.symbols[i].shndx, uint32(p.symbols[i].value), 0)
-		}
-	} else {
-		for i := 0; i < p.symCount; i++ {
-			out = appendElf64Sym(out, p.symbols[i].nameOffset, p.symbols[i].bind<<4|p.symbols[i].typ, 0, p.symbols[i].shndx, p.symbols[i].value, 0)
-		}
-	}
-	*outPtr = out
-	return out
-}
-
 func appendElf64Sym(out []byte, name uint32, info byte, other byte, shndx uint16, value uint64, size uint64) []byte {
 	out = appendUint32(out, name)
 	out = appendByte(out, info)
@@ -781,16 +736,6 @@ func appendElf64Sym(out []byte, name uint32, info byte, other byte, shndx uint16
 	out = appendUint16(out, shndx)
 	out = appendUint64(out, value)
 	out = appendUint64(out, size)
-	return out
-}
-
-func appendElf32Sym(out []byte, name uint32, info byte, other byte, shndx uint16, value uint32, size uint32) []byte {
-	out = appendUint32(out, name)
-	out = appendByte(out, info)
-	out = appendByte(out, other)
-	out = appendUint16(out, shndx)
-	out = appendUint32(out, value)
-	out = appendUint32(out, size)
 	return out
 }
 
@@ -987,19 +932,6 @@ func populateELF32SectionHeaders(sec []byte, full []byte, p *parser, textOffset,
 	writeELF32Section(sec[elf32ShdrSize*5:elf32ShdrSize*6], uint32(offsetOfNameInShstr(nameSymtab, shstr)), shTypeSymTab, 0, 0, symtabOffset, symtabSize, 6, uint32(symbolLocalCount(p)+1), 8, 16)
 	writeELF32Section(sec[elf32ShdrSize*6:elf32ShdrSize*7], uint32(offsetOfNameInShstr(nameStrtab, shstr)), shTypeStrTab, 0, 0, strtabOffset, strtabSize, 0, 0, 1, 0)
 	writeELF32Section(sec[elf32ShdrSize*7:elf32ShdrSize*8], uint32(offsetOfNameInShstr([]byte(".rela.text"), shstr)), shTypeRela, 0, 0, relaOffset, relaSize, 5, 1, 4, 12)
-}
-
-func offsetOfName(name []byte, shstrtabOffset uint64, full []byte) uint32 {
-	base := int(shstrtabOffset)
-	if base < 0 || base >= len(full) {
-		return 0
-	}
-	for i := base; i+len(name) <= len(full); i++ {
-		if matchBytes(full[i:i+len(name)], name) {
-			return uint32(i - base)
-		}
-	}
-	return 0
 }
 
 func equalBytes(a, b []byte) bool {
