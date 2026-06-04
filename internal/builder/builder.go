@@ -27,6 +27,8 @@ type BuildResult struct {
 	CacheDir    string
 }
 
+var targetArch string
+
 type pathBuffer struct {
 	buf [2048]byte
 	n   int
