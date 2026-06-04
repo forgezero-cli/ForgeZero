@@ -66,11 +66,11 @@ func (helperFakeRunner) Run(ctx context.Context, verbose bool, name string, args
 }
 
 const (
-	versionCore     = "4.4.0"
-	versionCodename = "CITADEL"
+	versionCore     = "4.5.0"
+	versionCodename = "THINK"
 )
 
-var version = "4.4.0 CITADEL"
+var version = "4.5.0 THINK"
 
 func versionText() string {
 	var b strings.Builder
@@ -79,7 +79,7 @@ func versionText() string {
 	b.WriteString(versionCore)
 	b.WriteString(" [")
 	b.WriteString(versionCodename)
-	b.WriteString("] [MIL-SPEC]\nBuild: ")
+	b.WriteString("] Corp.\nBuild: ")
 	b.WriteString(time.Now().Format("2006-01-02"))
 	b.WriteString(" | OS: ")
 	b.WriteString(runtime.GOOS)
@@ -88,7 +88,7 @@ func versionText() string {
 	b.WriteString(" | VFS: ")
 	b.WriteString(fzvfs.ImplName())
 	b.WriteString(" | Security: Aegis-Hardened\n")
-	b.WriteString("(c) Alex Voste. Binary Integrity: Verified.\n")
+	b.WriteString("(c) Alex Voste. Binary Integrity: Verified.\n\n")
 	b.WriteString("github: forgezero-cli/forgezero\nOrg: forgezero-cli\n")
 	return b.String()
 }
