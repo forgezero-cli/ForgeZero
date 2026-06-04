@@ -4,22 +4,22 @@
 package linker
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestCopyFileHotAllocations(t *testing.T) {
-	dir, err := ioutil.TempDir("", "fz_test_copy")
+	dir, err := os.MkdirTemp("", "fz_test_copy-*")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to create temp dir: %v", err)
 	}
+
 	defer os.RemoveAll(dir)
 	src := filepath.Join(dir, "src.bin")
 	dst := filepath.Join(dir, "dst.bin")
 	data := make([]byte, 1024)
-	if err := ioutil.WriteFile(src, data, 0o644); err != nil {
+	if err := os.WriteFile(src, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	f := func() {
@@ -33,7 +33,7 @@ func TestCopyFileHotAllocations(t *testing.T) {
 }
 
 func BenchmarkCopyFileHot(b *testing.B) {
-	dir, err := ioutil.TempDir("", "fz_bench_copy")
+	dir, err := os.MkdirTemp("", "fz_bench_copy")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func BenchmarkCopyFileHot(b *testing.B) {
 	src := filepath.Join(dir, "src.bin")
 	dst := filepath.Join(dir, "dst.bin")
 	data := make([]byte, 1024*8)
-	if err := ioutil.WriteFile(src, data, 0o644); err != nil {
+	if err := os.WriteFile(src, data, 0o644); err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
