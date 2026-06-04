@@ -5,20 +5,18 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"fmt"
+	"fz/internal/config"
+	"fz/internal/utils"
+	"fz/internal/zig"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
-	"unsafe"
-
-	"fz/internal/config"
-	"fz/internal/utils"
-	"fz/internal/zig"
 )
 
 var (
@@ -213,6 +211,14 @@ func ldForTarget() string {
 }
 
 func gccForTarget() string {
+	if tcFlag := flag.Lookup("toolchain"); tcFlag != nil && tcFlag.Value.String() == "zig" {
+		return "zig"
+	}
+
+	if muslFlag := flag.Lookup("musl"); muslFlag != nil && muslFlag.Value.String() != "" {
+		return "zig"
+	}
+
 	if isWasmTarget() {
 		if _, err := exec.LookPath("emcc"); err == nil {
 			return "emcc"
@@ -354,21 +360,7 @@ func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bo
 }
 
 func writeStderr(s string) {
-	if len(s) == 0 {
-		return
-	}
-
-	ptr := (*struct {
-		str unsafe.Pointer
-		len int
-	})(unsafe.Pointer(&s)).str
-
-	_, _, _ = syscall.Syscall(
-		syscall.SYS_WRITE,
-		uintptr(2), // stderr
-		uintptr(ptr),
-		uintptr(len(s)),
-	)
+	_, _ = os.Stderr.WriteString(s)
 }
 func AutoBuildProject(ctx context.Context) error {
 
