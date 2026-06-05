@@ -558,7 +558,7 @@ func SecureWriteFile(path string, data []byte) error {
 
 func SupportedExtension(ext string) bool {
 	switch strings.ToLower(ext) {
-	case ".asm", ".s", ".fasm", ".c", ".cpp", ".cc", ".cxx":
+	case ".asm", ".s", ".fasm", ".m", ".c", ".cpp", ".cc", ".cxx":
 		return true
 	case ".S":
 		return true
