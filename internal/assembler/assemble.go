@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -128,6 +129,14 @@ func gasCmdForTarget() string {
 	return "as"
 }
 
+func getCompiler(src string) string {
+	if strings.HasSuffix(src, ".m") {
+		return "clang"
+	}
+
+	return ccForTarget()
+}
+
 func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode string) error {
 	if ctxTarget, ok := ctx.Value(utils.TargetCtxKey).(string); ok {
 		Target = ctxTarget
@@ -177,18 +186,39 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 		return assembleS(ctx, src, obj, verbose)
 	case ".S":
 		return compileC(ctx, src, obj, verbose, ccForTarget())
+	case ".m":
+		return compileC(ctx, src, obj, verbose, getCompiler(src))
 	case ".c":
 		return compileC(ctx, src, obj, verbose, ccForTarget())
 	case ".cpp", ".cc", ".cxx":
 		return compileC(ctx, src, obj, verbose, cxxForTarget())
 	default:
-		return fmt.Errorf("unsupported source extension: %s (supported: .asm, .s, .S, .c, .cpp, .cc, .cxx)", ext)
+		return fmt.Errorf("unsupported source extension: %s (supported: .asm, .s, .S, .m, .c, .cpp, .cc, .cxx)", ext)
 	}
 }
 
 func assembleS(ctx context.Context, src, obj string, verbose bool) error {
 	_, err := runCommand(ctx, verbose, gasCmdForTarget(), "-o", obj, src)
 	return err
+}
+
+func writeStderr(s string, args ...any) {
+	_, _ = os.Stderr.WriteString(s)
+}
+
+func getGccIncludePath() string {
+	cmd := exec.Command("gcc", "-print-file-name=include")
+
+	out, err := cmd.Output()
+	if err == nil {
+		path := strings.TrimSpace(string(out))
+
+		if filepath.IsAbs(path) {
+			return path
+		}
+	}
+
+	return ""
 }
 
 func compileC(ctx context.Context, src, obj string, verbose bool, compiler string) error {
@@ -200,6 +230,14 @@ func compileC(ctx context.Context, src, obj string, verbose bool, compiler strin
 	compilerBin := compilerParts[0]
 
 	args := []string{"-c", src, "-o", obj}
+
+	if strings.HasSuffix(src, ".m") {
+		args = append([]string{"-x", "objective-c"}, args...)
+
+		if gccInc := getGccIncludePath(); gccInc != "" {
+			args = append([]string{"-I" + gccInc}, args...)
+		}
+	}
 
 	if compilerBin == "zig" && Target != "" {
 		args = append([]string{"cc", "-target", Target}, args...)
