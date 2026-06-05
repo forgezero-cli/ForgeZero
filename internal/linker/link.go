@@ -77,12 +77,12 @@ func createResponseFile(args []string) (string, error) {
 		if strings.ContainsAny(arg, "\n\r\x00") {
 			_ = f.Close()
 			_ = os.Remove(name)
-			return "", fmt.Errorf("invalid argument for response file")
+			return "", errors.New("invalid argument for response file")
 		}
 		if err := utils.ValidateCLIArg(arg); err != nil {
 			_ = f.Close()
 			_ = os.Remove(name)
-			return "", fmt.Errorf("invalid argument for response file: %w", err)
+			return "", errors.New("invalid argument for response file: " + err.Error())
 		}
 		_, _ = writer.WriteString(arg)
 		_ = writer.WriteByte('\n')
@@ -104,18 +104,18 @@ func createResponseFile(args []string) (string, error) {
 
 func runLinkerCommand(ctx context.Context, verbose bool, name string, args []string) (string, error) {
 	if name == "" {
-		return "", fmt.Errorf("linker executable is required")
+		return "", errors.New("linker executable is required")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if _, isReal := runner.(*RealCmdRunner); isReal {
 		if err := utils.ValidateCLIArg(name); err != nil {
-			return "", fmt.Errorf("invalid linker name: %w", err)
+			return "", errors.New("invalid linker name: " + err.Error())
 		}
 		resolved, err := utils.FindExecutable(ctx, name)
 		if err != nil {
-			return "", fmt.Errorf("linker not found: %w", err)
+			return "", errors.New("linker not found: " + err.Error())
 		}
 		name = resolved
 	}
@@ -182,13 +182,13 @@ func runLinkerCombinedOutput(ctx context.Context, verbose bool, name string, arg
 
 func validateLinkCall(ctx context.Context, output string) error {
 	if ctx == nil {
-		return fmt.Errorf("invalid linking context")
+		return errors.New("invalid linking context")
 	}
 	if output == "" {
-		return fmt.Errorf("output file name is required")
+		return errors.New("output file name is required")
 	}
 	if err := utils.ValidateCLIPath(output); err != nil {
-		return fmt.Errorf("invalid output path: %w", err)
+		return errors.New("invalid output path: " + err.Error())
 	}
 	return nil
 }
@@ -248,7 +248,7 @@ func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSym
 		return err
 	}
 	if info.Size() == 0 {
-		return fmt.Errorf("object file %s is empty", obj)
+		return errors.New("object file " + obj + "is empty")
 	}
 	if err := utils.EnsureDir(bin); err != nil {
 		return err
@@ -285,7 +285,7 @@ func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSym
 	case "auto":
 		linkErr = tryAutoLink(ctx, obj, bin, verbose, sanitize, strict, libs)
 	default:
-		return fmt.Errorf("unsupported mode: %s (valid: auto, c, raw)", mode)
+		return errors.New("unsupported mode: " + mode + "(valid: auto, c, raw)")
 	}
 	if linkErr != nil {
 		return linkErr
@@ -299,12 +299,12 @@ func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSym
 func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool, libs []string) error {
 	if shouldSkipLinker() {
 		if len(objFiles) != 1 {
-			return fmt.Errorf("flat binary link requires exactly one object")
+			return errors.New("flat binary link requires exactly one object")
 		}
 		return linkFlatBinary(ctx, objFiles[0], bin)
 	}
 	if len(objFiles) == 0 {
-		return fmt.Errorf("no object files to link")
+		return errors.New("no object files to link")
 	}
 	sort.Strings(objFiles)
 	for _, obj := range objFiles {
@@ -313,7 +313,7 @@ func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bo
 			return err
 		}
 		if info.Size() == 0 {
-			return fmt.Errorf("object file %s is empty", obj)
+			return errors.New("object file " + obj + "is empty")
 		}
 	}
 	if err := utils.EnsureDir(bin); err != nil {
@@ -348,7 +348,7 @@ func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bo
 	case "auto":
 		linkErr = tryAutoLinkMultiple(ctx, objFiles, bin, verbose, sanitize, strict, libs)
 	default:
-		return fmt.Errorf("unsupported mode: %s (valid: auto, c, raw)", mode)
+		return errors.New("unsupported mode: " + mode + " (valid: auto, c, raw)")
 	}
 	if linkErr != nil {
 		return linkErr
@@ -447,17 +447,43 @@ func runBuild(files []string, backend string) error {
 	return cmd.Run()
 }
 
+func printInfo(msg string) {
+	_, _ = os.Stdout.WriteString(msg + "\n")
+}
+
 func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bool, strict bool, libs []string) error {
 	var lastErr error
 	if ForceLD {
 		if err := utils.CheckTool(ldForTarget()); err == nil {
 			return linkWithLd(ctx, obj, bin, verbose, libs)
 		}
-		return fmt.Errorf("ld not found")
+		return errors.New("ld not found")
 	}
+	isObjC := false
+
+	srcFile := strings.TrimSuffix(obj, filepath.Ext(obj)) + ".m"
+	if _, err := os.Stat(srcFile); err == nil {
+		isObjC = true
+	}
+
+	if isObjC {
+		if verbose {
+			printInfo("Objective-C detected! Bypassing Zig linker to use Clang with -lobjc")
+		}
+
+		libs = append(libs, "objc")
+
+		if err := linkWithClang(ctx, obj, bin, verbose, true, sanitize, libs); err == nil {
+			return nil
+		}
+
+		return errors.New("objective-c linking failed via Clang")
+
+	}
+
 	if useZig() {
 		if verbose {
-			fmt.Println("Strict mode: using zig for deterministic linking")
+			printInfo("Strict mode: using zig for deterministic linking")
 		}
 		if err := linkWithZig(ctx, []string{obj}, bin, verbose, Target, sanitize, strict, libs); err == nil {
 			return nil
@@ -466,14 +492,14 @@ func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bo
 	if strict {
 		if _, err := exec.LookPath(clangForTarget()); err == nil {
 			if verbose {
-				fmt.Println("Strict mode: using clang for better sanitizers")
+				printInfo("Strict mode: using clang for better sanitizers")
 			}
 			err = linkWithClang(ctx, obj, bin, verbose, true, sanitize, libs)
 			if err == nil {
 				return nil
 			}
 		} else if verbose {
-			fmt.Println("clang not found, falling back to gcc (limited strict mode)")
+			printInfo("clang not found, falling back to gcc (limited strict mode)")
 		}
 	}
 	if err := utils.CheckTool(gccForTarget()); err == nil {
@@ -491,7 +517,7 @@ func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bo
 	if lastErr != nil {
 		return lastErr
 	}
-	return fmt.Errorf("auto linking failed: no suitable linker")
+	return errors.New("auto linking failed: no suitable linker")
 }
 
 func linkWithClang(ctx context.Context, obj, bin string, verbose bool, allowNoPieFallback bool, sanitize bool, libs []string) error {
@@ -518,7 +544,7 @@ func linkWithClang(ctx context.Context, obj, bin string, verbose bool, allowNoPi
 		args = append(args, "-shared")
 	}
 	if verbose {
-		fmt.Printf("Running: %s %s\n", clangForTarget(), strings.Join(args, " "))
+		printInfo("Running: " + clangForTarget() + " " + strings.Join(args, " "))
 	}
 	output, err := runLinkerCommand(ctx, verbose, clangForTarget(), args)
 	if err == nil {
@@ -529,22 +555,22 @@ func linkWithClang(ctx context.Context, obj, bin string, verbose bool, allowNoPi
 	}
 	if !allowNoPieFallback {
 		if !verbose {
-			return fmt.Errorf("clang link failed (use -verbose for details)")
+			return errors.New("clang link failed (use -verbose for details)")
 		}
-		return fmt.Errorf("clang failed: %w\n%s", err, output)
+		return errors.New("clang failed: " + err.Error() + "\n" + output)
 	}
 	argsWithNoPie := append([]string{"-no-pie"}, args...)
 	if verbose {
-		fmt.Printf("clang failed, retrying with -no-pie\n")
+		printInfo("clang failed, retrying with -no-pie")
 	}
 	output2, err2 := runLinkerCommand(ctx, verbose, clangForTarget(), argsWithNoPie)
 	if err2 == nil {
 		return nil
 	}
 	if !verbose {
-		return fmt.Errorf("clang (with -no-pie) failed (use -verbose for details)")
+		return errors.New("clang (with -no-pie) failed (use -verbose for details)")
 	}
-	return fmt.Errorf("clang -no-pie failed: %w\n%s", err2, output2)
+	return errors.New("clang -no-pie failed:" + err2.Error() + "\n" + output2)
 }
 
 func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieFallback bool, sanitize bool, strict bool, libs []string) error {
@@ -572,7 +598,7 @@ func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieF
 		args = append(args, "-shared")
 	}
 	if verbose {
-		fmt.Printf("Running: %s %s\n", gccForTarget(), strings.Join(args, " "))
+		printInfo("Running: " + gccForTarget() + " " + strings.Join(args, " "))
 	}
 	output, err := runLinkerCommand(ctx, verbose, gccForTarget(), args)
 	if err == nil {
@@ -580,25 +606,25 @@ func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieF
 	}
 	if !allowNoPieFallback {
 		if !verbose {
-			return fmt.Errorf("gcc link failed (use -verbose for details)")
+			return errors.New("gcc link failed (use -verbose for details)")
 		}
-		return fmt.Errorf("gcc failed: %w\n%s", err, output)
+		return errors.New("gcc failed: " + err.Error() + "\n" + output)
 	}
 	if verbose {
-		fmt.Printf("gcc failed, retrying with -no-pie\n")
+		printInfo("gcc failed, retrying with -no-pie")
 	}
 	argsWithNoPie := append([]string{"-no-pie"}, args...)
 	if verbose {
-		fmt.Printf("Running: %s %s\n", gccForTarget(), strings.Join(argsWithNoPie, " "))
+		printInfo("Running: " + gccForTarget() + " " + strings.Join(argsWithNoPie, " "))
 	}
 	output2, err2 := runLinkerCommand(ctx, verbose, gccForTarget(), argsWithNoPie)
 	if err2 == nil {
 		return nil
 	}
 	if !verbose {
-		return fmt.Errorf("gcc (with -no-pie) failed (use -verbose for details)")
+		return errors.New("gcc (with -no-pie) failed (use -verbose for details)")
 	}
-	return fmt.Errorf("gcc -no-pie failed: %w\n%s", err2, output2)
+	return errors.New("gcc -no-pie failed: " + err2.Error() + "\n" + output2)
 }
 
 func linkWithZig(ctx context.Context, objFiles []string, bin string, verbose bool, target string, sanitize bool, strict bool, libs []string) error {
@@ -606,7 +632,7 @@ func linkWithZig(ctx context.Context, objFiles []string, bin string, verbose boo
 		return err
 	}
 	if !zig.IsAvailable() {
-		return fmt.Errorf("zig not available")
+		return errors.New("zig not available")
 	}
 	return zig.Link(ctx, objFiles, bin, verbose, target, sanitize, strict, libs, Shared, LdScript, TextAddr, LdFlags)
 }
@@ -627,7 +653,7 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool, libs []strin
 		args = append(args, "-shared")
 	}
 	if verbose {
-		fmt.Printf("Running: %s %s\n", ldForTarget(), strings.Join(args, " "))
+		printInfo("Running: " + ldForTarget() + " " + strings.Join(args, " "))
 	}
 	output, err := runLinkerCommand(ctx, verbose, ldForTarget(), args)
 	if err != nil {
@@ -635,9 +661,9 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool, libs []strin
 			return err
 		}
 		if !verbose {
-			return fmt.Errorf("ld link failed (use -verbose for details)")
+			return errors.New("ld link failed (use -verbose for details)")
 		}
-		return fmt.Errorf("ld failed: %w\n%s", err, output)
+		return errors.New("ld failed: " + err.Error() + "\n" + output)
 	}
 	return nil
 }
@@ -648,12 +674,12 @@ func tryAutoLinkMultiple(ctx context.Context, objFiles []string, bin string, ver
 		if err := utils.CheckTool(ldForTarget()); err == nil {
 			return linkMultipleWithLd(ctx, objFiles, bin, verbose, libs)
 		}
-		return fmt.Errorf("ld not found")
+		return errors.New("ld not found")
 	}
 	var lastErr error
 	if useZig() {
 		if verbose {
-			fmt.Println("Strict mode: using zig for deterministic linking")
+			printInfo("Strict mode: using zig for deterministic linking")
 		}
 		if err := linkWithZig(ctx, objFiles, bin, verbose, Target, sanitize, strict, libs); err == nil {
 			return nil
@@ -662,14 +688,14 @@ func tryAutoLinkMultiple(ctx context.Context, objFiles []string, bin string, ver
 	if strict {
 		if _, err := exec.LookPath(clangForTarget()); err == nil {
 			if verbose {
-				fmt.Println("Strict mode: using clang for better sanitizers")
+				printInfo("Strict mode: using clang for better sanitizers")
 			}
 			err = linkMultipleWithClang(ctx, objFiles, bin, verbose, true, sanitize, libs)
 			if err == nil {
 				return nil
 			}
 		} else if verbose {
-			fmt.Println("clang not found, falling back to gcc (limited strict mode)")
+			printInfo("clang not found, falling back to gcc (limited strict mode)")
 		}
 	}
 	if err := utils.CheckTool(gccForTarget()); err == nil {
@@ -687,7 +713,7 @@ func tryAutoLinkMultiple(ctx context.Context, objFiles []string, bin string, ver
 	if lastErr != nil {
 		return lastErr
 	}
-	return fmt.Errorf("auto linking failed: no suitable linker")
+	return errors.New("auto linking failed: no suitable linker")
 }
 
 func linkMultipleWithClang(ctx context.Context, objFiles []string, bin string, verbose bool, allowNoPieFallback bool, sanitize bool, libs []string) error {
@@ -714,7 +740,7 @@ func linkMultipleWithClang(ctx context.Context, objFiles []string, bin string, v
 		args = append(args, "-shared")
 	}
 	if verbose {
-		fmt.Printf("Running: %s %s\n", clangForTarget(), strings.Join(args, " "))
+		printInfo("Running: " + clangForTarget() + " " + strings.Join(args, " "))
 	}
 	output, err := runLinkerCommand(ctx, verbose, clangForTarget(), args)
 	if err == nil {
@@ -725,22 +751,22 @@ func linkMultipleWithClang(ctx context.Context, objFiles []string, bin string, v
 	}
 	if !allowNoPieFallback {
 		if !verbose {
-			return fmt.Errorf("clang link failed (use -verbose for details)")
+			return errors.New("clang link failed (use -verbose for details)")
 		}
-		return fmt.Errorf("clang failed: %w\n%s", err, output)
+		return errors.New("clang failed: " + err.Error() + "\n" + output)
 	}
 	argsWithNoPie := append([]string{"-no-pie"}, args...)
 	if verbose {
-		fmt.Printf("clang failed, retrying with -no-pie\n")
+		printInfo("clang failed, retrying with -no-pie\n")
 	}
 	output2, err2 := runLinkerCommand(ctx, verbose, clangForTarget(), argsWithNoPie)
 	if err2 == nil {
 		return nil
 	}
 	if !verbose {
-		return fmt.Errorf("clang (with -no-pie) failed (use -verbose for details)")
+		return errors.New("clang (with -no-pie) failed (use -verbose for details)")
 	}
-	return fmt.Errorf("clang -no-pie failed: %w\n%s", err2, output2)
+	return errors.New("clang -no-pie failed: " + err2.Error() + "\n" + output2)
 }
 
 func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, verbose bool, allowNoPieFallback bool, sanitize bool, strict bool, libs []string) error {
@@ -768,7 +794,7 @@ func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, ver
 		args = append(args, "-shared")
 	}
 	if verbose {
-		fmt.Printf("Running: %s %s\n", gccForTarget(), strings.Join(args, " "))
+		printInfo("Running: " + gccForTarget() + " " + strings.Join(args, " "))
 	}
 	output, err := runLinkerCommand(ctx, verbose, gccForTarget(), args)
 	if err == nil {
@@ -776,25 +802,25 @@ func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, ver
 	}
 	if !allowNoPieFallback {
 		if !verbose {
-			return fmt.Errorf("gcc link failed (use -verbose for details)")
+			return errors.New("gcc link failed (use -verbose for details)")
 		}
-		return fmt.Errorf("gcc failed: %w\n%s", err, output)
+		return errors.New("gcc failed: " + err.Error() + "\n" + output)
 	}
 	if verbose {
-		fmt.Printf("gcc failed, retrying with -no-pie\n")
+		printInfo("gcc failed, retrying with -no-pie")
 	}
 	argsWithNoPie := append([]string{"-no-pie"}, args...)
 	if verbose {
-		fmt.Printf("Running: %s %s\n", gccForTarget(), strings.Join(argsWithNoPie, " "))
+		printInfo("Running: " + gccForTarget() + " " + strings.Join(argsWithNoPie, " "))
 	}
 	output2, err2 := runLinkerCommand(ctx, verbose, gccForTarget(), argsWithNoPie)
 	if err2 == nil {
 		return nil
 	}
 	if !verbose {
-		return fmt.Errorf("gcc (with -no-pie) failed (use -verbose for details)")
+		return errors.New("gcc (with -no-pie) failed (use -verbose for details)")
 	}
-	return fmt.Errorf("gcc -no-pie failed: %w\n%s", err2, output2)
+	return errors.New("gcc -no-pie failed: " + err2.Error() + "\n" + output2)
 }
 
 func linkMultipleWithLd(ctx context.Context, objFiles []string, bin string, verbose bool, libs []string) error {
@@ -813,7 +839,7 @@ func linkMultipleWithLd(ctx context.Context, objFiles []string, bin string, verb
 		args = append(args, "-shared")
 	}
 	if verbose {
-		fmt.Printf("Running: %s %s\n", ldForTarget(), strings.Join(args, " "))
+		printInfo("Running: " + ldForTarget() + " " + strings.Join(args, " "))
 	}
 	output, err := runLinkerCommand(ctx, verbose, ldForTarget(), args)
 	if err != nil {
@@ -821,9 +847,9 @@ func linkMultipleWithLd(ctx context.Context, objFiles []string, bin string, verb
 			return err
 		}
 		if !verbose {
-			return fmt.Errorf("ld link failed (use -verbose for details)")
+			return errors.New("ld link failed (use -verbose for details)")
 		}
-		return fmt.Errorf("ld failed: %w\n%s", err, output)
+		return errors.New("ld failed: " + err.Error() + "\n" + output)
 	}
 	return nil
 }
@@ -850,7 +876,7 @@ func linkWindowsImpl(ctx context.Context, obj, bin string, verbose bool, mode st
 		args = append(args, "-shared")
 	}
 	if verbose {
-		fmt.Printf("Running: clang %s\n", strings.Join(args, " "))
+		printInfo("Running: clang: " + strings.Join(args, " "))
 	}
 	output, err := runLinkerCommand(ctx, verbose, "clang", args)
 	if err != nil {
@@ -858,9 +884,9 @@ func linkWindowsImpl(ctx context.Context, obj, bin string, verbose bool, mode st
 			return err
 		}
 		if !verbose {
-			return fmt.Errorf("clang link failed (use -verbose for details)")
+			return errors.New("clang link failed (use -verbose for details)")
 		}
-		return fmt.Errorf("clang failed: %w\n%s", err, output)
+		return errors.New("clang failed: " + err.Error() + "\n" + output)
 	}
 	return nil
 }
@@ -887,7 +913,7 @@ func linkMultipleWindowsImpl(ctx context.Context, objFiles []string, bin string,
 		args = append(args, "-shared")
 	}
 	if verbose {
-		fmt.Printf("Running: clang %s\n", strings.Join(args, " "))
+		printInfo("Running: clang " + strings.Join(args, " "))
 	}
 	output, err := runLinkerCommand(ctx, verbose, "clang", args)
 	if err != nil {
@@ -895,9 +921,9 @@ func linkMultipleWindowsImpl(ctx context.Context, objFiles []string, bin string,
 			return err
 		}
 		if !verbose {
-			return fmt.Errorf("clang link failed (use -verbose for details)")
+			return errors.New("clang link failed (use -verbose for details)")
 		}
-		return fmt.Errorf("clang failed: %w\n%s", err, output)
+		return errors.New("clang failed: " + err.Error() + "\n" + output)
 	}
 	return nil
 }
