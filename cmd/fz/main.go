@@ -1512,7 +1512,7 @@ func main() {
 			objectFiles = append(objectFiles, objName)
 			finalBinary = binName
 			if verbose && !jsonOutput {
-				if ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" {
+				if ext == ".c" || ext == ".cpp" || ext == ".m" || ext == ".cc" || ext == ".cxx" {
 					writeFmt(1, "Compiling %s -> %s\n", srcPath, objName)
 				} else {
 					writeFmt(1, "Assembling %s -> %s\n", srcPath, objName)
