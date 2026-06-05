@@ -31,6 +31,8 @@ func shouldUseZig() bool {
 func CompilerForSource(ext string) string {
 	ext = strings.ToLower(ext)
 	switch ext {
+	case ".m":
+		return "clang"
 	case ".cpp", ".cc", ".cxx", ".c++":
 		return "c++"
 	default:
