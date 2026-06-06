@@ -1,30 +1,289 @@
 {
-  "version": 1,
+
+  "version": 2,
+
   "packages": [
+
     {
+
       "name": "esp-idf",
-      "description": "ESP-IDF framework for ESP32",
+
       "repo": "https://github.com/espressif/esp-idf",
-      "tag": "v5.1",
+
+      "tag": "v6.0.1",
+
       "category": "iot",
+
       "source_dir": "components"
+
     },
+
     {
+
       "name": "FreeRTOS",
-      "description": "Real-time operating system for embedded devices",
+
       "repo": "https://github.com/FreeRTOS/FreeRTOS",
-      "tag": "V10.5.1",
+
+      "tag": "V202406.01-LTS",
+
       "category": "kernel",
+
       "source_dir": "FreeRTOS/Source"
+
     },
+
     {
-      "name": "klib",
-      "description": "Standalone lightweight C library with common algorithms and data structures",
-      "repo": "github.com/attractivechaos/klib",
-      "tag": "v0.1",
+
+      "name": "lwip",
+
+      "repo": "https://github.com/lwip-tcpip/lwip",
+
+      "tag": "STABLE-2_2_1_RELEASE",
+
+      "category": "network",
+
+      "source_dir": "src"
+
+    },
+
+    {
+
+      "name": "mbedtls",
+
+      "repo": "https://github.com/Mbed-TLS/mbedtls",
+
+      "tag": "mbedtls-3.6.4",
+
+      "category": "crypto",
+
+      "source_dir": "library"
+
+    },
+
+    {
+
+      "name": "cJSON",
+
+      "repo": "https://github.com/DaveGamble/cJSON",
+
+      "tag": "v1.7.19",
+
+      "category": "json",
+
+      "source_dir": ""
+
+    },
+
+    {
+
+      "name": "tinyusb",
+
+      "repo": "https://github.com/hathach/tinyusb",
+
+      "tag": "0.18.0",
+
+      "category": "usb",
+
+      "source_dir": "src"
+
+    },
+
+    {
+
+      "name": "lvgl",
+
+      "repo": "https://github.com/lvgl/lvgl",
+
+      "tag": "v9.3.0",
+
+      "category": "gui",
+
+      "source_dir": "src"
+
+    },
+
+    {
+
+      "name": "protobuf-c",
+
+      "repo": "https://github.com/protobuf-c/protobuf-c",
+
+      "tag": "v1.5.2",
+
+      "category": "serialization",
+
+      "source_dir": ""
+
+    },
+
+    {
+
+      "name": "nanopb",
+
+      "repo": "https://github.com/nanopb/nanopb",
+
+      "tag": "nanopb-0.4.9",
+
+      "category": "serialization",
+
+      "source_dir": ""
+
+    },
+
+    {
+
+      "name": "zlib",
+
+      "repo": "https://github.com/madler/zlib",
+
+      "tag": "v1.3.1",
+
+      "category": "compression",
+
+      "source_dir": ""
+
+    },
+
+    {
+
+      "name": "libpng",
+
+      "repo": "https://github.com/pnggroup/libpng",
+
+      "tag": "v1.6.50",
+
+      "category": "image",
+
+      "source_dir": ""
+
+    },
+
+    {
+
+      "name": "sqlite",
+
+      "repo": "https://github.com/sqlite/sqlite",
+
+      "tag": "version-3.50.0",
+
+      "category": "database",
+
+      "source_dir": ""
+
+    },
+
+    {
+
+      "name": "uthash",
+
+      "repo": "https://github.com/troydhanson/uthash",
+
+      "tag": "v2.3.0",
+
       "category": "utils",
-      "source_dir": "",
-      "hash": "blake3:..."
+
+      "source_dir": "src"
+
+    },
+
+    {
+
+      "name": "klib",
+
+      "repo": "https://github.com/attractivechaos/klib",
+
+      "tag": "master",
+
+      "category": "utils",
+
+      "source_dir": ""
+
+    },
+
+    {
+
+      "name": "libuv",
+
+      "repo": "https://github.com/libuv/libuv",
+
+      "tag": "v1.51.0",
+
+      "category": "async",
+
+      "source_dir": "src"
+
+    },
+
+    {
+
+      "name": "curl",
+
+      "repo": "https://github.com/curl/curl",
+
+      "tag": "curl-8_15_0",
+
+      "category": "network",
+
+      "source_dir": "lib"
+
+    },
+
+    {
+
+      "name": "fmt",
+
+      "repo": "https://github.com/fmtlib/fmt",
+
+      "tag": "11.2.0",
+
+      "category": "format",
+
+      "source_dir": "include"
+
+    },
+
+    {
+
+      "name": "spdlog",
+
+      "repo": "https://github.com/gabime/spdlog",
+
+      "tag": "v1.15.3",
+
+      "category": "logging",
+
+      "source_dir": "include"
+
+    },
+
+    {
+
+      "name": "Catch2",
+
+      "repo": "https://github.com/catchorg/Catch2",
+
+      "tag": "v3.9.0",
+
+      "category": "testing",
+
+      "source_dir": "src"
+
+    },
+
+    {
+
+      "name": "googletest",
+
+      "repo": "https://github.com/google/googletest",
+
+      "tag": "v1.17.0",
+
+      "category": "testing",
+
+      "source_dir": ""
+
     }
+
   ]
+
 }
