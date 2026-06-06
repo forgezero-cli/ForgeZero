@@ -186,7 +186,7 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 		return assembleS(ctx, src, obj, verbose)
 	case ".S":
 		return compileC(ctx, src, obj, verbose, ccForTarget())
-	case ".m":
+	case ".m", ".mm":
 		return compileC(ctx, src, obj, verbose, getCompiler(src))
 	case ".c":
 		return compileC(ctx, src, obj, verbose, ccForTarget())
