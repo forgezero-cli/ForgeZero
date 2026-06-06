@@ -66,11 +66,11 @@ func (helperFakeRunner) Run(ctx context.Context, verbose bool, name string, args
 }
 
 const (
-	versionCore     = "4.5.1"
+	versionCore     = "4.6.0"
 	versionCodename = "THINK"
 )
 
-var version = "4.5.1 THINK"
+var version = "4.5.1 Think"
 
 func versionText() string {
 	var b strings.Builder
@@ -323,6 +323,9 @@ Options:
 [NEW]: -musl -> compile ur binaries without VERY BIG glibc!
 	Supported architecture (X86_64, RISC-V).
 	future evo: aarch64, arm
+
+Add Support Objective-C for GNU Linux 
+Sample using: fz -cc file.m -toolchain zig -verbose(optional)
 
 Examples:
   fz -asm boot.asm
