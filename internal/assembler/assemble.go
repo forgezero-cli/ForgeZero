@@ -69,7 +69,7 @@ func FormatFlagForTarget() string {
 }
 
 func ccForTarget() string {
-	// If target choise riscv
+	// If target choice riscv
 	if strings.Contains(Target, "riscv") {
 		// check access zig cc with cross-target :)
 		if err := utils.CheckTool("zig"); err == nil {
