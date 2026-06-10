@@ -78,7 +78,9 @@ type Hooks struct {
 }
 
 type Config struct {
-	Name               string            `yaml:"name"`
+	Name    string `yaml:"name"`
+	Profile string `yaml:"profile"`
+
 	SourceDir          string            `yaml:"source_dir"`
 	SourceDirs         []string          `yaml:"source_dirs"`
 	SourceFiles        []string          `yaml:"source_files"`
@@ -140,9 +142,17 @@ func (c *Config) Validate() error {
 	if c.Mode != "auto" && c.Mode != "c" && c.Mode != "raw" {
 		return fmt.Errorf("invalid mode: %s", c.Mode)
 	}
+	if c.Profile == "" {
+		c.Profile = "balanced"
+	}
+	c.Profile = strings.TrimSpace(strings.ToLower(c.Profile))
+	if c.Profile != "balanced" && c.Profile != "powered" && c.Profile != "performance" {
+		return fmt.Errorf("invalid profile: %s", c.Profile)
+	}
 	if c.Toolchain == "" {
 		c.Toolchain = "auto"
 	}
+
 	c.Toolchain = strings.TrimSpace(strings.ToLower(c.Toolchain))
 	if _, ok := supportedToolchains[c.Toolchain]; !ok {
 		return fmt.Errorf("invalid toolchain: %s", c.Toolchain)
@@ -257,6 +267,10 @@ func (c *Config) Merge(other *Config) {
 	if other.Mode != "" {
 		c.Mode = other.Mode
 	}
+	if other.Profile != "" {
+		c.Profile = other.Profile
+	}
+
 	if other.Debug {
 		c.Debug = other.Debug
 	}
