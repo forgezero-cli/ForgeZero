@@ -20,6 +20,7 @@ import (
 	"fz/internal/builder"
 	"fz/internal/compilecommands"
 	"fz/internal/config"
+	"fz/internal/contribute"
 	"fz/internal/cplugin"
 	"fz/internal/doctor"
 	fzvfs "fz/internal/fs"
@@ -30,6 +31,7 @@ import (
 	"fz/internal/man"
 	"fz/internal/musl"
 	"fz/internal/pkgman"
+	"fz/internal/profiles"
 	"fz/internal/sbom"
 	"fz/internal/seal"
 	"fz/internal/shell"
@@ -66,11 +68,11 @@ func (helperFakeRunner) Run(ctx context.Context, verbose bool, name string, args
 }
 
 const (
-	versionCore     = "4.6.0"
-	versionCodename = "THINK"
+	versionCore     = "4.7.0"
+	versionCodename = "Multi"
 )
 
-var version = "4.5.1 Think"
+var version = "4.5.1 Multi"
 
 func versionText() string {
 	var b strings.Builder
@@ -282,6 +284,7 @@ Usage:
   fz verify [options]
   fz bench [options]
   fz pm <subcommand> [args]
+  fz contribute
 
 Options:
   -asm <file>            Assembler source (.asm, .s, .S, .fasm)
@@ -315,17 +318,14 @@ Options:
   -compile-commands      Generate compile_commands.json for LSP and exit
   -init                  Initialize project: create .fz.yaml and .fzignore
   -shell                 Run interactive shell
-	-build 								 Auto build project with auto backend(c/c++, asm)
-	-update                Update fz to the latest version
+  -build                 Auto build project with auto backend (c/c++, asm)
+  -update                Update fz to the latest version
+  -profile <name>        Build profile: performance, balanced, power-saver (default: balanced)
+  -p <name>              Shorthand for -profile
+  -contribute            Generate CONTRIBUTING_USER.md with contribution guidance
+  -musl                  Compile with static musl toolchain (x86_64, RISC-V)
   -h, --help             Show this help
   -v, --version          Show version
-
-[NEW]: -musl -> compile ur binaries without VERY BIG glibc!
-	Supported architecture (X86_64, RISC-V).
-	future evo: aarch64, arm
-
-Add Support Objective-C for GNU Linux 
-Sample using: fz -cc file.m -toolchain zig -verbose(optional)
 
 Examples:
   fz -asm boot.asm
@@ -335,13 +335,16 @@ Examples:
   fz -dir . -clean
   fz -asm boot.asm -format bin -out boot.bin
   fz -target arm-linux-gnueabihf -cc test.c -out test_arm
+  fz -profile performance -cc main.c
+  fz -p power-saver -dir ./src
+  fz contribute
   fz sbom -out sbom.json
   fz doctor -root .
   fz doctor -json
   fz verify --update
   fz bench -dir ./src -json
 
-Supported extensions: .asm, .s, .S, .fasm, .c, .cpp, .cc, .cxx
+Supported extensions: .asm, .s, .S, .fasm, .c, .cpp, .cc, .cxx, .m (Objective-C)
 
 Aegis Security & Integrity (v3.1.0):
   doctor [options]        Self-audit: toolchain reachability, R/W permissions, platform
@@ -355,6 +358,7 @@ Aegis Security & Integrity (v3.1.0):
                           -root <dir> -manifest <file> -update -json
   bench [options]         Nanosecond build phase profiler
                           -asm|-cc|-dir -out -mode -target -toolchain -n -json -verbose
+  contribute              Generate contributor guide with environment checks
 
 Aegis technical (internal architecture):
   FileSystem VFS          internal/fs: Unix or Windows backend via build tags
@@ -761,7 +765,7 @@ func main() {
 			panic(r)
 		}
 	}()
-	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	if os.Getenv("FZ_TEST_HELPER") == "1" || os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
 		utils.CheckToolFunc = func(string) error { return nil }
 		assembler.SetRunCommand(func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
@@ -819,37 +823,39 @@ func main() {
 	}
 
 	var (
-		asmPath            string
-		ccPath             string
-		dirPath            string
-		debug              bool
-		verbose            bool
-		outBin             string
-		outObj             string
-		timeoutSec         int
-		mode               string
-		keepObj            bool
-		clean              bool
-		noCache            bool
-		configPath         string
-		pluginPath         string
-		noSymbolCheck      bool
-		watch              bool
-		sanitize           bool
-		noSanitize         bool
-		strict             bool
-		jsonOutput         bool
-		showVersion        bool
-		showHelp           bool
-		showMan            bool
-		format             string
-		initMode           bool
-		ldScript           string
-		textAddr           string
-		shellMode          bool
-		jobs               int
-		updateMode         bool
-		buildType          string
+		asmPath        string
+		ccPath         string
+		dirPath        string
+		debug          bool
+		verbose        bool
+		outBin         string
+		outObj         string
+		timeoutSec     int
+		mode           string
+		keepObj        bool
+		clean          bool
+		noCache        bool
+		configPath     string
+		pluginPath     string
+		noSymbolCheck  bool
+		watch          bool
+		sanitize       bool
+		noSanitize     bool
+		strict         bool
+		jsonOutput     bool
+		showVersion    bool
+		showHelp       bool
+		showMan        bool
+		format         string
+		initMode       bool
+		ldScript       string
+		textAddr       string
+		shellMode      bool
+		jobs           int
+		updateMode     bool
+		contributeMode bool
+		buildType      string
+
 		libMode            bool
 		target             string
 		toolchain          string
@@ -864,6 +870,7 @@ func main() {
 		gloriaPath         string
 		autoBuild          bool
 		muslOpt            string
+		profileFlag        string
 	)
 
 	type targetKeyType string
@@ -886,7 +893,10 @@ func main() {
 	flag.BoolVar(&shellMode, "shell", false, "run interactive shell")
 	flag.IntVar(&jobs, "j", 1, "number of parallel jobs (0 = auto = CPU cores)")
 	flag.BoolVar(&updateMode, "update", false, "update fz to the latest version")
+	flag.BoolVar(&contributeMode, "contribute", false, "generate CONTRIBUTING_USER.md and run contribute guidance")
+
 	flag.StringVar(&buildType, "type", "executable", "build type: executable (default) or static")
+
 	flag.BoolVar(&libMode, "lib", false, "build static library (archive)")
 	flag.StringVar(&target, "target", "x86_64-linux-gnu", "target triple (e.g., x86_64-linux-gnu, arm-linux-gnueabihf, riscv64-unknown-elf)")
 	flag.StringVar(&toolchain, "toolchain", "auto", "toolchain to use: auto or zig")
@@ -916,10 +926,35 @@ func main() {
 	flag.StringVar(&gloriaPath, "gloria", "", "path to .glo file")
 	flag.BoolVar(&autoBuild, "autoBuild", false, "auto build project")
 	flag.StringVar(&muslOpt, "musl", "", "use static musl toolchain(e.g -musl=riscv64")
+	flag.StringVar(&profileFlag, "profile", "balanced", "build profile for hardware: low (for weak PCs), balanced, high (max threads)")
+	flag.StringVar(&profileFlag, "p", "balanced", "build profile (shorthand)")
+
 	flag.Usage = printHelp
+
 	flag.Parse()
 
+	profileProvided := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "profile" || f.Name == "p" {
+			profileProvided = true
+		}
+	})
+	if !profileProvided {
+		if saved, err := profiles.ReadSavedProfile(""); err == nil && saved != "" {
+			profileFlag = saved
+		}
+	}
+
+	p := profiles.ParseUserProfile(profileFlag)
+	profileFlag = p.Name
+	maxProcs := p.DefaultJobs()
+	if maxProcs < 1 {
+		maxProcs = 1
+	}
+	runtime.GOMAXPROCS(maxProcs)
+
 	var muslArch string
+
 	var muslUse bool
 
 	if muslOpt != "" {
@@ -935,6 +970,13 @@ func main() {
 		} else {
 			assembler.Target = "x86_64-linux-musl"
 		}
+	}
+
+	if jobs < 0 {
+		jobs = 1
+	}
+	if profileProvided {
+		_ = profiles.SaveProfile("", profileFlag)
 	}
 
 	if err := utils.ValidateCLIPath(configPath); err != nil {
@@ -1033,6 +1075,27 @@ func main() {
 		}
 		writeFmt(1, "%s\n", "project initialized. edit .fz.yaml to configure ur build.")
 		return
+	}
+
+	if contributeMode {
+		if asmPath != "" || ccPath != "" || dirPath != "" || outBin != "" || clean || watch || updateMode || shellMode || showMan || showHelp {
+			writeFmt(2, "error: -contribute cannot be used with other flags\n")
+			os.Exit(2)
+		}
+
+		root, err := os.Getwd()
+		if err != nil {
+			writeFmt(2, "contribute faied: %v\n", err)
+			os.Exit(1)
+		}
+
+		if _, err := contribute.Run(context.Background(), root); err != nil {
+			writeFmt(2, "contribute failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		writeFmt(1, "CONTRIBUTING_USER.md generated successfully\n")
+		os.Exit(0)
 	}
 
 	assembler.ForceFASM = forceFASM
@@ -1295,8 +1358,25 @@ func main() {
 			utils.ToolChecksums.Store(k, v)
 		}
 		cfg.MergeFromFlags(srcPath, dirPath, outBin, outObj, debug, verbose, keepObj, noCache, mode, toolchain, isolation)
+		cfg.Profile = profileFlag
+
+		p := profiles.ParseUserProfile(cfg.Profile)
+		jobs = p.EffectiveJobs(jobs)
+		if cfg.OptimizationLevel == 0 {
+			switch p.Name {
+			case "performance":
+				cfg.OptimizationLevel = 4
+			case "power-saver":
+				cfg.OptimizationLevel = 1
+			default:
+				cfg.OptimizationLevel = 2
+			}
+		}
+
 		utils.SetToolchainPolicy(cfg.Toolchain)
+
 		if verbose && !jsonOutput {
+			writeFmt(1, "Profile: %s\n", profileFlag)
 			writeFmt(1, "Loaded config from %s\n", func() string {
 				if configPath != "" {
 					return configPath
