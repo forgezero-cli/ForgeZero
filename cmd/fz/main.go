@@ -91,7 +91,7 @@ func versionText() string {
 	b.WriteString(fzvfs.ImplName())
 	b.WriteString(" | Security: Aegis-Hardened\n")
 	b.WriteString("(c) Alex Voste. Binary Integrity: Verified.\n\n")
-	b.WriteString("github: forgezero-cli/forgezero\nOrg: forgezero-cli\n")
+	b.WriteString("Github: forgezero-cli/forgezero\nOrg: forgezero-cli\n")
 	return b.String()
 }
 
@@ -1235,6 +1235,16 @@ func main() {
 		if jsonOutput {
 			report := BuildReport{Status: "info", ExitCode: 0, DurationMs: 0, Binary: version}
 			_ = json.NewEncoder(os.Stdout).Encode(report)
+		}
+
+		isShort := false
+		flag.Visit(func(f *flag.Flag) {
+			if f.Name == "v" {
+				isShort = true
+			}
+		})
+		if isShort {
+			writeStdout(versionCore + "\n")
 		} else {
 			outputVersion()
 		}
