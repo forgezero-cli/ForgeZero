@@ -1,4 +1,4 @@
-# ☘️ ForgeZero (fz) — Complete Documentation
+# ForgeZero (fz) — Complete Documentation
 
 <div align="center">
   <table style="border:none; background:transparent;">
@@ -7,22 +7,22 @@
         <img src="pictures/fz.jpg" alt="ForgeZero Logo" width="180" />
       </td>
       <td style="vertical-align:middle; border:none;">
-        <h3 style="margin:0 0 8px 0;">ForgeZero — zero-overhead build tool for assembly & C</h3>
+        <h3 style="margin:0 0 8px 0;">ForgeZero — zero-overhead build tool for assembly, C, and Gloria</h3>
         <p style="margin:0; color:#555;">One command. Any assembler. Any platform. Zero allocations.</p>
         <br/>
         <img src="https://img.shields.io/github/go-mod/go-version/forgezero-cli/ForgeZero" alt="Go Version"/>
         &nbsp;
         <img src="https://img.shields.io/github/license/forgezero-cli/ForgeZero" alt="License"/>
         &nbsp;
-        <img src="https://img.shields.io/github/commits-since/forgezero-cli/ForgeZero/v4.1.0" alt="Commits"/>
+        <img src="https://img.shields.io/github/commits-since/forgezero-cli/ForgeZero/v4.7.0" alt="Commits"/>
       </td>
     </tr>
   </table>
 </div>
 
-> **Version:** 4.7.0 Multi &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
+> **Version:** 4.7.0 &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
 
-ForgeZero is a high-performance, zero-overhead build tool for assembly and C developers. It wraps NASM, GAS, FASM, GCC, Clang, Zig, and LD into a single unified command-line interface — no Makefiles, no build scripts, no configuration required to get started.
+ForgeZero is a high-performance, zero-overhead build tool for assembly, C, C++, Objective-C, and Gloria developers. It wraps NASM, GAS, FASM, GCC, Clang, Zig, and LD into a single unified command-line interface — no Makefiles, no build scripts, no configuration required to get started.
 
 > Inspired by the simplicity of **Suckless** and the efficiency of **TinyCC**
 
@@ -30,7 +30,7 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly and C dev
 
 ---
 
-## ⚡ Performance: Full Scaling Benchmark
+## Performance: Full Scaling Benchmark
 
 Benchmarks measured against standard `nasm -f elf64 && ld` and `make -j4` pipelines. Test environment: **Intel Core i5-10310U** (4C/8T, 1.7 GHz base), Arch Linux, Samsung 980 NVMe. Results are mean ± stddev over ≥10 runs via `hyperfine`.
 
@@ -43,7 +43,7 @@ Benchmarks measured against standard `nasm -f elf64 && ld` and `make -j4` pipeli
 | 200     | 82.2 ± 4.2 ms     | 291.1 ± 11.2 ms          | **3.54×** |
 | 400     | 223.1 ± 9.8 ms    | 1105.0 ± 24.1 ms         | **4.95×** |
 
-### 🔹 Scaling Efficiency
+### Scaling Efficiency
 
 | Metric | `fz` | `make -j4` |
 |--------|-------|------------|
@@ -52,9 +52,9 @@ Benchmarks measured against standard `nasm -f elf64 && ld` and `make -j4` pipeli
 | I/O operations | **0 intermediate files** | 2× modules (`.o` read/write) |
 | Process forks | **1** | ~2× modules + 1 |
 
-> ✅ **Conclusion:** ForgeZero maintains **~3–5× speedup** at scale, growing to nearly **5× at 400 modules**. Traditional pipelines suffer from super-linear overhead due to process spawning, I/O contention, and CPU cache thrashing. ForgeZero's single-process design preserves cache locality across the entire build.
+> **Conclusion:** ForgeZero maintains **~3–5× speedup** at scale, growing to nearly **5× at 400 modules**. Traditional pipelines suffer from super-linear overhead due to process spawning, I/O contention, and CPU cache thrashing. ForgeZero's single-process design preserves cache locality across the entire build.
 
-### 🔹 Why the difference?
+### Why the difference?
 
 | Factor | Traditional (`make + nasm + ld`) | ForgeZero (`fz`) |
 |--------|---------------------------------|-------------------|
@@ -65,7 +65,7 @@ Benchmarks measured against standard `nasm -f elf64 && ld` and `make -j4` pipeli
 | **Memory** | GC/Allocator overhead per process | **Zero-allocation hot path** (`0 allocs/op`, `0 B/op`) |
 | **Allocations** | Unbounded heap churn | **Stack-buffered syscalls** in hot paths |
 
-### 🔹 Scaling Projection
+### Scaling Projection
 
 | Modules | `fz` (est.) | `make -j4` (est.) | Speedup |
 |---------|--------------|-------------------|---------|
@@ -76,13 +76,13 @@ Benchmarks measured against standard `nasm -f elf64 && ld` and `make -j4` pipeli
 
 *Note: Projections beyond 400 modules assume continued sub-linear growth. Real-world results vary based on I/O and CPU contention.*
 
-### 🔹 How to reproduce
+### How to reproduce
 
 ```bash
 # Clone and build ForgeZero
 git clone https://github.com/forgezero-cli/ForgeZero
 cd ForgeZero
-go build -o fz ./cmd/fz 
+go build -o fz ./cmd/fz
 
 # Run the benchmark script (generates N test modules and runs hyperfine)
 ./bench.sh  # Edit NUM_MODULES in script for different module counts
@@ -115,66 +115,77 @@ hyperfine --warmup 3 --prepare 'make clean && rm -rf .fz_objs fz_out' \
    - 6.2 [Directory Mode](#62-directory-mode)
    - 6.3 [Configuration File Mode](#63-configuration-file-mode)
 7. [CLI Reference](#7-cli-reference)
-8. [Linking Modes](#8-linking-modes)
-9. [C Compilation](#9-c-compilation)
-   - 9.1 [Strict Warning Flags](#91-strict-warning-flags)
-   - 9.2 [Sanitizers](#92-sanitizers)
-10. [C++ Compilation](#10-c-compilation-1)
-11. [Cross-Compilation](#11-cross-compilation)
-12. [Static Library Mode](#12-static-library-mode)
-13. [Shared Library Mode](#13-shared-library-mode)
-14. [Package Manager (fz pm)](#14-package-manager-fz-pm)
-15. [Internal Mechanisms](#15-internal-mechanisms)
-    - 15.1 [Build Cache (BLAKE3)](#151-build-cache-blake3)
-    - 15.2 [Pre-link Symbol Check](#152-pre-link-symbol-check)
-    - 15.3 [Watch Mode](#153-watch-mode)
-    - 15.4 [JSON Output](#154-json-output)
-    - 15.5 [Clean](#155-clean)
-    - 15.6 [Parallel Builds](#156-parallel-builds)
-    - 15.7 [Interactive Shell](#157-interactive-shell)
-    - 15.8 [Virtual Filesystem Layer (VFS)](#158-virtual-filesystem-layer-vfs)
-16. [Configuration File Reference](#16-configuration-file-reference)
-    - 16.1 [Basic Fields](#161-basic-fields)
-    - 16.2 [Multiple Source Directories](#162-multiple-source-directories)
-    - 16.3 [Explicit Source File Lists](#163-explicit-source-file-lists)
-    - 16.4 [Include & Exclude Patterns](#164-include--exclude-patterns)
-    - 16.5 [Library Linking](#165-library-linking)
-    - 16.6 [Custom Compiler & Linker Flags](#166-custom-compiler--linker-flags)
-    - 16.7 [.fzignore File](#167-fzignore-file)
-    - 16.8 [Full Annotated Example](#168-full-annotated-example)
-17. [Assembler Backends](#17-assembler-backends)
-    - 17.1 [NASM (.asm)](#171-nasm-asm)
-    - 17.2 [GAS (.s / .S)](#172-gas-s--s)
-    - 17.3 [FASM (.fasm)](#173-fasm-fasm)
-18. [Zig Toolchain Backend](#18-zig-toolchain-backend)
-19. [Supply Chain Security](#19-supply-chain-security)
-    - 19.1 [SBOM Generation (fz sbom)](#191-sbom-generation-fz-sbom)
-    - 19.2 [SAST Audit Scanner (fz audit)](#192-sast-audit-scanner-fz-audit)
-20. [Reproducible Builds](#20-reproducible-builds)
-21. [Source Tree Integrity (fz verify)](#21-source-tree-integrity-fz-verify)
-22. [Build Profiler (fz bench)](#22-build-profiler-fz-bench)
-23. [WebAssembly (WASM)](#23-webassembly-wasm)
-24. [Project Initialization](#24-project-initialization)
-25. [LSP & IDE Integration](#25-lsp--ide-integration)
-26. [Self-Update](#26-self-update)
-27. [Examples](#27-examples)
-28. [Exit Codes](#28-exit-codes)
-29. [Troubleshooting](#29-troubleshooting)
-30. [Roadmap](#30-roadmap)
-31. [Virtual Filesystem Layer (Aegis)](#31-virtual-filesystem-layer-aegis)
-32. [Aegis Security Core](#32-aegis-security-core)
-33. [System Self-Audit (`fz doctor`)](#33-system-self-audit-fz-doctor)
-34. [Cross-Platform Readiness](#34-cross-platform-readiness)
-35. [Testing Standards (Aegis)](#35-testing-standards-aegis)
-36. [HADES Engine: Codegen & ELF Emission](#36-hades-engine-codegen--elf-emission)
-37. [Contributing](#37-contributing)
-38. [License](#38-license)
+8. [Build Profiles (`-profile` / `-p`)](#8-build-profiles--profile---p)
+9. [Linking Modes](#9-linking-modes)
+10. [C Compilation](#10-c-compilation)
+    - 10.1 [Strict Warning Flags](#101-strict-warning-flags)
+    - 10.2 [Sanitizers](#102-sanitizers)
+11. [C++ Compilation](#11-c-compilation-1)
+12. [Objective-C Compilation](#12-objective-c-compilation)
+13. [Gloria Language](#13-gloria-language)
+    - 13.1 [Overview](#131-overview)
+    - 13.2 [Syntax Reference](#132-syntax-reference)
+    - 13.3 [Control Flow](#133-control-flow)
+    - 13.4 [Memory Access & I/O Ports](#134-memory-access--io-ports)
+    - 13.5 [VGA Framebuffer Output](#135-vga-framebuffer-output)
+    - 13.6 [Register Constants](#136-register-constants)
+    - 13.7 [Compilation Pipeline](#137-compilation-pipeline)
+14. [Cross-Compilation](#14-cross-compilation)
+15. [Static Library Mode](#15-static-library-mode)
+16. [Shared Library Mode](#16-shared-library-mode)
+17. [Package Manager (fz pm)](#17-package-manager-fz-pm)
+18. [Internal Mechanisms](#18-internal-mechanisms)
+    - 18.1 [Build Cache (BLAKE3)](#181-build-cache-blake3)
+    - 18.2 [Pre-link Symbol Check](#182-pre-link-symbol-check)
+    - 18.3 [Watch Mode](#183-watch-mode)
+    - 18.4 [JSON Output](#184-json-output)
+    - 18.5 [Clean](#185-clean)
+    - 18.6 [Parallel Builds](#186-parallel-builds)
+    - 18.7 [Interactive Shell](#187-interactive-shell)
+    - 18.8 [Virtual Filesystem Layer (VFS)](#188-virtual-filesystem-layer-vfs)
+19. [Configuration File Reference](#19-configuration-file-reference)
+    - 19.1 [Basic Fields](#191-basic-fields)
+    - 19.2 [Multiple Source Directories](#192-multiple-source-directories)
+    - 19.3 [Explicit Source File Lists](#193-explicit-source-file-lists)
+    - 19.4 [Include & Exclude Patterns](#194-include--exclude-patterns)
+    - 19.5 [Library Linking](#195-library-linking)
+    - 19.6 [Custom Compiler & Linker Flags](#196-custom-compiler--linker-flags)
+    - 19.7 [.fzignore File](#197-fzignore-file)
+    - 19.8 [Full Annotated Example](#198-full-annotated-example)
+20. [Assembler Backends](#20-assembler-backends)
+    - 20.1 [NASM (.asm)](#201-nasm-asm)
+    - 20.2 [GAS (.s / .S)](#202-gas-s--s)
+    - 20.3 [FASM (.fasm)](#203-fasm-fasm)
+21. [Zig Toolchain Backend](#21-zig-toolchain-backend)
+22. [Supply Chain Security](#22-supply-chain-security)
+    - 22.1 [SBOM Generation (fz sbom)](#221-sbom-generation-fz-sbom)
+    - 22.2 [SAST Audit Scanner (fz audit)](#222-sast-audit-scanner-fz-audit)
+23. [Reproducible Builds](#23-reproducible-builds)
+24. [Source Tree Integrity (fz verify)](#24-source-tree-integrity-fz-verify)
+25. [Build Profiler (fz bench)](#25-build-profiler-fz-bench)
+26. [WebAssembly (WASM)](#26-webassembly-wasm)
+27. [Project Initialization](#27-project-initialization)
+28. [Contributor Guidance (fz contribute)](#28-contributor-guidance-fz-contribute)
+29. [LSP & IDE Integration](#29-lsp--ide-integration)
+30. [Self-Update](#30-self-update)
+31. [Examples](#31-examples)
+32. [Exit Codes](#32-exit-codes)
+33. [Troubleshooting](#33-troubleshooting)
+34. [Roadmap](#34-roadmap)
+35. [Virtual Filesystem Layer (Aegis)](#35-virtual-filesystem-layer-aegis)
+36. [Aegis Security Core](#36-aegis-security-core)
+37. [System Self-Audit (`fz doctor`)](#37-system-self-audit-fz-doctor)
+38. [Cross-Platform Readiness](#38-cross-platform-readiness)
+39. [Testing Standards (Aegis)](#39-testing-standards-aegis)
+40. [HADES Engine: Codegen & ELF Emission](#40-hades-engine-codegen--elf-emission)
+41. [Contributing](#41-contributing)
+42. [License](#42-license)
 
 ---
 
 ## 1. Overview
 
-ForgeZero removes the friction between writing assembly (or C) code and running it. Instead of managing assembler flags, linker invocations, and object file paths by hand, you point `fz` at a source file or directory and it handles everything:
+ForgeZero removes the friction between writing assembly (or C, C++, Objective-C, or Gloria) code and running it. Instead of managing assembler flags, linker invocations, and object file paths by hand, you point `fz` at a source file or directory and it handles everything:
 
 - Detects the file type and selects the correct assembler backend automatically.
 - Compiles each source file into an object file with appropriate flags.
@@ -187,6 +198,8 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 - Supports cross-compilation to ARM, RISC-V, WASM, and other targets via `-target`.
 - Builds static libraries (`.a`) and shared libraries (`.so` / `.dylib`) in addition to executables.
 - Compiles C++ (`.cpp`, `.cc`, `.cxx`) with the same strict standards as C.
+- Compiles Objective-C (`.m`) via Clang/Zig with automatic framework linking.
+- Compiles Gloria (`.glo`) directly to raw x86-64 ELF binaries with zero external dependencies.
 - Manages external C/ASM dependencies via the built-in package manager (`fz pm`).
 - Generates CycloneDX SBOMs with BLAKE3 hashes for supply chain transparency.
 - Runs a built-in SAST scanner to detect secrets, license violations, and dangerous patterns.
@@ -199,6 +212,40 @@ ForgeZero removes the friction between writing assembly (or C) code and running 
 - Achieves **zero heap allocations** on all linker hot-paths — `0 allocs/op`, `0 B/op` in micro-benchmarks (v4.1.0 Citadel).
 - Uses **stack-buffered syscalls** (`openHot`, `unlinkHot`) for path conversion, bypassing `os.File` and `path/filepath` heap overhead.
 - Emits **correct, deterministic ELF64 binaries** with local-before-global symbol table ordering and fixed absolute relocation offsets (HADES engine, v4.1.0).
+- Applies **build profiles** (`-profile` / `-p`) to tune CPU core usage and optimization level per-session, persisted across runs (v4.7.0).
+- Generates **`CONTRIBUTING_USER.md`** via `fz contribute` with environment diagnostics and contributor guidance (v4.7.0).
+
+**What's new in v4.7.0:**
+
+- **Build profiles (`-profile` / `-p`)** — three named profiles (`performance`, `balanced`, `power-saver`) that set GOMAXPROCS, `-j`, and the compiler optimization level in a single flag. The active profile persists between runs in `~/.config/fz/.profile.config`. Short form `-p` is equivalent to `-profile`.
+- **Contributor guidance (`fz contribute`)** — generates `CONTRIBUTING_USER.md` in the current directory. The file includes environment diagnostics (via `fz doctor`), test and build recommendations, good-first-issue hints, and PR / commit guidelines.
+- **Version output refinement** — `fz -v` prints the short version string (`4.7.0`); `fz --version` prints the full details block including platform, Go version, and build metadata.
+
+**What's new in v4.6.0:**
+
+- **Objective-C support** — `.m` files are now a first-class extension. Compilation is automatically delegated to the Clang or Zig backend. System libraries and Objective-C runtime frameworks are linked automatically with standardized diagnostic output. The full pipeline — from utility and parser recognition through intermediate assembly generation — is end-to-end. Verbose build output correctly displays each Objective-C compilation stage.
+
+**What's new in v4.5.1:**
+
+- **RISC-V + musl cross-compilation** — `riscv64-linux-musl` is now a validated static-target toolchain. Musl runtime components, linker argument generation, and supported architectures have extended validation and test coverage.
+- **Gloria reliability** — improved error propagation in Gloria builtins; safer resource cleanup in runtime tests; explicit handling of walk and mapping errors.
+- **Maintenance** — removed unused helpers and dead code; simplified internal implementations; modernized file operations to current Go APIs; improved lint compliance across the codebase.
+- **Technical** — added musl linker argument validation tests; added runtime file verification tests; extended RISC-V target coverage; improved linker integration tests; refactored assembler, linker, builder, and plugin subsystems.
+
+**What's new in v4.5.0-think:**
+
+- **Embedded musl runtime** — musl runtime for Linux x86_64 is now embedded directly into the `fz` binary via `go:embed`. No external musl installation is required for static linking on the host architecture.
+- **Update mechanism reliability** — improved self-update stability; linker and build system stability improvements.
+
+**What's new in v4.4.0 (Gloria JIT):**
+
+- **`while` loops** — conditional iteration based on a variable value. Supports `=`, `+=`, `-=` assignment and builtin calls inside the loop body.
+- **`peek` / `poke`** — 16-bit memory read/write at arbitrary addresses. Both accept immediate integers or variable names.
+- **I/O port primitives** — `in8(port)` reads a byte from an x86-64 I/O port (zero-extended); `out8(port, value)` writes a byte.
+- **VGA framebuffer output** — `print()` in bare-metal mode writes directly to `0xB8000` with green text attribute `0x0A`. Register R15 is reserved as the VGA cursor offset and is preserved across function calls. Escape sequences `\n` and `\t` are resolved at compile time.
+- **Register constants** — named constants for all 16 x86-64 general-purpose registers added for codegen clarity.
+- **Extended register support** — `emitPushReg` and `emitPopReg` now support R8–R15.
+- **Test infrastructure** — `patchVGA()` replaces the `0xB8000` constant with a heap-allocated fake VGA buffer; `dumpVGA()` renders the buffer to stdout using `syscall.Write` (zero allocations).
 
 **What's new in v4.1.0 Citadel:**
 
@@ -287,6 +334,8 @@ ForgeZero is intentionally lightweight — a single statically compiled Go binar
 | `.fasm`                  | `fasm`                 | Must be downloaded separately from flatassembler.net |
 | `.c`                     | `gcc` or `clang`       | Strict flags + sanitizers by default |
 | `.cpp` / `.cc` / `.cxx`  | `g++` or `clang++`     | Same strict flags as C; `clang++` preferred in strict mode |
+| `.m`                     | `clang` or `zig cc`    | Objective-C; automatic framework linking (v4.6.0) |
+| `.glo`                   | built-in (HADES)       | Gloria; compiles to raw x86-64 ELF, no external tools required |
 
 ### Linker tools
 
@@ -294,7 +343,7 @@ ForgeZero is intentionally lightweight — a single statically compiled Go binar
 |---------|--------------|
 | `gcc`   | Default linking, C runtime support |
 | `ld`    | Raw linking (`-mode raw`), linker scripts; direct invocation with `-ld` flag (v4.1.0) |
-| `clang` | Strict sanitizer mode (`-strict`) |
+| `clang` | Strict sanitizer mode (`-strict`); Objective-C compilation |
 | `ar`    | Static library mode (`-type static`) |
 
 ### Cross-compilation tools (optional)
@@ -306,11 +355,12 @@ When using `-target <triple>`, `fz` looks for prefixed toolchain binaries on you
 | `arm-linux-gnueabihf`    | `arm-linux-gnueabihf-gcc`    |
 | `aarch64-linux-gnu`      | `aarch64-linux-gnu-gcc`      |
 | `riscv64-linux-gnu`      | `riscv64-linux-gnu-gcc`      |
+| `riscv64-linux-musl`     | `riscv64-linux-musl-gcc` or `-zig` (v4.5.1) |
 | `x86_64-linux-gnu`       | `x86_64-linux-gnu-gcc`       |
 
 Install cross-compilers via your package manager (e.g. `sudo apt install gcc-arm-linux-gnueabihf`).
 
-When using `-zig`, no prefixed toolchain is required — Zig resolves the target internally. See [Section 18](#18-zig-toolchain-backend).
+When using `-zig`, no prefixed toolchain is required — Zig resolves the target internally. See [Section 21](#21-zig-toolchain-backend).
 
 ### Optional tools (used internally)
 
@@ -341,7 +391,7 @@ sudo apt update
 sudo apt install -y nasm gcc binutils git
 ```
 
-**Install Clang (optional, for `-strict` mode):**
+**Install Clang (required for Objective-C; optional for `-strict` mode):**
 
 ```bash
 sudo apt install -y clang
@@ -477,7 +527,7 @@ macOS support is in progress. The following setup works for most use cases today
 brew install nasm gcc go git zig
 ```
 
-> **Note:** macOS ships `clang` as the system compiler under the `gcc` alias via Xcode Command Line Tools. `brew install gcc` installs it as `gcc-14` (or similar). ForgeZero uses whatever `gcc` resolves to on your `PATH`. The Darwin syscall layer is currently stubbed — builds succeed but runtime behavior is untested.
+> **Note:** macOS ships `clang` as the system compiler under the `gcc` alias via Xcode Command Line Tools. `brew install gcc` installs it as `gcc-14` (or similar). ForgeZero uses whatever `gcc` resolves to on your `PATH`. The Darwin syscall layer is currently stubbed — builds succeed but runtime behavior is untested. Objective-C compilation on macOS requires Xcode Command Line Tools (`xcode-select --install`) for the full system framework headers.
 
 **Install ForgeZero:**
 
@@ -614,7 +664,8 @@ go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 The binary lands in `$GOPATH/bin`. Verify:
 
 ```bash
-fz -v
+fz -v        # prints: 4.7.0
+fz --version # prints: full details block
 ```
 
 ---
@@ -642,6 +693,20 @@ fz -cc main.cpp
 ./main
 ```
 
+**Compile an Objective-C file:**
+
+```bash
+fz -cc main.m
+./main
+```
+
+**Compile a Gloria file:**
+
+```bash
+fz -gloria main.glo
+./main
+```
+
 **Build an entire directory:**
 
 ```bash
@@ -653,6 +718,13 @@ fz -dir ./src
 
 ```bash
 fz -init
+```
+
+**Build with a profile:**
+
+```bash
+fz -p performance -cc main.c
+fz -profile power-saver -dir ./src
 ```
 
 **Build with cross-compilation:**
@@ -727,6 +799,12 @@ fz verify
 fz bench
 ```
 
+**Generate contributor guidance:**
+
+```bash
+fz contribute
+```
+
 **Build for WebAssembly (WASI, via Zig):**
 
 ```bash
@@ -752,14 +830,16 @@ fz
 
 ## 5. Supported Languages & Extensions
 
-| Extension               | Language  | Backend                    | Notes |
-|-------------------------|-----------|----------------------------|-------|
-| `.asm`                  | Assembly  | NASM                       | x86/x86-64, Intel syntax, ELF64 |
-| `.s`                    | Assembly  | GAS via `gcc -c`           | AT&T syntax |
-| `.S`                    | Assembly  | GAS via `gcc -c`           | AT&T syntax + C preprocessor |
-| `.fasm`                 | Assembly  | FASM                       | Separate install; auto `format ELF64` injection (v3.0.0) |
-| `.c`                    | C         | GCC, Clang, or `zig cc`    | Strict flags + sanitizers by default |
-| `.cpp` / `.cc` / `.cxx` | C++       | G++, Clang++, or `zig c++` | Same strict flags as C (v1.7.0+) |
+| Extension               | Language      | Backend                    | Notes |
+|-------------------------|---------------|----------------------------|-------|
+| `.asm`                  | Assembly      | NASM                       | x86/x86-64, Intel syntax, ELF64 |
+| `.s`                    | Assembly      | GAS via `gcc -c`           | AT&T syntax |
+| `.S`                    | Assembly      | GAS via `gcc -c`           | AT&T syntax + C preprocessor |
+| `.fasm`                 | Assembly      | FASM                       | Separate install; auto `format ELF64` injection (v3.0.0) |
+| `.c`                    | C             | GCC, Clang, or `zig cc`    | Strict flags + sanitizers by default |
+| `.cpp` / `.cc` / `.cxx` | C++           | G++, Clang++, or `zig c++` | Same strict flags as C (v1.7.0+) |
+| `.m`                    | Objective-C   | Clang or `zig cc`          | Auto framework linking; Clang/Zig backend required (v4.6.0) |
+| `.glo`                  | Gloria        | Built-in (HADES)           | Compiles to raw x86-64 ELF; 69–125 byte output |
 
 All other extensions are silently ignored during directory and recursive scanning.
 
@@ -775,6 +855,8 @@ Compiles and links a single source file into a binary.
 fz -asm program.asm
 fz -cc main.c
 fz -cc main.cpp
+fz -cc main.m
+fz -gloria main.glo
 ```
 
 - Output binary name is derived from the source filename (`program.asm` → `program`).
@@ -840,18 +922,20 @@ CLI flags always take precedence over config file values.
 fz [options]
 ```
 
-At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, `sbom`, `audit`, `verify`, `bench`, `doctor`, or a valid config file must be present.
+At least one of `-asm`, `-cc`, `-gloria`, `-dir`, `-init`, `-shell`, `-contribute`, `pm`, `sbom`, `audit`, `verify`, `bench`, `doctor`, or a valid config file must be present.
 
 ### Full Flag Reference
 
 | Flag | Argument | Default | Description |
 |------|----------|---------|-------------|
 | `-asm` | `<file>` | — | Assemble the given assembly source file. |
-| `-cc` | `<file>` | — | Compile the given C or C++ source file. |
+| `-cc` | `<file>` | — | Compile the given C, C++, or Objective-C source file. |
+| `-gloria` | `<file>` | — | Compile the given Gloria (`.glo`) source file via the built-in HADES engine. |
 | `-dir` | `<dir>` | — | Recursively build all supported files in the directory. |
 | `-out` | `<name>` | Derived from source | Name of the output binary. |
 | `-out-obj` | `<name>` | `<basename>.o` | Object file name (single-file mode only). |
-| `-mode` | `auto\|c\|raw` | `auto` | Linking mode. See [Linking Modes](#8-linking-modes). |
+| `-profile`, `-p` | `performance\|balanced\|power-saver` | `balanced` | Apply a named build profile. Persisted to `~/.config/fz/.profile.config`. (v4.7.0) |
+| `-mode` | `auto\|c\|raw` | `auto` | Linking mode. See [Section 9](#9-linking-modes). |
 | `-ld` | — | off | Invoke the linker directly, bypassing compiler validation layers. Reduces overhead ~3–5% on small projects. (v4.1.0) |
 | `-format` | `elf32\|elf64\|bin` | `elf64` | Output format for assembled binaries. |
 | `-target` | `<triple>` | — | Cross-compilation target triple (e.g. `arm-linux-gnueabihf`, `wasm32-wasi`). |
@@ -863,7 +947,7 @@ At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, `sbom`, `audit`,
 | `-shared` | — | off | Build a shared library (`.so` / `.dylib` / `.dll`). |
 | `-cc-flag` | `<flags>` | — | Extra compiler flags, space-separated, injected after standard flags. |
 | `-ld-flag` | `<flags>` | — | Extra linker flags, space-separated, appended to the linker command. |
-| `-j` | `<N>` | `1` | Parallel compilation jobs. `0` = auto (number of CPU cores). |
+| `-j` | `<N>` | Profile-dependent | Parallel compilation jobs. `0` = auto (number of CPU cores). Overridden by `-profile`. |
 | `-T` | `<script>` | — | Linker script to pass to `ld`. |
 | `-Ttext` | `<addr>` | — | Entry point address to pass to the linker (hex or decimal). |
 | `-debug` | — | off | Pass `-g` to the assembler/compiler to emit debug symbols. |
@@ -884,7 +968,8 @@ At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, `sbom`, `audit`,
 | `-timeout` | `<sec>` | `60` | Timeout in seconds for each sub-command. |
 | `-manifest` | `<file>` | `.fz.manifest` | Path to the BLAKE3 source manifest used by `fz verify`. |
 | `-h`, `--help` | — | — | Print help and exit. |
-| `-v`, `--version` | — | — | Print version and exit. |
+| `-v` | — | — | Print short version string and exit (`4.7.0`). |
+| `--version` | — | — | Print full version details (platform, Go version, build metadata) and exit. |
 
 ### Package Manager Sub-commands
 
@@ -924,9 +1009,72 @@ At least one of `-asm`, `-cc`, `-dir`, `-init`, `-shell`, `pm`, `sbom`, `audit`,
 | `fz bench -n <N>` | Run N times; report average and standard deviation per phase. |
 | `fz bench -json` | Emit the benchmark report as JSON. |
 
+### Contributor Sub-commands
+
+| Command | Description |
+|---------|-------------|
+| `fz contribute` | Generate `CONTRIBUTING_USER.md` with environment diagnostics and contributor guidance. |
+
 ---
 
-## 8. Linking Modes
+## 8. Build Profiles (`-profile` / `-p`)
+
+> **New in v4.7.0**
+
+Build profiles are named presets that configure CPU core usage, parallel job count, and compiler optimization level in a single flag. The active profile is persisted between runs in `~/.config/fz/.profile.config` and applied automatically on subsequent invocations unless overridden.
+
+### Profile Table
+
+| Profile | Cores (`-j`) | Optimization | GOMAXPROCS | Use case |
+|---------|-------------|-------------|------------|----------|
+| `performance` | All cores | `-O3` | All cores | Maximum build speed; CI, release builds |
+| `balanced` | Half cores | `-O2` | Half cores | Default; daily development |
+| `power-saver` | 1 | `-Os` | 1 | Battery-constrained environments; minimal heat |
+
+### Usage
+
+```bash
+# Short form
+fz -p performance -cc main.c
+fz -p power-saver -dir ./src
+
+# Long form
+fz -profile performance -cc main.c
+fz -profile balanced -dir ./src
+fz -profile power-saver -dir ./src -verbose
+```
+
+### Persistence
+
+The active profile is written to `~/.config/fz/.profile.config` on each invocation. Subsequent calls to `fz` without `-profile` or `-p` will use the last persisted profile. To reset to the default (`balanced`), either pass `-profile balanced` explicitly or delete the config file:
+
+```bash
+rm ~/.config/fz/.profile.config
+```
+
+### Interaction with other flags
+
+Flags that directly override profile-managed settings take precedence over the profile:
+
+```bash
+# Profile sets -j to all cores, but -j 2 overrides it
+fz -p performance -dir ./src -j 2
+```
+
+`GOMAXPROCS` is set internally by `fz` for the duration of the build process. It does not affect the calling shell environment.
+
+### Profile in configuration file
+
+```yaml
+# .fz.yaml
+profile: performance
+```
+
+CLI `-profile` / `-p` takes precedence over the config file value.
+
+---
+
+## 9. Linking Modes
 
 The `-mode` flag controls how compiled object files are linked into a final binary.
 
@@ -974,9 +1122,9 @@ The `-ld` flag invokes the linker directly, bypassing compiler validation layers
 
 ---
 
-## 9. C Compilation
+## 10. C Compilation
 
-### 9.1 Strict Warning Flags
+### 10.1 Strict Warning Flags
 
 Every `.c` file compiled by `fz` receives these flags unconditionally:
 
@@ -995,7 +1143,7 @@ Every `.c` file compiled by `fz` receives these flags unconditionally:
 
 Any warning is treated as an error and stops the build immediately. This is intentional — ForgeZero enforces clean, portable C code by default.
 
-### 9.2 Sanitizers
+### 10.2 Sanitizers
 
 **Standard mode (default — always enabled unless `-sanitize=false`):**
 
@@ -1019,11 +1167,11 @@ Any warning is treated as an error and stops the build immediately. This is inte
 fz -cc main.c -sanitize=false
 ```
 
-> **Note:** Sanitizers are automatically disabled for WebAssembly targets (`wasm32-*`). See [Section 23](#23-webassembly-wasm).
+> **Note:** Sanitizers are automatically disabled for WebAssembly targets (`wasm32-*`). See [Section 26](#26-webassembly-wasm).
 
 ---
 
-## 10. C++ Compilation
+## 11. C++ Compilation
 
 Added in **v1.7.0**. ForgeZero compiles `.cpp`, `.cc`, and `.cxx` files using `g++` or `clang++` (or `zig c++` when `-zig` is active). The same strict warning flags applied to C are applied identically to C++:
 
@@ -1051,9 +1199,218 @@ fz -dir ./src
 
 ---
 
-## 11. Cross-Compilation
+## 12. Objective-C Compilation
 
-Added in **v1.9.0**, extended with Zig backend in **v3.0.0**, validated for `amd64` and `arm64` in **v4.1.0**.
+> **New in v4.6.0**
+
+ForgeZero supports Objective-C (`.m`) source files as a first-class extension. No additional configuration is required — the build pipeline detects `.m` files and delegates compilation to Clang or the Zig backend automatically.
+
+### Compilation pipeline
+
+1. Source recognition — `.m` files are identified in utility and parser layers alongside `.c` and `.cpp`.
+2. Backend selection — Clang is selected by default; Zig is used when `-zig` is active.
+3. Compilation — the file is compiled with `-x objective-c` and the appropriate standard flags.
+4. Auto-linking — the Objective-C runtime library (`-lobjc`) and any required system frameworks are linked automatically. Diagnostic output from the framework linker is normalized to ForgeZero's standard format.
+
+### Usage
+
+```bash
+# Single Objective-C file
+fz -cc main.m
+./main
+
+# With verbose output (displays Objective-C compilation stages)
+fz -cc main.m -verbose
+
+# Directory with mixed sources
+fz -dir ./src
+
+# With Zig backend
+fz -cc main.m -zig
+```
+
+### Requirements
+
+- **Clang** must be on `PATH`. On macOS, the Xcode Command Line Tools provide a full-featured Clang with all system framework headers. On Linux, `sudo apt install clang` is sufficient for most Objective-C use cases that do not require macOS-specific frameworks (Foundation, AppKit, etc.).
+- When using `-zig`, Zig's bundled Clang frontend handles `.m` files; no separate Clang installation is needed.
+
+> **Note:** Objective-C framework headers specific to macOS (Foundation, UIKit, AppKit, CoreData, etc.) are not available on Linux. Cross-platform Objective-C code using only the GNU Objective-C runtime compiles on Linux without issue.
+
+---
+
+## 13. Gloria Language
+
+> **Initial release: v3.0.0 GLORIA** · **JIT features: v4.4.0** · **Reliability improvements: v4.5.1**
+
+### 13.1 Overview
+
+Gloria is ForgeZero's integrated systems programming language. It compiles directly to raw x86-64 ELF binaries via the HADES engine with no external assembler, compiler, or linker required. Gloria is designed for bare-metal targets, OS kernels, firmware, and other environments where binary size and toolchain footprint matter.
+
+Key properties:
+
+- Go/Rust-like syntax with a minimal feature set.
+- Compiled output: **69–125 bytes** for typical programs.
+- No runtime dependencies — the output is a self-contained ELF64 binary.
+- Bare-metal VGA framebuffer output via `print()` when compiled in kernel mode.
+- x86-64 I/O port access via `in8()` / `out8()`.
+- Arbitrary memory read/write via `peek()` / `poke()`.
+
+### 13.2 Syntax Reference
+
+```go
+fn main() {
+    let a = 10
+    let b = 20
+    let c = a + b
+    print("result computed")
+}
+```
+
+**Supported constructs:**
+
+| Construct | Example |
+|-----------|---------|
+| Variable declaration | `let x = 42` |
+| Arithmetic | `let y = x + 1`, `x -= 5`, `x *= 2` |
+| Function definition | `fn add(a, b) { ... }` |
+| Function call | `let r = add(1, 2)` |
+| Conditional | `if x { ... }` |
+| Loop | `while x { ... }` |
+| Print | `print("hello")` |
+| Memory read | `let v = peek(0xB8000)` |
+| Memory write | `poke(0xB8000, 0x0741)` |
+| I/O port read | `let v = in8(0x60)` |
+| I/O port write | `out8(0x3F8, 65)` |
+
+### 13.3 Control Flow
+
+**`if` statement:**
+
+Evaluates a variable. If the variable is non-zero, the body executes.
+
+```go
+let x = 1
+if x {
+    print("x is set")
+}
+```
+
+**`while` loop** (v4.4.0):
+
+Iterates while the condition variable is non-zero. Supports `=`, `+=`, and `-=` assignment and builtin calls inside the loop body.
+
+```go
+let i = 5
+while i {
+    print("counting")
+    i -= 1
+}
+```
+
+### 13.4 Memory Access & I/O Ports
+
+> **New in v4.4.0**
+
+**`peek(address)`** — reads a 16-bit value from the specified memory address. The address may be an immediate integer literal or a variable.
+
+```go
+let val = peek(0xB8000)
+let addr = 0x1000
+let x = peek(addr)
+```
+
+**`poke(address, value)`** — writes a 16-bit value to the specified memory address. Both arguments may be immediates or variables.
+
+```go
+poke(0xB8000, 0x0741)   // write 'A' with white-on-black to VGA
+let pos = 2
+poke(pos, 0x0742)
+```
+
+**`in8(port)`** — reads one byte from an x86-64 I/O port. The return value is zero-extended to 64 bits.
+
+```go
+let scancode = in8(0x60)
+```
+
+**`out8(port, value)`** — writes one byte to an x86-64 I/O port.
+
+```go
+out8(0x3F8, 65)   // transmit 'A' on COM1
+```
+
+### 13.5 VGA Framebuffer Output
+
+> **New in v4.4.0**
+
+When Gloria is compiled in bare-metal (kernel) mode, `print()` writes directly to the VGA text-mode framebuffer at `0xB8000` using green text (`attribute byte 0x0A`).
+
+**Behavior:**
+
+- Register **R15** is reserved as the VGA cursor offset and is preserved across all function calls.
+- Escape sequences `\n` and `\t` in string literals are parsed and converted to the corresponding control characters at compile time.
+- `emitLowLevelPrint` dispatches to the VGA path when `kernelMode` is set, or to the `sys_write` syscall path in userspace mode.
+
+```go
+fn main() {
+    print("Booting...\n")
+    print("OK\t[done]")
+}
+```
+
+In userspace mode (default), `print()` uses Linux `sys_write` (fd 1). The kernel/userspace dispatch is automatic based on the compilation target.
+
+### 13.6 Register Constants
+
+> **New in v4.4.0**
+
+Named constants for all 16 x86-64 general-purpose registers are available to Gloria programs and are used internally by the HADES codegen layer for clarity and correctness:
+
+| Constant | Register | Encoding |
+|----------|----------|----------|
+| `regRAX` | RAX | 0 |
+| `regRCX` | RCX | 1 |
+| `regRDX` | RDX | 2 |
+| `regRBX` | RBX | 3 |
+| `regRSP` | RSP | 4 |
+| `regRBP` | RBP | 5 |
+| `regRSI` | RSI | 6 |
+| `regRDI` | RDI | 7 |
+| `regR8`  | R8  | 8 |
+| `regR9`  | R9  | 9 |
+| `regR10` | R10 | 10 |
+| `regR11` | R11 | 11 |
+| `regR12` | R12 | 12 |
+| `regR13` | R13 | 13 |
+| `regR14` | R14 | 14 |
+| `regR15` | R15 | 15 |
+
+R15 is reserved by the Gloria runtime as the VGA cursor register in bare-metal mode and must not be used as a general-purpose variable in kernel Gloria programs.
+
+### 13.7 Compilation Pipeline
+
+```bash
+fz -gloria main.glo
+./main
+
+fz -gloria main.glo -verbose
+fz -gloria main.glo -out kernel.elf
+```
+
+**Pipeline stages:**
+
+1. **Lexer** — tokenizes `.glo` source; CPU instruction mnemonics are disambiguated from user labels at the lexer/parser boundary (v4.1.0 HADES).
+2. **Parser** — builds an AST; malformed input triggers `ErrMalformedAST` before codegen begins; no silent fallback degradation.
+3. **Codegen (HADES)** — emits x86-64 machine code from the AST using zero-allocation stack buffers.
+4. **ELF emission** — writes a valid ELF64 binary with correct local-before-global `.symtab` ordering and deterministic relocation offsets.
+
+The entire pipeline runs in a single process with zero intermediate files on disk. Output binary size is typically 69–125 bytes.
+
+---
+
+## 14. Cross-Compilation
+
+Added in **v1.9.0**, extended with Zig backend in **v3.0.0**, validated for `amd64` and `arm64` in **v4.1.0**, extended to `riscv64-linux-musl` in **v4.5.1**.
 
 ### Basic Usage
 
@@ -1077,7 +1434,7 @@ Without `-zig`, `fz` constructs prefixed compiler and linker names by prepending
 - Linker: `<triple>-gcc` or `<triple>-ld` depending on linking mode
 - Archiver: `<triple>-ar` (when `-type static`)
 
-With `-zig`, the target triple is passed directly to `zig cc -target`. No prefixed binary lookup happens.
+With `-zig`, the target triple is passed directly to `zig cc -target`. No prefixed binary lookup happens. Zig ships all libc variants (musl, glibc, WASI sysroot) internally, making it the recommended backend for static musl targets including `riscv64-linux-musl`.
 
 ### Installing Cross-Compilers (without Zig)
 
@@ -1118,7 +1475,7 @@ flags:
 
 ---
 
-## 12. Static Library Mode
+## 15. Static Library Mode
 
 Added in **v1.8.0**. ForgeZero can produce static libraries (`.a` archives) instead of linked executables.
 
@@ -1153,7 +1510,7 @@ fz -dir ./src -type static -lib mylib -zig -target aarch64-linux-musl
 
 ---
 
-## 13. Shared Library Mode
+## 16. Shared Library Mode
 
 Added in **v2.0.0 NEXUS**.
 
@@ -1172,7 +1529,7 @@ When building shared libraries for Linux, always include `-fPIC` in `-cc-flag`.
 
 ---
 
-## 14. Package Manager (fz pm)
+## 17. Package Manager (fz pm)
 
 Added in **v2.0.0 NEXUS**. `fz pm` manages external C/ASM dependencies from Git repositories or the official ForgeZero package catalog.
 
@@ -1240,9 +1597,9 @@ Installs a named package from the catalog with BLAKE3 hash verification.
 
 ---
 
-## 15. Internal Mechanisms
+## 18. Internal Mechanisms
 
-### 15.1 Build Cache (BLAKE3)
+### 18.1 Build Cache (BLAKE3)
 
 ForgeZero caches compiled object files in `.fz_cache/` to skip recompilation of unchanged sources.
 
@@ -1252,6 +1609,7 @@ ForgeZero caches compiled object files in `.fz_cache/` to skip recompilation of 
 - `-debug` flag state
 - `-mode` value
 - `-target` value
+- active build profile
 
 | File size | SHA256 (pre-2.0.0) | BLAKE3 (2.0.0+) |
 |-----------|--------------------|-----------------|
@@ -1271,7 +1629,7 @@ fz -dir . -clean
 
 ---
 
-### 15.2 Pre-link Symbol Check
+### 18.2 Pre-link Symbol Check
 
 Before invoking the linker, `fz` scans all compiled object files for duplicate global symbol definitions.
 
@@ -1287,7 +1645,7 @@ fz -dir ./src -no-symbol-check
 
 ---
 
-### 15.3 Watch Mode
+### 18.3 Watch Mode
 
 ```bash
 fz -dir ./src -watch
@@ -1298,7 +1656,7 @@ Uses [fsnotify](https://github.com/fsnotify/fsnotify) for cross-platform filesys
 
 ---
 
-### 15.4 JSON Output
+### 18.4 JSON Output
 
 When `-json` is passed, a single JSON object is written to stdout on completion:
 
@@ -1331,7 +1689,7 @@ echo "Build succeeded in ${duration}ms"
 
 ---
 
-### 15.5 Clean
+### 18.5 Clean
 
 ```bash
 fz -dir . -clean
@@ -1343,18 +1701,20 @@ Removes: `.fz_objs/`, `.fz_cache/`, all `.o` files, and executable files identif
 
 ---
 
-### 15.6 Parallel Builds
+### 18.6 Parallel Builds
 
 ```bash
 fz -dir ./src -j 4   # compile up to 4 files simultaneously
 fz -dir ./src -j 0   # auto: use all available CPU cores
 ```
 
+When a build profile is active, `-j` is set automatically by the profile. An explicit `-j` flag always overrides the profile.
+
 As of **v3.0.0 GLORIA**, the parallel build and logging pipeline is race-condition-free, verified with `go test -race`.
 
 ---
 
-### 15.7 Interactive Shell
+### 18.7 Interactive Shell
 
 ```bash
 fz -shell
@@ -1373,7 +1733,7 @@ Opens a REPL for issuing `fz` commands without re-invoking the binary.
 
 ---
 
-### 15.8 Virtual Filesystem Layer (VFS)
+### 18.8 Virtual Filesystem Layer (VFS)
 
 > **New in v3.1.0 Aegis**
 
@@ -1387,13 +1747,13 @@ All durable and security-sensitive I/O routes through the `internal/fs` `FileSys
 | `fs.Mock` | Test double that injects per-operation errors |
 | `utils.SetFileSystem` | Runtime swap used only in tests |
 
-Full detail: [Section 31](#31-virtual-filesystem-layer-aegis).
+Full detail: [Section 35](#35-virtual-filesystem-layer-aegis).
 
 ---
 
-## 16. Configuration File Reference
+## 19. Configuration File Reference
 
-### 16.1 Basic Fields
+### 19.1 Basic Fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -1405,10 +1765,11 @@ Full detail: [Section 31](#31-virtual-filesystem-layer-aegis).
 | `format` | string | `elf64` | Output format: `elf32`, `elf64`, or `bin` |
 | `target` | string | — | Cross-compilation target triple |
 | `backend` | string | `auto` | Compiler backend: `auto`, `gcc`, `clang`, or `zig` |
+| `profile` | string | `balanced` | Build profile: `performance`, `balanced`, or `power-saver` |
 | `reproducible` | bool | `false` | Enable reproducible (deterministic) build mode |
 | `type` | string | `executable` | Output type: `executable` or `static` |
 | `lib` | string | — | Library name for `-type static` |
-| `jobs` | int | `1` | Parallel compilation jobs (`0` = auto) |
+| `jobs` | int | Profile-dependent | Parallel compilation jobs (`0` = auto); overrides profile |
 | `debug` | bool | `false` | Emit debug symbols (`-g`) |
 | `verbose` | bool | `false` | Print all invoked commands |
 | `keep_obj` | bool | `false` | Preserve object files after linking |
@@ -1419,7 +1780,7 @@ Full detail: [Section 31](#31-virtual-filesystem-layer-aegis).
 
 ---
 
-### 16.2 Multiple Source Directories
+### 19.2 Multiple Source Directories
 
 ```yaml
 source_dirs:
@@ -1440,7 +1801,7 @@ Object file names are prefixed with their parent directory:
 
 ---
 
-### 16.3 Explicit Source File Lists
+### 19.3 Explicit Source File Lists
 
 ```yaml
 source_files:
@@ -1455,7 +1816,7 @@ mode: raw
 
 ---
 
-### 16.4 Include & Exclude Patterns
+### 19.4 Include & Exclude Patterns
 
 ```yaml
 exclude:
@@ -1472,7 +1833,7 @@ include:
 
 ---
 
-### 16.5 Library Linking
+### 19.5 Library Linking
 
 ```yaml
 libs:
@@ -1483,7 +1844,7 @@ libs:
 
 ---
 
-### 16.6 Custom Compiler & Linker Flags
+### 19.6 Custom Compiler & Linker Flags
 
 ```yaml
 flags:
@@ -1504,7 +1865,7 @@ flags:
 
 ---
 
-### 16.7 .fzignore File
+### 19.7 .fzignore File
 
 Works exactly like `.gitignore`. Evaluated after `exclude` patterns.
 
@@ -1519,7 +1880,7 @@ legacy/old_abi.asm
 
 ---
 
-### 16.8 Full Annotated Example
+### 19.8 Full Annotated Example
 
 ```yaml
 # fz.yaml
@@ -1532,6 +1893,7 @@ source_dirs:
 output: forgeos.elf
 format: elf64
 
+profile: balanced
 # target: arm-linux-gnueabihf
 # backend: zig
 # reproducible: true
@@ -1555,6 +1917,8 @@ include:
   - "*.asm"
   - "*.c"
   - "*.cpp"
+  - "*.m"
+  - "*.glo"
   - "*.s"
 
 libs:
@@ -1578,9 +1942,9 @@ ignore_file: .myfzignore
 
 ---
 
-## 17. Assembler Backends
+## 20. Assembler Backends
 
-### 17.1 NASM (.asm)
+### 20.1 NASM (.asm)
 
 **Command:** `nasm -felf64 <file> -o <output.o>`
 
@@ -1612,7 +1976,7 @@ fz -asm hello.asm
 
 ---
 
-### 17.2 GAS (.s / .S)
+### 20.2 GAS (.s / .S)
 
 **Command:** `gcc -c <file> -o <output.o>`
 
@@ -1644,7 +2008,7 @@ fz -asm hello.s
 
 ---
 
-### 17.3 FASM (.fasm)
+### 20.3 FASM (.fasm)
 
 **Command:** `fasm <file> <output.o>`
 
@@ -1678,15 +2042,15 @@ fz -asm hello.fasm
 
 ---
 
-## 18. Zig Toolchain Backend
+## 21. Zig Toolchain Backend
 
-> **New in v3.0.0 GLORIA** · cross-architecture validated in **v4.1.0 Citadel**
+> **New in v3.0.0 GLORIA** · cross-architecture validated in **v4.1.0 Citadel** · musl extended in **v4.5.1**
 
-### 18.1 Why Zig?
+### 21.1 Why Zig?
 
 The Zig compiler ships as a single self-contained binary that includes: a full copy of musl libc, glibc stubs, and WASI sysroot for every supported target; all necessary C and C++ runtime headers; a Clang-based C/C++ frontend. This makes ForgeZero genuinely zero-dependency for cross-compilation when the Zig backend is active.
 
-### 18.2 Activating the Zig Backend
+### 21.2 Activating the Zig Backend
 
 ```bash
 fz -cc main.c -zig
@@ -1708,16 +2072,16 @@ target: aarch64-linux-musl
 sanitize: false
 ```
 
-### 18.3 Toolchain Selection Logic
+### 21.3 Toolchain Selection Logic
 
-| Flags active | C compiler | C++ compiler |
-|---|---|---|
-| (default) | `gcc` or `clang` | `g++` or `clang++` |
-| `-zig` | `zig cc` | `zig c++` |
-| `-zig -target <T>` | `zig cc -target T` | `zig c++ -target T` |
-| `-zig -strict` | `zig cc` (full sanitizers) | `zig c++` |
+| Flags active | C compiler | C++ compiler | Obj-C compiler |
+|---|---|---|---|
+| (default) | `gcc` or `clang` | `g++` or `clang++` | `clang` |
+| `-zig` | `zig cc` | `zig c++` | `zig cc` |
+| `-zig -target <T>` | `zig cc -target T` | `zig c++ -target T` | `zig cc -target T` |
+| `-zig -strict` | `zig cc` (full sanitizers) | `zig c++` | `zig cc` |
 
-### 18.4 Installing Zig
+### 21.4 Installing Zig
 
 ```bash
 # Debian / Ubuntu
@@ -1737,7 +2101,7 @@ brew install zig
 zig version
 ```
 
-### 18.5 FASM Improvements (v3.0.0)
+### 21.5 FASM Improvements (v3.0.0)
 
 **Automatic `format ELF64` injection.** When ForgeZero compiles a `.fasm` file and the file does not begin with a `format` directive, it automatically prepends `format ELF64 executable` in a temporary preprocessed copy. The original source file is never modified.
 
@@ -1758,11 +2122,11 @@ gdb ./boot
 
 ---
 
-## 19. Supply Chain Security
+## 22. Supply Chain Security
 
 > **New in v3.0.0 GLORIA** · atomic SBOM generation hardened in **v4.1.0 Citadel**
 
-### 19.1 SBOM Generation (fz sbom)
+### 22.1 SBOM Generation (fz sbom)
 
 ```bash
 fz sbom
@@ -1776,7 +2140,7 @@ Each component entry includes: name, version (Git commit SHA for vendored packag
 
 ---
 
-### 19.2 SAST Audit Scanner (fz audit)
+### 22.2 SAST Audit Scanner (fz audit)
 
 ```bash
 fz audit
@@ -1822,7 +2186,7 @@ Exit code `0` = no findings; `1` = any WARNING or above.
 
 ---
 
-## 20. Reproducible Builds
+## 23. Reproducible Builds
 
 > **New in v3.0.0 GLORIA** · deterministic output validated across `amd64`/`arm64` in **v4.1.0 Citadel**
 
@@ -1858,7 +2222,7 @@ sha256sum release_b
 
 ---
 
-## 21. Source Tree Integrity (fz verify)
+## 24. Source Tree Integrity (fz verify)
 
 > **New in v3.0.0 GLORIA**
 
@@ -1892,7 +2256,7 @@ fz verify -manifest ./release.manifest
 
 ---
 
-## 22. Build Profiler (fz bench)
+## 25. Build Profiler (fz bench)
 
 > **New in v3.0.0 GLORIA**
 
@@ -1936,7 +2300,7 @@ Total                                      349,323,226 ns    100.00%
 
 ---
 
-## 23. WebAssembly (WASM)
+## 26. WebAssembly (WASM)
 
 > **New in v3.0.0 GLORIA**
 
@@ -1979,7 +2343,7 @@ flags:
 
 ---
 
-## 24. Project Initialization
+## 27. Project Initialization
 
 Added in **v1.6.0**.
 
@@ -1998,7 +2362,39 @@ No existing file is overwritten.
 
 ---
 
-## 25. LSP & IDE Integration
+## 28. Contributor Guidance (fz contribute)
+
+> **New in v4.7.0**
+
+```bash
+fz contribute
+```
+
+`fz contribute` generates a `CONTRIBUTING_USER.md` file in the current working directory. This file is intended for developers who want to contribute to a ForgeZero-built project and need a clear, environment-specific starting point.
+
+**Generated content:**
+
+The file is populated dynamically based on the output of `fz doctor` and the current project's configuration:
+
+- **Environment diagnostics** — a summary of toolchain reachability, directory permissions, and platform data collected by the `fz doctor` audit. This section reflects the actual state of the contributor's machine, not a generic checklist.
+- **Build instructions** — the exact commands to build and test the project, derived from the active `.fz.yaml` or CLI defaults.
+- **Test recommendations** — standard `go test` invocations, coverage targets, and lint commands aligned with the project's testing policy.
+- **Good first issues guidance** — instructions for finding beginner-friendly issues, including a link to the repository's issue tracker filtered for the `good first issue` label.
+- **PR and commit guidelines** — branch naming conventions, commit message format (imperative mood, present tense), and pull request description template.
+
+**Example:**
+
+```bash
+fz contribute
+# Writes CONTRIBUTING_USER.md to the current directory
+cat CONTRIBUTING_USER.md
+```
+
+The file is written via `SecureWriteFile` (atomic write, mode `0644`). No existing `CONTRIBUTING_USER.md` is overwritten without confirmation.
+
+---
+
+## 29. LSP & IDE Integration
 
 Added in **v1.9.0**.
 
@@ -2017,7 +2413,7 @@ fz -dir ./src -compile-commands
 
 ---
 
-## 26. Self-Update
+## 30. Self-Update
 
 Added in **v1.9.0**.
 
@@ -2035,7 +2431,7 @@ sudo cp /usr/local/bin/fz.old /usr/local/bin/fz
 
 ---
 
-## 27. Examples
+## 31. Examples
 
 ### Minimal builds
 
@@ -2045,6 +2441,8 @@ fz -asm hello.s
 fz -asm hello.fasm
 fz -cc main.c
 fz -cc main.cpp
+fz -cc main.m
+fz -gloria main.glo
 ```
 
 ### Initialize a new project
@@ -2055,6 +2453,19 @@ fz -init
 mkdir src
 echo 'int main(void) { return 0; }' > src/main.c
 fz
+```
+
+### Build with a profile
+
+```bash
+# Maximum speed — all cores, -O3
+fz -p performance -dir ./src
+
+# Battery-friendly — single core, -Os
+fz -p power-saver -cc main.c
+
+# Default balanced profile (half cores, -O2)
+fz -profile balanced -dir ./src
 ```
 
 ### Debug build with verbose output
@@ -2082,6 +2493,18 @@ fz -asm boot.asm -ld -out boot.elf
 fz -cc main.c -strict
 ```
 
+### Objective-C application
+
+```bash
+fz -cc main.m -verbose
+```
+
+### Gloria bare-metal kernel output
+
+```bash
+fz -gloria kernel.glo -out kernel.elf
+```
+
 ### Build a full project directory
 
 ```bash
@@ -2104,6 +2527,12 @@ fz -cc main.c -target arm-linux-gnueabihf -sanitize=false
 
 ```bash
 fz -cc main.c -zig -target aarch64-linux-musl -sanitize=false
+```
+
+### Cross-compile for RISC-V musl (v4.5.1)
+
+```bash
+fz -cc main.c -zig -target riscv64-linux-musl -sanitize=false
 ```
 
 ### Build a static library
@@ -2178,6 +2607,13 @@ fz verify
 ```bash
 fz bench -dir ./src
 fz bench -dir ./src -n 5 -json | tee bench_report.json
+```
+
+### Generate contributor guidance
+
+```bash
+fz contribute
+cat CONTRIBUTING_USER.md
 ```
 
 ### Reproduce the official benchmark
@@ -2261,7 +2697,7 @@ sudo cp /usr/local/bin/fz.old /usr/local/bin/fz
 
 ---
 
-## 28. Exit Codes
+## 32. Exit Codes
 
 | Code | Meaning |
 |------|---------|
@@ -2271,7 +2707,7 @@ sudo cp /usr/local/bin/fz.old /usr/local/bin/fz
 
 ---
 
-## 29. Troubleshooting
+## 33. Troubleshooting
 
 ### `fz: command not found`
 
@@ -2305,6 +2741,15 @@ sudo apt install g++           # Debian / Ubuntu
 sudo dnf install gcc-c++       # Fedora
 sudo pacman -S gcc             # Arch (g++ included)
 brew install gcc               # macOS
+```
+
+### `clang: command not found` (Objective-C)
+
+```bash
+sudo apt install clang         # Debian / Ubuntu
+sudo dnf install clang         # Fedora
+sudo pacman -S clang           # Arch
+# macOS: xcode-select --install
 ```
 
 ### `zig: command not found`
@@ -2407,6 +2852,21 @@ fz -dir ./src
 fz -dir ./src -no-cache
 ```
 
+### Build profile not applying expected optimization level
+
+Verify the persisted profile:
+
+```bash
+cat ~/.config/fz/.profile.config
+```
+
+Reset to default:
+
+```bash
+rm ~/.config/fz/.profile.config
+fz -profile balanced -cc main.c
+```
+
 ### `fz pm add` fails / git not found
 
 ```bash
@@ -2448,59 +2908,72 @@ C:\msys64\mingw64\bin
 
 ---
 
-## 30. Roadmap
+## 34. Roadmap
 
 | Feature | Status |
 |---------|--------|
-| `exclude` patterns in config file | ✅ Done (v1.5.0) |
-| `include` patterns in config file | ✅ Done (v1.5.0) |
-| Multiple `source_dirs` | ✅ Done (v1.5.0) |
-| Explicit `source_files` list | ✅ Done (v1.5.0) |
-| `libs` field for library linking | ✅ Done (v1.5.0) |
-| `flags.cc` for C compiler flags | ✅ Done (v1.5.0) |
-| `.fzignore` file support | ✅ Done (v1.5.0) |
-| Multi-level config merging | ✅ Done (v1.5.0) |
-| `fz -init` project scaffolding | ✅ Done (v1.6.0) |
-| `-format bin` flat binary output | ✅ Done (v1.6.0) |
-| Parallel builds (`-j N`) | ✅ Done (v1.7.0) |
-| Interactive shell (`fz -shell`) | ✅ Done (v1.7.0) |
-| C++ support (`.cpp`, `.cc`, `.cxx`) | ✅ Done (v1.7.0) |
-| Static library mode (`-type static`) | ✅ Done (v1.8.0) |
-| Unique object file names (path-based) | ✅ Done (v1.8.0) |
-| Cross-compilation (`-target <triple>`) | ✅ Done (v1.9.0) |
-| LSP integration (`-compile-commands`) | ✅ Done (v1.9.0) |
-| Smart self-update with rollback | ✅ Done (v1.9.0) |
-| BLAKE3 hashing (7× faster cache) | ✅ Done (v2.0.0) |
-| Package manager (`fz pm`) | ✅ Done (v2.0.0) |
-| Official package catalog | ✅ Done (v2.0.0) |
-| Shared library support (`-shared`) | ✅ Done (v2.0.0) |
-| Zig toolchain backend (`-zig`) | ✅ Done (v3.0.0) |
-| SBOM generation (CycloneDX + BLAKE3) | ✅ Done (v3.0.0) |
-| SAST audit scanner (`fz audit`) | ✅ Done (v3.0.0) |
-| Reproducible builds (`--reproducible`) | ✅ Done (v3.0.0) |
-| Source tree verification (`fz verify`) | ✅ Done (v3.0.0) |
-| Symlink boundary protection | ✅ Done (v3.0.0) |
-| Build profiler (`fz bench`) | ✅ Done (v3.0.0) |
-| Race-condition-free parallel pipeline | ✅ Done (v3.0.0) |
-| FASM native ELF64 auto-injection | ✅ Done (v3.0.0) |
-| WebAssembly (`wasm32-emscripten` / `wasm32-wasi`) | ✅ Done (v3.0.0) |
-| VFS abstraction + `OpenVerified` TOCTOU hardening | ✅ Done (v3.1.0) |
-| Aegis hardened `RunCommand` wrapper | ✅ Done (v3.1.0) |
-| `SecureWriteFile` atomic write pipeline | ✅ Done (v3.1.0) |
-| Constant-time toolchain checksum verify | ✅ Done (v3.1.0) |
-| `fz doctor` self-audit command | ✅ Done (v3.1.0) |
-| Native Windows `fs.Windows` + rename retry | ✅ Done (v3.1.0) |
-| 90%+ coverage + `fs.Mock` fault injection | ✅ Done (v3.1.0) |
-| Zero-allocation linker hot-path (`0 allocs/op`) | ✅ Done (v4.1.0) |
-| Stack-buffered syscalls (`openHot`, `unlinkHot`) | ✅ Done (v4.1.0) |
-| HADES ELF emitter refactor (correct `.symtab` ordering, fixed relocations) | ✅ Done (v4.1.0) |
-| Direct linker invocation (`-ld` flag) | ✅ Done (v4.1.0) |
-| Arena size override (`--arena-size=N`) | ✅ Done (v4.1.0) |
-| Platform-specific syscall drivers (Linux/Windows/Darwin build tags) | ✅ Done (v4.1.0) |
-| Cross-architecture validation (`amd64` + `arm64`) | ✅ Done (v4.1.0) |
-| 400-module benchmark data point (4.95× speedup) | ✅ Done (v4.1.0) |
-| 100% `golangci-lint` compliance (strict mode) | ✅ Done (v4.1.0) |
-| Atomic SBOM generation helpers | ✅ Done (v4.1.0) |
+| `exclude` patterns in config file | Done (v1.5.0) |
+| `include` patterns in config file | Done (v1.5.0) |
+| Multiple `source_dirs` | Done (v1.5.0) |
+| Explicit `source_files` list | Done (v1.5.0) |
+| `libs` field for library linking | Done (v1.5.0) |
+| `flags.cc` for C compiler flags | Done (v1.5.0) |
+| `.fzignore` file support | Done (v1.5.0) |
+| Multi-level config merging | Done (v1.5.0) |
+| `fz -init` project scaffolding | Done (v1.6.0) |
+| `-format bin` flat binary output | Done (v1.6.0) |
+| Parallel builds (`-j N`) | Done (v1.7.0) |
+| Interactive shell (`fz -shell`) | Done (v1.7.0) |
+| C++ support (`.cpp`, `.cc`, `.cxx`) | Done (v1.7.0) |
+| Static library mode (`-type static`) | Done (v1.8.0) |
+| Unique object file names (path-based) | Done (v1.8.0) |
+| Cross-compilation (`-target <triple>`) | Done (v1.9.0) |
+| LSP integration (`-compile-commands`) | Done (v1.9.0) |
+| Smart self-update with rollback | Done (v1.9.0) |
+| BLAKE3 hashing (7× faster cache) | Done (v2.0.0) |
+| Package manager (`fz pm`) | Done (v2.0.0) |
+| Official package catalog | Done (v2.0.0) |
+| Shared library support (`-shared`) | Done (v2.0.0) |
+| Zig toolchain backend (`-zig`) | Done (v3.0.0) |
+| SBOM generation (CycloneDX + BLAKE3) | Done (v3.0.0) |
+| SAST audit scanner (`fz audit`) | Done (v3.0.0) |
+| Reproducible builds (`--reproducible`) | Done (v3.0.0) |
+| Source tree verification (`fz verify`) | Done (v3.0.0) |
+| Symlink boundary protection | Done (v3.0.0) |
+| Build profiler (`fz bench`) | Done (v3.0.0) |
+| Race-condition-free parallel pipeline | Done (v3.0.0) |
+| FASM native ELF64 auto-injection | Done (v3.0.0) |
+| WebAssembly (`wasm32-emscripten` / `wasm32-wasi`) | Done (v3.0.0) |
+| VFS abstraction + `OpenVerified` TOCTOU hardening | Done (v3.1.0) |
+| Aegis hardened `RunCommand` wrapper | Done (v3.1.0) |
+| `SecureWriteFile` atomic write pipeline | Done (v3.1.0) |
+| Constant-time toolchain checksum verify | Done (v3.1.0) |
+| `fz doctor` self-audit command | Done (v3.1.0) |
+| Native Windows `fs.Windows` + rename retry | Done (v3.1.0) |
+| 90%+ coverage + `fs.Mock` fault injection | Done (v3.1.0) |
+| Zero-allocation linker hot-path (`0 allocs/op`) | Done (v4.1.0) |
+| Stack-buffered syscalls (`openHot`, `unlinkHot`) | Done (v4.1.0) |
+| HADES ELF emitter refactor (`.symtab` ordering, fixed relocations) | Done (v4.1.0) |
+| Direct linker invocation (`-ld` flag) | Done (v4.1.0) |
+| Arena size override (`--arena-size=N`) | Done (v4.1.0) |
+| Platform-specific syscall drivers (Linux/Windows/Darwin) | Done (v4.1.0) |
+| Cross-architecture validation (`amd64` + `arm64`) | Done (v4.1.0) |
+| 400-module benchmark data point (4.95× speedup) | Done (v4.1.0) |
+| 100% `golangci-lint` compliance (strict mode) | Done (v4.1.0) |
+| Atomic SBOM generation helpers | Done (v4.1.0) |
+| Gloria `while` loops | Done (v4.4.0) |
+| Gloria `peek` / `poke` memory access | Done (v4.4.0) |
+| Gloria `in8` / `out8` I/O port primitives | Done (v4.4.0) |
+| Gloria VGA framebuffer output (`0xB8000`) | Done (v4.4.0) |
+| Gloria register constants (R0–R15) | Done (v4.4.0) |
+| Gloria extended register support (R8–R15) | Done (v4.4.0) |
+| Embedded musl runtime via `go:embed` (Linux x86_64) | Done (v4.5.0-think) |
+| RISC-V + musl cross-compilation (`riscv64-linux-musl`) | Done (v4.5.1) |
+| Gloria error propagation improvements | Done (v4.5.1) |
+| Objective-C support (`.m`, Clang/Zig, auto-linking) | Done (v4.6.0) |
+| Build profiles (`-profile` / `-p`) | Done (v4.7.0) |
+| `fz contribute` — `CONTRIBUTING_USER.md` generation | Done (v4.7.0) |
+| Version output refinement (`-v` / `--version`) | Done (v4.7.0) |
 | Colored terminal output (green success / red error) | Planned |
 | GDB integration and improved debug workflow | Planned |
 | Man page (`man fz`) | Planned |
@@ -2509,13 +2982,13 @@ C:\msys64\mingw64\bin
 
 ---
 
-## 31. Virtual Filesystem Layer (Aegis)
+## 35. Virtual Filesystem Layer (Aegis)
 
 > **Package:** `internal/fs` · **Consumers:** `internal/utils`, `internal/doctor`, `internal/verify`, `internal/sbom`, `internal/pkgman`
 
 ForgeZero v3.1.0 introduces a deliberate separation between *what* filesystem operations the build tool requires and *how* the host operating system performs them. Goals: enable deterministic fault-injection tests without patching `os` globally, and centralize symlink and path-substitution defenses in one audited code path.
 
-### 31.1 Design: The `FileSystem` Interface
+### 35.1 Design: The `FileSystem` Interface
 
 ```go
 type FileSystem interface {
@@ -2540,7 +3013,7 @@ type FileSystem interface {
 
 **Binding model:** `fs.Default` is set to `Unix{}` or `Windows{}` at compile time via build tags. `utils.fileSystem()` returns the active implementation.
 
-### 31.2 Unix Implementation and TOCTOU Mitigation
+### 35.2 Unix Implementation and TOCTOU Mitigation
 
 `OpenVerified` on Unix:
 
@@ -2569,7 +3042,7 @@ return f, nil
 | T2 | Reader calls `Open` | May read sensitive file | `Open` follows new symlink |
 | T3 | Compare identities | — | `os.SameFile(pre, post)` fails → `ErrPathChanged` |
 
-### 31.3 Windows Implementation
+### 35.3 Windows Implementation
 
 Native Windows support is a **separate compilation unit**, not a runtime fork:
 
@@ -2581,7 +3054,7 @@ Native Windows support is a **separate compilation unit**, not a runtime fork:
 
 `OpenVerified` on Windows follows the same logical steps as Unix. Every entry point normalizes paths through `CleanPath` (drive letters, backslashes, UNC prefixes).
 
-### 31.4 The `Mock` Implementation and Fault Injection
+### 35.4 The `Mock` Implementation and Fault Injection
 
 ```go
 m := fs.NewMock(fs.Default)
@@ -2600,7 +3073,7 @@ defer utils.SetFileSystem(nil)
 | `ErrSymlink` | Symlink policy rejection |
 | `ErrPathChanged` | TOCTOU detection |
 
-### 31.5 Consumer Integration
+### 35.5 Consumer Integration
 
 | Function | VFS operations |
 |----------|----------------|
@@ -2611,11 +3084,11 @@ defer utils.SetFileSystem(nil)
 
 ---
 
-## 32. Aegis Security Core
+## 36. Aegis Security Core
 
 > **Packages:** `internal/utils`, `internal/fs`, `internal/pkgman`, `internal/assembler`, `internal/linker`, `internal/zig`
 
-### 32.1 Command Hardening: The `RunCommand` Pipeline
+### 36.1 Command Hardening: The `RunCommand` Pipeline
 
 Every external process spawned by ForgeZero — `git`, `ar`, `zig`, `fasm`, `gcc`, `g++`, `clang`, `ld`, `nasm`, `objdump`, `nm`, `readelf` — must pass through `utils.RunCommand`.
 
@@ -2636,7 +3109,7 @@ Every external process spawned by ForgeZero — `git`, `ar`, `zig`, `fasm`, `gcc
 
 **Stage 5 — Execution root:** `cmd.Dir` is set to the project execution root so relative paths in tool invocations resolve inside the project tree.
 
-### 32.2 Atomic Writes: `SecureWriteFile`
+### 36.2 Atomic Writes: `SecureWriteFile`
 
 `atomicWrite` algorithm:
 
@@ -2647,9 +3120,9 @@ Every external process spawned by ForgeZero — `git`, `ar`, `zig`, `fasm`, `gcc
 5. `renameResolved(tmpName, resolved)`.
 6. `Chmod(resolved, 0600)`.
 
-Files written through this path include: `.fz.yaml` updates from `fz pm`, `.fz.manifest`, `compile_commands.json`, SBOM outputs, and `fz -init` templates.
+Files written through this path include: `.fz.yaml` updates from `fz pm`, `.fz.manifest`, `compile_commands.json`, SBOM outputs, `CONTRIBUTING_USER.md`, and `fz -init` templates.
 
-### 32.3 Constant-Time Toolchain Checksum Verification
+### 36.3 Constant-Time Toolchain Checksum Verification
 
 `.fz.yaml` may specify expected BLAKE3 digests per tool binary:
 
@@ -2661,19 +3134,19 @@ tool_checksums:
 
 Comparison uses `crypto/subtle.ConstantTimeCompare` to remove timing side-channels. Mismatch produces `tool checksum mismatch for <name>` and fails the build before any compilation.
 
-### 32.4 Execution Root and Path Confinement
+### 36.4 Execution Root and Path Confinement
 
 `EnsureInsideRoot`, `HashDirWithRoot`, and doctor's `scanTree` use `ResolveSecurePath` to ensure scanned paths do not escape the root via symlinks or `..` segments after evaluation. This protection is an invariant, not a configurable option.
 
 ---
 
-## 33. System Self-Audit (`fz doctor`)
+## 37. System Self-Audit (`fz doctor`)
 
 > **Package:** `internal/doctor` · **Entry point:** `fz doctor [options]`
 
 `fz doctor` is a pre-flight diagnostic. It does not compile code. It answers whether the current machine satisfies ForgeZero's minimum operational requirements.
 
-### 33.1 Invocation
+### 37.1 Invocation
 
 ```bash
 fz doctor
@@ -2682,7 +3155,7 @@ fz doctor -json
 fz doctor -root ./myapp -json
 ```
 
-### 33.2 Audit Pipeline (Four Stages)
+### 37.2 Audit Pipeline (Four Stages)
 
 **Stage A — Toolchain Reachability:** probes `zig` (required), `fasm` (required on non-Windows), `wasm-ld` (optional).
 
@@ -2700,7 +3173,7 @@ fz doctor -root ./myapp -json
 
 **Stage D — Health Aggregation:** `Healthy = false` if any required tool is missing, or if `Readable` or `Writable` is false.
 
-### 33.3 Human-Readable Output
+### 37.3 Human-Readable Output
 
 ```
 fz doctor: ok
@@ -2712,7 +3185,7 @@ toolchain:
 permissions: root=/home/dev/myproject readable=true writable=true dirs=42 files=318
 ```
 
-### 33.4 JSON Output
+### 37.4 JSON Output
 
 ```json
 {
@@ -2750,9 +3223,9 @@ fz doctor -json | jq -e '.healthy'
 
 ---
 
-## 34. Cross-Platform Readiness
+## 38. Cross-Platform Readiness
 
-### 34.1 Compile-Time Backend Selection
+### 38.1 Compile-Time Backend Selection
 
 ```
 GOOS=linux   → compiles: unix.go, default_unix.go, rename_unix.go
@@ -2762,7 +3235,7 @@ GOOS=darwin  → compiles: unix.go (stubbed syscall layer; builds succeed, runti
 
 No `if runtime.GOOS == "windows"` exists inside `OpenVerified`. The correct struct is selected by the Go toolchain at compile time.
 
-### 34.2 Platform-Specific Syscall Drivers (v4.1.0)
+### 38.2 Platform-Specific Syscall Drivers (v4.1.0)
 
 | Platform | Implementation | Syscalls |
 |----------|---------------|---------|
@@ -2772,7 +3245,7 @@ No `if runtime.GOOS == "windows"` exists inside `OpenVerified`. The correct stru
 
 `openHot` and `unlinkHot` use fixed-size stack buffers for UTF-8 path conversion on all platforms, achieving zero heap allocation in the hot path.
 
-### 34.3 Atomic Rename on Windows
+### 38.3 Atomic Rename on Windows
 
 Windows may return sharing violations when AV or indexing software holds a handle. `rename_windows.go` implements bounded retry:
 
@@ -2789,17 +3262,17 @@ return last
 
 Backoff: 10 ms, 20 ms, 30 ms, … up to 80 ms between attempts.
 
-### 34.4 Cross-Architecture Validation (v4.1.0)
+### 38.4 Cross-Architecture Validation (v4.1.0)
 
 Verified builds for `amd64` and `arm64` across Linux, Windows, and Darwin. No CGO dependencies; pure Go + static C linkage where required. Binary digests are stable across rebuilds with identical inputs on all validated platforms.
 
 ---
 
-## 35. Testing Standards (Aegis)
+## 39. Testing Standards (Aegis)
 
-> **Policy version:** v4.1.0 · **Command:** `go test ./internal/... -cover`
+> **Policy version:** v4.7.0 · **Command:** `go test ./internal/... -cover`
 
-### 35.1 Coverage Targets
+### 39.1 Coverage Targets
 
 | Package | Coverage class | Notes |
 |---------|----------------|-------|
@@ -2811,8 +3284,9 @@ Verified builds for `amd64` and `arm64` across Linux, Windows, and Darwin. No CG
 | `internal/man` | 100% | Man page generator |
 | `internal/assembler` | high 80s–90s | Mocked `runCommand`, all target triple branches |
 | `internal/linker` | high 70s–80s | Zero-allocation benchmarks, Windows impl, symbol parsers |
+| `internal/gloria` | ≥ 90% | Walk and mapping errors, VGA buffer tests, builtin propagation |
 
-### 35.2 Zero-Allocation Enforcement (v4.1.0)
+### 39.2 Zero-Allocation Enforcement (v4.1.0)
 
 Allocation-tracking benchmarks for Linux and Windows targets enforce zero-allocation guarantees in critical paths:
 
@@ -2824,7 +3298,7 @@ BenchmarkEmitRelocations   0 allocs/op   0 B/op
 
 Failure on any `allocs/op > 0` in hot-path benchmarks blocks merge.
 
-### 35.3 Fault Injection via `fs.Mock`
+### 39.3 Fault Injection via `fs.Mock`
 
 ```go
 m := fs.NewMock(fs.Default)
@@ -2835,7 +3309,7 @@ err := utils.SecureWriteFile("out/config.yaml", data)
 // expect error, no partial final file
 ```
 
-### 35.4 Race and Integration Commands
+### 39.4 Race and Integration Commands
 
 ```bash
 go test ./... -race
@@ -2843,7 +3317,7 @@ go test ./internal/... -coverprofile=coverage.out
 go tool cover -func=coverage.out
 ```
 
-### 35.5 Static Analysis (v4.1.0)
+### 39.5 Static Analysis (v4.1.0)
 
 100% compliance with `golangci-lint` under strict configuration:
 
@@ -2853,9 +3327,28 @@ golangci-lint run -E gofmt,govet,staticcheck,unused ./...
 
 Zero lint warnings in main branch. All PRs must pass this check.
 
-### 35.6 Contributor Requirements
+### 39.6 Gloria Test Infrastructure (v4.4.0)
 
-Pull requests touching `internal/fs`, `internal/utils` (I/O or `RunCommand`), or `internal/doctor` must:
+Gloria runtime tests use two helpers to avoid hardware dependencies:
+
+**`patchVGA()`** — replaces the compile-time `0xB8000` constant with a pointer to a heap-allocated fake VGA buffer. Called at the start of any test that exercises VGA output. The substitution is undone via `t.Cleanup`.
+
+**`dumpVGA()`** — renders the fake VGA buffer to stdout using `syscall.Write` with zero heap allocations. Used in golden-file tests to verify expected screen output.
+
+```go
+func TestPrintBareMetalHello(t *testing.T) {
+    buf := patchVGA(t)
+    compileAndRun(t, `fn main() { print("hello\n") }`, kernelMode)
+    got := dumpVGA(buf)
+    if !strings.Contains(got, "hello") {
+        t.Fatalf("VGA output missing expected string: %q", got)
+    }
+}
+```
+
+### 39.7 Contributor Requirements
+
+Pull requests touching `internal/fs`, `internal/utils` (I/O or `RunCommand`), `internal/doctor`, or `internal/gloria` must:
 
 1. Include table-driven tests for new branches.
 2. Use `fs.Mock` or existing seams for failure paths.
@@ -2866,13 +3359,13 @@ Pull requests touching `internal/fs`, `internal/utils` (I/O or `RunCommand`), or
 
 ---
 
-## 36. HADES Engine: Codegen & ELF Emission
+## 40. HADES Engine: Codegen & ELF Emission
 
-> **New in v4.1.0 Citadel**
+> **New in v4.1.0 Citadel** · **Gloria extended in v4.4.0**
 
-The HADES engine is ForgeZero's integrated codegen and ELF emission layer. It is responsible for transforming parsed AST nodes into correct, deterministic ELF64 object files without relying on external assembler binaries for supported instruction sets.
+The HADES engine is ForgeZero's integrated codegen and ELF emission layer. It is responsible for transforming parsed AST nodes into correct, deterministic ELF64 object files without relying on external assembler binaries for supported instruction sets. HADES is the exclusive compilation backend for Gloria (`.glo`) source files and is also used internally for hot-path object emission in the linker.
 
-### 36.1 ELF Emitter Refactor
+### 40.1 ELF Emitter Refactor
 
 **Symbol table ordering.** The ELF specification requires local symbols to precede global symbols in `.symtab`. Earlier versions of ForgeZero emitted symbols in parse order, which could produce object files that technically linked but were non-compliant with strict linker expectations. v4.1.0 enforces local-before-global ordering unconditionally.
 
@@ -2880,25 +3373,40 @@ The HADES engine is ForgeZero's integrated codegen and ELF emission layer. It is
 
 **Instruction/label disambiguation.** The lexer/parser boundary now maintains strict differentiation between CPU instruction mnemonics and user-defined labels. In earlier versions, certain two-character mnemonics could be misidentified as label prefixes when appearing at column zero in specific syntactic contexts. v4.1.0 eliminates this ambiguity with explicit boundary checks, preventing silent object file corruption.
 
-### 36.2 Parser Integrity Guards
+### 40.2 Parser Integrity Guards
 
 The parser maintains invariants at each AST node boundary. Malformed input that previously produced incomplete or silently incorrect AST nodes now triggers an explicit `ErrMalformedAST` error before codegen begins. Silent fallback degradation — where a corrupted AST would produce a broken but structurally valid ELF — is no longer possible.
 
-### 36.3 Codegen Zero-Allocation Path
+### 40.3 Codegen Zero-Allocation Path
 
 The HADES codegen path (`resolveSymbols`, `emitRelocations`, `copyFileHot`) was refactored to eliminate all heap allocations from the hot path. All intermediate buffers are stack-allocated with fixed capacity. The codegen pipeline operates at hardware memory bandwidth limits (~1.18 GB/s on Intel i5-10310U) with zero GC interference.
 
-> "If you find an allocation in our hot paths — it's a bug."
+> If you find an allocation in our hot paths — it's a bug.
 
-### 36.4 Direct Linker Bypass (`-ld`)
+### 40.4 Extended Instruction Emission (v4.4.0)
 
-The new `-ld` flag exposes the HADES linker invocation directly, bypassing the `gcc`/`clang` wrapper layer used in `-mode auto` and `-mode c`. This is distinct from `-mode raw` (which selects `ld` over `gcc` at the linking stage); `-ld` removes the compiler driver from the picture entirely at the build orchestration level. Overhead reduction is ~3–5% on small projects; on large builds dominated by codegen, the difference is negligible.
+The following codegen primitives were added or extended for Gloria JIT support:
+
+| Function | Purpose |
+|----------|---------|
+| `emitMovMemToReg64` | Emit `MOV reg, [mem]` for arbitrary 64-bit memory reads |
+| `emitMovRegToMem64` | Emit `MOV [mem], reg` for arbitrary 64-bit memory writes |
+| `emitPushReg` | Push register to stack; extended to R8–R15 |
+| `emitPopReg` | Pop register from stack; extended to R8–R15 |
+| `emitBareMetalPrint` | Write string directly to VGA framebuffer at `0xB8000` |
+| `emitLowLevelPrint` | Dispatch to `sys_write` (userspace) or VGA path (kernel mode) |
+
+All new emission functions maintain the zero-allocation invariant. `parseStringLiteral` resolves `\n` and `\t` escape sequences at compile time, so no runtime string scanning occurs.
+
+### 40.5 Direct Linker Bypass (`-ld`)
+
+The `-ld` flag exposes the HADES linker invocation directly, bypassing the `gcc`/`clang` wrapper layer used in `-mode auto` and `-mode c`. This is distinct from `-mode raw` (which selects `ld` over `gcc` at the linking stage); `-ld` removes the compiler driver from the picture entirely at the build orchestration level. Overhead reduction is ~3–5% on small projects; on large builds dominated by codegen, the difference is negligible.
 
 Use `-ld` when you need precise control over the linker command vector and do not want ForgeZero's compiler validation checks in the critical path.
 
 ---
 
-## 37. Contributing
+## 41. Contributing
 
 Contributions are welcome: bug reports, feature requests, documentation improvements, and code patches.
 
@@ -2912,17 +3420,19 @@ Contributions are welcome: bug reports, feature requests, documentation improvem
    golangci-lint run -E gofmt,govet,staticcheck,unused ./...
    ```
 
-   Security-sensitive changes must include fault-injection or mock tests per [Section 35](#35-testing-standards-aegis). Hot-path changes must include benchmark assertions (`0 allocs/op`).
+   Security-sensitive changes must include fault-injection or mock tests per [Section 39](#39-testing-standards-aegis). Hot-path changes must include benchmark assertions (`0 allocs/op`).
 
 4. **Submit a Pull Request** with a clear description of the change and the problem it solves.
 
 Commit messages should be concise and use the imperative mood: *"Add JSON output mode"* not *"Added JSON output mode"*.
 
+For machine-generated contributor guidance, run `fz contribute` in your project directory. The resulting `CONTRIBUTING_USER.md` reflects the actual state of your environment and toolchain.
+
 Repository: [github.com/forgezero-cli/ForgeZero](https://github.com/forgezero-cli/ForgeZero)
 
 ---
 
-## 38. License
+## 42. License
 
 ForgeZero is released under the **MIT License**.
 
@@ -2948,4 +3458,4 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 
 ---
 
-*If ForgeZero saves you time, consider giving the repository a ⭐️ on GitHub — it helps the project grow.*
+*If ForgeZero saves you time, consider giving the repository a star on GitHub — it helps the project grow.*
