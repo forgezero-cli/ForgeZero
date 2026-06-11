@@ -1,4 +1,4 @@
-# Contributing to fz
+# Contributing to fz(ForgeZero)
 
 > The assembly swiss army knife — built with discipline, shipped with intent.
 
@@ -36,7 +36,20 @@ Contributions are welcome in the following forms:
 - **Pull requests** — bug fixes, features, refactors, or documentation improvements
 - **Documentation** — corrections, clarifications, and examples
 
+### Before submitting
+
+Run the following commands locally. If any of them fails, fix it before opening the PR:
+
+```bash
+go fmt ./...
+go mod tidy
+go test -race ./...
+go vet ./...
+staticcheck ./...
+```
+
 ---
+
 
 ## Development Setup
 
@@ -115,6 +128,184 @@ All checks must pass with zero warnings before a pull request is considered read
 - **Comments** — omit comments where the code is self-explanatory; add them only where intent cannot be inferred from reading the code
 - **Coverage** — new code must not decrease the overall test coverage percentage
 - **Error handling** — every error must be handled explicitly; do not swallow errors silently
+
+- **Tests must pass** — no pull request will be reviewed if `go test ./...` fails
+- **No debugging code** — remove all `fmt.Println`, `log.Print`, or commented-out code before committing
+- **No panic (except unrecoverable errors)** — use error returns where possible
+
+## Mandatory Testing Requirements
+
+Every pull request must include proof that all tests pass. **No exceptions.**
+
+### Required Test Commands
+
+Run these commands before submitting your PR:
+
+```bash
+# Full test suite with race detection (MUST pass)
+go test -race ./...
+
+# Verbose output for clarity (MUST pass)
+go test -v ./...
+
+# Performance benchmarks (must not regress)
+go test -bench=. -run=^$ ./...
+```
+
+If any of these commands fails, your PR will be rejected automatically.
+
+### Test Coverage for New Features
+
+All new functionality must be placed in `internal/` with the following structure:
+
+```text
+internal/your_feature_name/
+├── feature.go          # core logic
+├── feature_test.go     # unit tests (MANDATORY)
+└── ...                 # any auxiliary files
+```
+
+**Rule:** `feature_test.go` must exist. No tests = no merge.
+
+### Running Tests for a Specific Feature
+
+```bash
+# Run tests for a specific feature
+go test -v ./internal/your_feature_name/...
+
+# Run a specific test function by name
+go test -v -run TestFunctionName ./internal/your_feature_name/...
+```
+
+## Naming Conventions (STRICT)
+
+### Functions
+
+Every function name must clearly describe what it does.
+
+**BAD:**
+
+```go
+func v(s string)
+func proc(d []byte)
+func f() int
+```
+
+**GOOD:**
+
+```go
+func PrintStringOnVGA(msg string) string
+func ParseElfHeader(data []byte) (*ElfHeader, error)
+func CalculateChecksum(buffer []byte) uint32
+```
+
+### Variables
+
+Use descriptive names. Single-letter variables are forbidden except for short loops.
+
+**BAD:**
+
+```go
+v := something...
+x := process(d)
+t := time.Now()
+```
+
+**GOOD:**
+
+```go
+message := something...
+result := process(data)
+currentTime := time.Now()
+```
+
+Exception: Loop indices (`i`, `j`, `k`) are allowed for short, simple loops.
+
+### Packages / Feature Directories
+
+| BAD | GOOD |
+|------|------|
+| `internal/x` | `internal/elf_parser` |
+| `internal/utils` | `internal/string_utils` or `internal/file_utils` |
+| `internal/feature` | `internal/watchdog` |
+
+## Zero Allocation Policy
+
+ForgeZero targets performance-critical environments. Avoid allocations where possible.
+
+### Forbidden Patterns (if avoidable)
+
+```go
+message := fmt.Sprintf("error: %s", err)
+
+var buf bytes.Buffer
+buf.WriteString(data)
+
+tmp := []string{...}
+```
+
+### Preferred Patterns
+
+```go
+writeFmt(2, "error: %s\n", err)
+
+buf := bytes.NewBuffer(make([]byte, 0, 4096))
+
+var bufferPool = sync.Pool{
+    New: func() interface{} { return make([]byte, 4096) },
+}
+```
+
+### Benchmarking Allocations
+
+```bash
+go test -bench=. -benchmem ./...
+```
+
+Look for `0 allocs/op` in the output for performance-critical functions.
+
+## No Debug Prints
+
+```bash
+grep -r "fmt.Println\|fmt.Printf\|log.Print\|println(" internal/ cmd/ --include="*.go"
+```
+
+### Allowed
+
+- `writeFmt()`
+- `writeStderr()`
+- Logging via `-verbose`
+
+### Forbidden
+
+- `fmt.Println`
+- `log.Print` (outside tests)
+- `println()`
+
+## PR Checklist (Copy This)
+
+- `go test -race ./...` passes
+- `go test -v ./...` passes
+- `go test -bench=. -run=^$ ./...` shows no regression
+- New features include `_test.go`
+- No single-letter variables (except loop indices)
+- No debug prints
+- `go fmt ./...` run
+- `go vet ./...` and `staticcheck ./...` clean
+
+Attach test output to your PR.
+
+
+## Rules for External Contributors
+
+To protect the project's long-term maintainability and code quality, the following rules apply:
+
+- **No AI-generated code** — code that is obviously machine-generated without human review will be rejected. We can tell.
+- **Plagiarism is forbidden** — copying code or documentation from other contributors (or from external sources) without attribution is grounds for immediate PR closure and a permanent ban.
+- **You must build and test locally** — if you cannot build `fz` on your machine, do not open a PR. Figure out the build process first.
+- **No "drive-by" PRs** — every PR must include tests and documentation (if applicable). Skeleton PRs without content will be closed.
+
+Violations will be reported to GitHub if repeated.
 
 ---
 
@@ -198,3 +389,5 @@ By submitting a contribution, you agree that your work will be licensed under th
 ---
 
 *Thank you for taking the time to contribute to `fz`.*
+
+**(c) alexvoste**
