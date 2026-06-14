@@ -56,8 +56,9 @@ func TestKernelPokeAndPeek(t *testing.T) {
 		}
 	}()
 
-	videoMemAddr := uintptr(unsafe.Pointer(&dataArea[0]))
+	videoMemAddr := &dataArea[0]
 	*(*uint16)(unsafe.Pointer(videoMemAddr)) = 0x0F41
+
 	t.Logf("videoMemAddr = %d (dec) = %#x (hex)", videoMemAddr, videoMemAddr)
 
 	testProgram := fmt.Sprintf(`
