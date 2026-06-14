@@ -1,33 +1,37 @@
+/*
+(c) AlexVoste
+Package assembler — hot-path zero-allocation memory copy
+*/
+
 package assembler
 
 import "unsafe"
 
 func FastCopy(dst, src unsafe.Pointer, n uintptr) {
-	d := uintptr(dst)
-	s := uintptr(src)
 	for n >= 64 {
-		*(*uint64)(unsafe.Pointer(d + 0)) = *(*uint64)(unsafe.Pointer(s + 0))
-		*(*uint64)(unsafe.Pointer(d + 8)) = *(*uint64)(unsafe.Pointer(s + 8))
-		*(*uint64)(unsafe.Pointer(d + 16)) = *(*uint64)(unsafe.Pointer(s + 16))
-		*(*uint64)(unsafe.Pointer(d + 24)) = *(*uint64)(unsafe.Pointer(s + 24))
-		*(*uint64)(unsafe.Pointer(d + 32)) = *(*uint64)(unsafe.Pointer(s + 32))
-		*(*uint64)(unsafe.Pointer(d + 40)) = *(*uint64)(unsafe.Pointer(s + 40))
-		*(*uint64)(unsafe.Pointer(d + 48)) = *(*uint64)(unsafe.Pointer(s + 48))
-		*(*uint64)(unsafe.Pointer(d + 56)) = *(*uint64)(unsafe.Pointer(s + 56))
-		d += 64
-		s += 64
+		*(*uint64)(unsafe.Pointer(uintptr(dst))) = *(*uint64)(unsafe.Pointer(uintptr(src)))
+		*(*uint64)(unsafe.Pointer(uintptr(dst) + 8)) = *(*uint64)(unsafe.Pointer(uintptr(src) + 8))
+		*(*uint64)(unsafe.Pointer(uintptr(dst) + 16)) = *(*uint64)(unsafe.Pointer(uintptr(src) + 16))
+		*(*uint64)(unsafe.Pointer(uintptr(dst) + 24)) = *(*uint64)(unsafe.Pointer(uintptr(src) + 24))
+		*(*uint64)(unsafe.Pointer(uintptr(dst) + 32)) = *(*uint64)(unsafe.Pointer(uintptr(src) + 32))
+		*(*uint64)(unsafe.Pointer(uintptr(dst) + 40)) = *(*uint64)(unsafe.Pointer(uintptr(src) + 40))
+		*(*uint64)(unsafe.Pointer(uintptr(dst) + 48)) = *(*uint64)(unsafe.Pointer(uintptr(src) + 48))
+		*(*uint64)(unsafe.Pointer(uintptr(dst) + 56)) = *(*uint64)(unsafe.Pointer(uintptr(src) + 56))
+
+		dst = unsafe.Pointer(uintptr(dst) + 64)
+		src = unsafe.Pointer(uintptr(src) + 64)
 		n -= 64
 	}
 	for n >= 8 {
-		*(*uint64)(unsafe.Pointer(d)) = *(*uint64)(unsafe.Pointer(s))
-		d += 8
-		s += 8
+		*(*uint64)(dst) = *(*uint64)(src)
+		dst = unsafe.Pointer(uintptr(dst) + 8)
+		src = unsafe.Pointer(uintptr(src) + 8)
 		n -= 8
 	}
 	for n > 0 {
-		*(*byte)(unsafe.Pointer(d)) = *(*byte)(unsafe.Pointer(s))
-		d++
-		s++
+		*(*byte)(dst) = *(*byte)(src)
+		dst = unsafe.Pointer(uintptr(dst) + 1)
+		src = unsafe.Pointer(uintptr(src) + 1)
 		n--
 	}
 }
