@@ -8,11 +8,6 @@ import (
 	"path/filepath"
 )
 
-// TODO:
-// PLATFORM RISC-V X86_64
-// ARM / AARCH64
-// RISC-V [X]
-
 //go:embed assets/musl/*
 var muslAssets embed.FS
 
@@ -20,11 +15,6 @@ type Toolchain struct {
 	TargetArch string
 	tmpDir     string
 }
-
-var (
-	staticFlag   = "-static"
-	nostdlibFlag = "-nostdlib"
-)
 
 func GetLinkerArgsZeroAlloc(dst []string, muslDir string, objFiles []string, outputFile string) []string {
 	args := []string{
