@@ -35,6 +35,7 @@ import (
 	"fz/internal/sbom"
 	"fz/internal/seal"
 	"fz/internal/shell"
+	"fz/internal/testrunner"
 	"fz/internal/updater"
 	"fz/internal/utils"
 	"fz/internal/verify"
@@ -68,11 +69,11 @@ func (helperFakeRunner) Run(ctx context.Context, verbose bool, name string, args
 }
 
 const (
-	versionCore     = "4.7.0"
-	versionCodename = "Multi"
+	versionCore     = "4.8.0"
+	versionCodename = "dev"
 )
 
-var version = "4.5.1 Multi"
+var version = "4.5.1 dev"
 
 func versionText() string {
 	var b strings.Builder
@@ -326,6 +327,8 @@ Options:
   -musl                  Compile with static musl toolchain (x86_64, RISC-V)
   -h, --help             Show this help
   -v, --version          Show version
+
+  For testing project: fz -alex 
 
 Examples:
   fz -asm boot.asm
@@ -928,7 +931,7 @@ func main() {
 	flag.StringVar(&muslOpt, "musl", "", "use static musl toolchain(e.g -musl=riscv64")
 	flag.StringVar(&profileFlag, "profile", "balanced", "build profile for hardware: low (for weak PCs), balanced, high (max threads)")
 	flag.StringVar(&profileFlag, "p", "balanced", "build profile (shorthand)")
-
+	flag.BoolVar(&testrunner.AlexMode, "alex", false, "run full test scanner projects for contribution")
 	flag.Usage = printHelp
 
 	flag.Parse()
@@ -943,6 +946,15 @@ func main() {
 		if saved, err := profiles.ReadSavedProfile(""); err == nil && saved != "" {
 			profileFlag = saved
 		}
+	}
+
+	if testrunner.AlexMode {
+		if err := testrunner.RunSuite(verbose, jsonOutput, testrunner.AlexMode); err != nil {
+			writeFmt(2, "test suite failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		os.Exit(0)
 	}
 
 	p := profiles.ParseUserProfile(profileFlag)
