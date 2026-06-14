@@ -11,7 +11,7 @@ const (
 	STRING
 	ATREG
 	COMMA
-	NUMBER // int 
+	NUMBER // int
 
 	LIT_INT
 	CONST_INT
@@ -31,11 +31,11 @@ const (
 	GT
 
 	AMP
-	STAR 
-	PERCENT 
+	STAR
+	PERCENT
 
 	PIPE
-	CARET 
+	CARET
 
 	FN
 	LET
