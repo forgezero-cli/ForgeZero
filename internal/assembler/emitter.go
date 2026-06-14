@@ -598,9 +598,8 @@ func (p *parser) emit(profile targetEmitterProfile) ([]byte, error) {
 	if profile.elfClass == elfClass32 {
 		align = 4
 	}
-	symtabOffset := alignOutOffset(len(out), align)
 	out = alignOut(out, align)
-	symtabOffset = len(out)
+	symtabOffset := len(out)
 	base := len(out)
 	out = out[:base+symtabSize]
 	strtabOffset := len(out)
