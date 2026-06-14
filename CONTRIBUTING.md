@@ -175,6 +175,28 @@ go test -v ./internal/your_feature_name/...
 
 # Run a specific test function by name
 go test -v -run TestFunctionName ./internal/your_feature_name/...
+
+or ./fz -alex
+
+ForgeZero Test Runner (v4.8.0-dev)
+────────────────────────────────────────────────────────────
+  [✓] Environment Check (doctor) [PASS] (36 ms)
+  [✓] Unit Tests (go test -race) [PASS] (8090 ms)
+  [✓] Code Coverage [PASS] (2007 ms)
+  [✓] Static Analysis (go vet) [PASS] (397 ms)
+  [✓] Linter (staticcheck) [PASS] (0 ms)
+  [✓] Code Formatting (go fmt) [PASS] (94 ms)
+  [✓] Build Test (fz build) [PASS] (1468 ms)
+  [✓] Gloria Compilation [PASS] (2 ms)
+  [✓] HADES Codegen [PASS] (0 ms)
+  [✓] Integration Tests [PASS] (178 ms)
+  [✓] Citadel Zero-Allocations [PASS] (1748 ms)
+  [✓] Race Detector (full) [PASS] (14345 ms)
+  [✓] Aegis Audit [PASS] (131 ms)
+────────────────────────────────────────────────────────────
+STATUS: SUCCESS (13 stages passed, 28507 ms)
+
+And if you add your new functional also make test in testrunner/
 ```
 
 ## Naming Conventions (STRICT)
