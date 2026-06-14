@@ -1,0 +1,8 @@
+fn main() {
+	let a = 10;
+	let b = 25;
+	
+	if b > a {
+		print("hi");
+	}
+}
