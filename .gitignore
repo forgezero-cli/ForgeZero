@@ -44,6 +44,8 @@ test.sh
 *.log
 *.pid
 
+blake3.manifest
+.fzignore
 # Go
 /go.sum.bak
 /vendor/
