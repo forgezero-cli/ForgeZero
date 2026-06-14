@@ -183,11 +183,19 @@ func collectFiles(root string) ([]string, error) {
 		if d.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("symlinks not permitted: %s", path)
 		}
+
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
 		if filepath.Base(rel) == "manifest.json" {
+			return nil
+		}
+		ignoredFiles := map[string]bool{
+			"blake3.manifest":                          true,
+			"internal/contribute/CONTRIBUTING_USER.md": true,
+		}
+		if ignoredFiles[rel] {
 			return nil
 		}
 		if rel == "." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
