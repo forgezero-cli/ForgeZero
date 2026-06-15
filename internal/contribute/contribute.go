@@ -1,3 +1,6 @@
+/*
+(c) AlexVoste. All rights reserved
+*/
 package contribute
 
 import (
