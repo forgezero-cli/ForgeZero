@@ -875,7 +875,7 @@ func main() {
 		autoBuild          bool
 		muslOpt            string
 		profileFlag        string
-
+		pyzeroFlag			   bool // Experemental: enable python support(.py)
 	)
 
 	type targetKeyType string
@@ -934,7 +934,7 @@ func main() {
 	flag.StringVar(&profileFlag, "profile", "balanced", "build profile for hardware: low (for weak PCs), balanced, high (max threads)")
 	flag.StringVar(&profileFlag, "p", "balanced", "build profile (shorthand)")
 	flag.BoolVar(&testrunner.AlexMode, "alex", false, "run full test scanner projects for contribution")
-
+	flag.BoolVar(&pyzeroFlag, "pyzero", false, "bump python format file to binaries(e.g: fz -pyzero main.py); Important: this is an experimental feature and may not work as expected! Supported platform: x86_64-linux-gnu only for now")
 
 	
 	flag.Usage = printHelp
