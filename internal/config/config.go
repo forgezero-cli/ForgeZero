@@ -1,5 +1,6 @@
 package config
 
+// TODO: cross-compile flags
 import (
 	"fmt"
 	"os"
