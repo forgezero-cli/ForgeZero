@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,7 +22,7 @@ import (
 	"fz/internal/config"
 	"fz/internal/contribute"
 	"fz/internal/cplugin"
-	"fz/internal/cross"
+
 	"fz/internal/doctor"
 	fzvfs "fz/internal/fs"
 	"fz/internal/gloria"
@@ -876,8 +875,7 @@ func main() {
 		autoBuild          bool
 		muslOpt            string
 		profileFlag        string
-		crossCompilation 	 bool
-		targetTriplet     string
+
 	)
 
 	type targetKeyType string
@@ -936,35 +934,14 @@ func main() {
 	flag.StringVar(&profileFlag, "profile", "balanced", "build profile for hardware: low (for weak PCs), balanced, high (max threads)")
 	flag.StringVar(&profileFlag, "p", "balanced", "build profile (shorthand)")
 	flag.BoolVar(&testrunner.AlexMode, "alex", false, "run full test scanner projects for contribution")
-	flag.BoolVar(&crossCompilation, "cross", false, "run cross-compilation your project (experimental, auto-detects based on target and host)") /* Experimental*/
+
 
 	
 	flag.Usage = printHelp
 
 	flag.Parse()
 
-	if crossCompilation {
-	if targetTriplet == "" {
-		fmt.Fprintln(os.Stderr, "need -target")
-		os.Exit(1)
-	}
 	
-	arch := strings.Split(targetTriplet, "-")[0]
-	os_ := strings.Split(targetTriplet, "-")[1]
-	
-	src := flag.Arg(0)
-	out := flag.Arg(1)
-	if out == "" {
-		out = "a.out"
-	}
-	
-	err := cross.CrossCompile(context.Background(), src, out, arch, os_)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "cross fail:", err)
-		os.Exit(1)
-	}
-}
-
 	profileProvided := false
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "profile" || f.Name == "p" {
