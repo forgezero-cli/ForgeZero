@@ -44,6 +44,9 @@ test.sh
 *.log
 *.pid
 
+.venv
+// After remove
+docs/*
 CONTRIBUTING_USER.md
 blake3.manifest
 .fzignore
