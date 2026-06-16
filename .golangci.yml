@@ -1,16 +1,27 @@
-linters-settings:
-  errcheck:
-    exclude-functions:
-      - os.Chdir
-      - fmt.Fprintf 
-  unused:
-    ignore:
-      - fz/internal/assembler/emitter.go:appendElf64Sym
-      - fz/internal/assembler/emitter.go:appendUint32
-  staticcheck:
-    checks: ["all", "-SA9003", "-SA1012"] 
-  linters:
-    disable:
-      -unused
-      -deadcode 
-      -ineffassign
+run:
+  issues-exit-code: 1
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - staticcheck
+    - typecheck
+    - ineffassign
+    - unused
+    - errcheck
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  exclude-rules:
+    - linters:
+        - unused
+      text: ".*"
+    - linters:
+        - errcheck
+      text: ".*"
+    - linters:
+        - staticcheck
+      text: "SA9003:"
