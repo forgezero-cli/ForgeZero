@@ -14,7 +14,7 @@
         &nbsp;
         <img src="https://img.shields.io/github/license/forgezero-cli/ForgeZero" alt="License"/>
         &nbsp;
-        <img src="https://img.shields.io/github/commits-since/forgezero-cli/ForgeZero/v4.7.0" alt="Commits"/>
+        <img src="https://img.shields.io/github/commits-since/forgezero-cli/ForgeZero/v4.9.0" alt="Commits"/>
       </td>
     </tr>
   </table>
