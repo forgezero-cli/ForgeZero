@@ -1,3 +1,11 @@
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=0mbejIDcxsw">
+    <img src="https://img.youtube.com/vi/0mbejIDcxsw/maxresdefault.jpg" alt="ForgeZero vs Ninja Benchmark" width="100%" style="border-radius: 8px;">
+  </a>
+  <br>
+  <b>▶️ Click here to watch the full benchmark (4.5x faster) on YouTube</b>
+</p>
+
 # ForgeZero (fz) — Complete Documentation
 
 <div align="center">
