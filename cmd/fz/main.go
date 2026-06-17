@@ -1,3 +1,5 @@
+// Copyright forgezero-cli! Mit LICENSE
+
 package main
 
 import (
@@ -70,11 +72,11 @@ func (helperFakeRunner) Run(ctx context.Context, verbose bool, name string, args
 }
 
 const (
-	versionCore     = "4.9.0"
+	versionCore     = "4.9.1"
 	versionCodename = "Valkyrie"
 )
 
-var version = "4.9.0 Valkyrie"
+var version = "4.9.1 Valkyrie"
 
 func versionText() string {
 	var b strings.Builder
@@ -1436,9 +1438,20 @@ func main() {
 		}
 		fzvfs.SetIsolationMode(cfg.Isolation.String())
 	}
-	if utils.CheckTool("zig") == nil {
-		assembler.ZigEnabled = true
-		linker.ZigEnabled = true
+	autoEnableZig := true 
+
+	if cfg != nil && (cfg.Toolchain == "gcc" || cfg.Toolchain == "clang"){
+		autoEnableZig = false 
+	}
+	if toolchain == "gcc" || toolchain == "clang" {
+		autoEnableZig = false 
+	}
+	if (cfg != nil && cfg.Toolchain == "zig" || toolchain == "zig") {
+		assembler.ZigEnabled = true 
+		linker.ZigEnabled = true 
+	} else if autoEnableZig && utils.CheckTool("zig") == nil {
+		assembler.ZigEnabled = true 
+		linker.ZigEnabled = true 
 	}
 
 	if genCompileCommands {
