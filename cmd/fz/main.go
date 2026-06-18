@@ -877,7 +877,7 @@ func main() {
 		autoBuild          bool
 		muslOpt            string
 		profileFlag        string
-		pyzeroFlag			   bool // Experemental: enable python support(.py)
+		pyzeroFlag         bool
 	)
 
 	type targetKeyType string
@@ -938,12 +938,10 @@ func main() {
 	flag.BoolVar(&testrunner.AlexMode, "alex", false, "run full test scanner projects for contribution")
 	flag.BoolVar(&pyzeroFlag, "pyzero", false, "bump python format file to binaries(e.g: fz -pyzero main.py); Important: this is an experimental feature and may not work as expected! Supported platform: x86_64-linux-gnu only for now")
 
-	
 	flag.Usage = printHelp
 
 	flag.Parse()
 
-	
 	profileProvided := false
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "profile" || f.Name == "p" {
@@ -1438,20 +1436,20 @@ func main() {
 		}
 		fzvfs.SetIsolationMode(cfg.Isolation.String())
 	}
-	autoEnableZig := true 
+	autoEnableZig := true
 
-	if cfg != nil && (cfg.Toolchain == "gcc" || cfg.Toolchain == "clang"){
-		autoEnableZig = false 
+	if cfg != nil && (cfg.Toolchain == "gcc" || cfg.Toolchain == "clang") {
+		autoEnableZig = false
 	}
 	if toolchain == "gcc" || toolchain == "clang" {
-		autoEnableZig = false 
+		autoEnableZig = false
 	}
-	if (cfg != nil && cfg.Toolchain == "zig" || toolchain == "zig") {
-		assembler.ZigEnabled = true 
-		linker.ZigEnabled = true 
+	if cfg != nil && cfg.Toolchain == "zig" || toolchain == "zig" {
+		assembler.ZigEnabled = true
+		linker.ZigEnabled = true
 	} else if autoEnableZig && utils.CheckTool("zig") == nil {
-		assembler.ZigEnabled = true 
-		linker.ZigEnabled = true 
+		assembler.ZigEnabled = true
+		linker.ZigEnabled = true
 	}
 
 	if genCompileCommands {
