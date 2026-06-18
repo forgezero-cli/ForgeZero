@@ -1,13 +1,13 @@
 package initpkg
 
 import (
-	"fmt"
+	"errors"
 	"os"
 
 	"fz/internal/utils"
 )
 
-const readmeTemplate = `# Your Project
+var readmeTemplate = []byte(`# Your Project
 
 This project was initialized with [ForgeZero](https://github.com/forgezero-cli/ForgeZero) – a build tool for assembly and C.
 
@@ -61,10 +61,9 @@ You can list files/directories to ignore (like .gitignore). Syntax: glob pattern
 
 MIT
 
----
-`
+`)
 
-const yamlTemplate = `# fz configuration file
+var yamlTemplate = []byte(`# fz configuration file
 
 # Copyright (c) 2026 ForgeZero
 
@@ -120,9 +119,9 @@ no_cache: false
 
 # Path to .fzignore file (default: .fzignore)
 ignore_file: .fzignore
-`
+`)
 
-const ignoreTemplate = `# fz ignore file
+var ignoreTemplate = []byte(`# fz ignore file
 # Copyright (c) 2026 ForgeZero
 
 # Ignore object files
@@ -143,24 +142,24 @@ test_*
 # Ignore hidden directories
 .fz_objs/
 .fz_cache/
-`
+`)
 
 func Run() error {
 	if _, err := os.Stat(".fz.yaml"); err == nil {
-		return fmt.Errorf(".fz.yaml already exists (not overwritten)")
+		return errors.New(".fz.yaml already exists (not overwritten)")
 	}
 	if _, err := os.Stat(".fzignore"); err == nil {
-		return fmt.Errorf(".fzignore already exists (not overwritten)")
+		return errors.New(".fzignore already exists (not overwritten)")
 	}
 	if _, err := os.Stat("README.md"); err != nil {
-		if err := utils.SecureWriteFile("README.md", []byte(readmeTemplate)); err != nil {
+		if err := utils.SecureWriteFile("README.md", readmeTemplate); err != nil {
 			return err
 		}
 	}
-	if err := utils.SecureWriteFile(".fz.yaml", []byte(yamlTemplate)); err != nil {
+	if err := utils.SecureWriteFile(".fz.yaml", yamlTemplate); err != nil {
 		return err
 	}
-	if err := utils.SecureWriteFile(".fzignore", []byte(ignoreTemplate)); err != nil {
+	if err := utils.SecureWriteFile(".fzignore", ignoreTemplate); err != nil {
 		return err
 	}
 	return nil
