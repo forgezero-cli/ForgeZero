@@ -1,8 +1,7 @@
 package config
 
-// TODO: cross-compile flags
 import (
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,7 +47,7 @@ func (m *IsolationMode) UnmarshalYAML(node *yaml.Node) error {
 			*m = IsolationStrict
 			return nil
 		}
-		return fmt.Errorf("invalid isolation: %s", s)
+		return errors.New("invalid isolation: " + s)
 	}
 	var b bool
 	if err := node.Decode(&b); err == nil {
@@ -59,7 +58,7 @@ func (m *IsolationMode) UnmarshalYAML(node *yaml.Node) error {
 		*m = IsolationNone
 		return nil
 	}
-	return fmt.Errorf("invalid isolation value")
+	return errors.New("invalid isolation value")
 }
 
 type Flags struct {
@@ -81,6 +80,8 @@ type Hooks struct {
 type Config struct {
 	Name    string `yaml:"name"`
 	Profile string `yaml:"profile"`
+	Target  string `yaml:"target"`
+	Sysroot string `yaml:"sysroot"`
 
 	SourceDir          string            `yaml:"source_dir"`
 	SourceDirs         []string          `yaml:"source_dirs"`
@@ -115,11 +116,11 @@ type Config struct {
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read config file %s: %w", path, err)
+		return nil, errors.New("cannot read config file " + path + ": " + err.Error())
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("cannot parse YAML: %w", err)
+		return nil, errors.New("cannot parse YAML: " + err.Error())
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -128,35 +129,31 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
-	if c.SourceDir == "" && len(c.SourceDirs) == 0 && c.SourceFile == "" && len(c.SourceFiles) == 0 {
-		return nil
-	}
 	if c.SourceDir != "" && len(c.SourceDirs) > 0 {
-		return fmt.Errorf("cannot set both source_dir and source_dirs")
+		return errors.New("cannot set both source_dir and source_dirs")
 	}
 	if c.SourceFile != "" && len(c.SourceFiles) > 0 {
-		return fmt.Errorf("cannot set both source_file and source_files")
+		return errors.New("cannot set both source_file and source_files")
 	}
 	if c.Mode == "" {
 		c.Mode = "auto"
 	}
 	if c.Mode != "auto" && c.Mode != "c" && c.Mode != "raw" {
-		return fmt.Errorf("invalid mode: %s", c.Mode)
+		return errors.New("invalid mode: " + c.Mode)
 	}
 	if c.Profile == "" {
 		c.Profile = "balanced"
 	}
 	c.Profile = strings.TrimSpace(strings.ToLower(c.Profile))
 	if c.Profile != "balanced" && c.Profile != "powered" && c.Profile != "performance" {
-		return fmt.Errorf("invalid profile: %s", c.Profile)
+		return errors.New("invalid profile: " + c.Profile)
 	}
 	if c.Toolchain == "" {
 		c.Toolchain = "auto"
 	}
-
 	c.Toolchain = strings.TrimSpace(strings.ToLower(c.Toolchain))
 	if _, ok := supportedToolchains[c.Toolchain]; !ok {
-		return fmt.Errorf("invalid toolchain: %s", c.Toolchain)
+		return errors.New("invalid toolchain: " + c.Toolchain)
 	}
 	if c.Isolation == "" {
 		c.Isolation = IsolationNone
@@ -164,7 +161,7 @@ func (c *Config) Validate() error {
 	switch c.Isolation {
 	case IsolationNone, IsolationStandard, IsolationStrict:
 	default:
-		return fmt.Errorf("invalid isolation: %s", c.Isolation)
+		return errors.New("invalid isolation: " + string(c.Isolation))
 	}
 	if c.IgnoreFile == "" {
 		c.IgnoreFile = ".fzignore"
@@ -240,6 +237,12 @@ func (c *Config) Merge(other *Config) {
 	if other.Name != "" {
 		c.Name = other.Name
 	}
+	if other.Target != "" {
+		c.Target = other.Target
+	}
+	if other.Sysroot != "" {
+		c.Sysroot = other.Sysroot
+	}
 	if other.SourceDir != "" {
 		c.SourceDir = other.SourceDir
 		c.SourceDirs = nil
@@ -271,7 +274,6 @@ func (c *Config) Merge(other *Config) {
 	if other.Profile != "" {
 		c.Profile = other.Profile
 	}
-
 	if other.Debug {
 		c.Debug = other.Debug
 	}
