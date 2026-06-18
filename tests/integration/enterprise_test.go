@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,14 +16,154 @@ import (
 
 func writeDummySource(dir string) (string, error) {
 	p := filepath.Join(dir, "main.asm")
-	data := []byte("; dummy")
+	data := []byte("section .text\nglobal _start\n_start:\n    mov eax, 60\n    xor edi, edi\n    syscall\n")
 	if err := os.WriteFile(p, data, 0o644); err != nil {
 		return "", err
 	}
 	return p, nil
 }
 
+func buildMockAssembler(t *testing.T, destPath string) {
+	t.Helper()
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "main.go")
+	src := `package main
+
+import (
+	"bufio"
+	"os"
+	"strings"
+)
+
+func main() {
+	args := os.Args[1:]
+	
+	var expanded []string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "@") {
+			f, err := os.Open(arg[1:])
+			if err == nil {
+				scanner := bufio.NewScanner(f)
+				for scanner.Scan() {
+					line := strings.TrimSpace(scanner.Text())
+					if line != "" {
+						expanded = append(expanded, line)
+					}
+				}
+				f.Close()
+			}
+		} else {
+			expanded = append(expanded, arg)
+		}
+	}
+	
+	out := ""
+	for i, arg := range expanded {
+		if arg == "-o" && i+1 < len(expanded) {
+			out = expanded[i+1]
+			break
+		}
+	}
+	
+	if out != "" {
+		elfHeader := []byte{
+			0x7f, 'E', 'L', 'F', 2, 1, 1, 0,
+			0, 0, 0, 0, 0, 0, 0, 0,
+			1, 0, 0x3e, 0, 1, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 64, 0, 0, 0,
+			0, 0, 0, 0, 64, 0, 0, 0,
+		}
+		os.WriteFile(out, elfHeader, 0644)
+	}
+}
+`
+	if err := os.WriteFile(srcPath, []byte(src), 0644); err != nil {
+		t.Fatalf("write mock source: %v", err)
+	}
+	
+	cmd := exec.Command("go", "build", "-o", destPath, srcPath)
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("compile mock tool: %v\n%s", err, out)
+	}
+}
+
+func buildMockLinker(t *testing.T, destPath string) {
+	t.Helper()
+	srcDir := t.TempDir()
+	srcPath := filepath.Join(srcDir, "main.go")
+	src := `package main
+
+import (
+	"bufio"
+	"os"
+	"strings"
+)
+
+func main() {
+	args := os.Args[1:]
+	
+	var expanded []string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "@") {
+			f, err := os.Open(arg[1:])
+			if err == nil {
+				scanner := bufio.NewScanner(f)
+				for scanner.Scan() {
+					line := strings.TrimSpace(scanner.Text())
+					if line != "" {
+						expanded = append(expanded, line)
+					}
+				}
+				f.Close()
+			}
+		} else {
+			expanded = append(expanded, arg)
+		}
+	}
+	
+	out := ""
+	for i, arg := range expanded {
+		if arg == "-o" && i+1 < len(expanded) {
+			out = expanded[i+1]
+			break
+		}
+	}
+	
+	if out != "" {
+		elfHeader := []byte{
+			0x7f, 'E', 'L', 'F', 2, 1, 1, 0,
+			0, 0, 0, 0, 0, 0, 0, 0,
+			2, 0, 0x3e, 0, 1, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 64, 0, 0, 0,
+			0, 0, 0, 0, 64, 0, 0, 0,
+		}
+		os.WriteFile(out, elfHeader, 0644)
+	}
+}
+`
+	if err := os.WriteFile(srcPath, []byte(src), 0644); err != nil {
+		t.Fatalf("write mock source: %v", err)
+	}
+	
+	cmd := exec.Command("go", "build", "-o", destPath, srcPath)
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("compile mock tool: %v\n%s", err, out)
+	}
+}
+
 func TestEnterpriseIsolation(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go compiler not available")
+	}
+	
 	dir := t.TempDir()
 	_, err := writeDummySource(dir)
 	if err != nil {
@@ -44,12 +185,10 @@ func TestEnterpriseIsolation(t *testing.T) {
 	}
 	nasmPath := filepath.Join(toolBin, "nasm")
 	ldPath := filepath.Join(toolBin, "ld")
-	if err := os.WriteFile(nasmPath, []byte("#!/bin/sh\n# write OBJ_CONTENT to -o arg\nprev=\"\"\nfor arg in \"$@\"; do\n  if [ \"$prev\" = \"-o\" ]; then\n    echo -n OBJ_CONTENT > \"$arg\"\n  fi\n  prev=\"$arg\"\ndone\n"), 0o755); err != nil {
-		t.Fatalf("write nasm stub: %v", err)
-	}
-	if err := os.WriteFile(ldPath, []byte("#!/bin/sh\n# write BIN_CONTENT to -o arg\nprev=\"\"\nfor arg in \"$@\"; do\n  if [ \"$prev\" = \"-o\" ]; then\n    echo -n BIN_CONTENT > \"$arg\"\n  fi\n  prev=\"$arg\"\ndone\n"), 0o755); err != nil {
-		t.Fatalf("write ld stub: %v", err)
-	}
+	
+	buildMockAssembler(t, nasmPath)
+	buildMockLinker(t, ldPath)
+
 	utils.SetExecutionRoot(dir)
 	os.Setenv("FZ_TEST_VARIANT", "A")
 	res1, err := builder.BuildDir(ctx, []string{dir}, filepath.Join(dir, "out1"), false, false, "raw", false, true, false, true, false, nil, nil, nil, nil, nil, 1, "executable")
