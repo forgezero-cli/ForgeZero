@@ -2,8 +2,6 @@ package bench
 
 import (
 	"encoding/json"
-	"fmt"
-	"strings"
 	"sync"
 	"time"
 )
@@ -43,12 +41,45 @@ func (t *Timer) Error() error {
 }
 
 func (t *Timer) Report() string {
-	var b strings.Builder
-	for _, stage := range t.stages {
-		b.WriteString(fmt.Sprintf("%s: %d ns (%d ms)\n", stage.Name, stage.DurationNs, stage.DurationNs/1e6))
+	var buf []byte
+	buf = append(buf, "stages:\n"...)
+	for _, s := range t.stages {
+		buf = append(buf, s.Name...)
+		buf = append(buf, ": "...)
+		buf = appendInt64(buf, s.DurationNs)
+		buf = append(buf, " ns ("...)
+		buf = appendInt64(buf, s.DurationNs/1e6)
+		buf = append(buf, " ms)\n"...)
 	}
-	b.WriteString(fmt.Sprintf("total: %d ns (%d ms)\n", t.total, t.total/1e6))
-	return b.String()
+	buf = append(buf, "total: "...)
+	buf = appendInt64(buf, t.total)
+	buf = append(buf, " ns ("...)
+	buf = appendInt64(buf, t.total/1e6)
+	buf = append(buf, " ms)\n"...)
+	return string(buf)
+}
+
+func appendInt64(b []byte, v int64) []byte {
+	if v == 0 {
+		return append(b, '0')
+	}
+	var sign byte
+	if v < 0 {
+		sign = '-'
+		v = -v
+	}
+	var tmp [20]byte
+	i := len(tmp)
+	for v > 0 {
+		i--
+		tmp[i] = byte('0' + v%10)
+		v /= 10
+	}
+	if sign != 0 {
+		i--
+		tmp[i] = sign
+	}
+	return append(b, tmp[i:]...)
 }
 
 func (t *Timer) JSON() ([]byte, error) {
