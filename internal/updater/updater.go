@@ -3,13 +3,13 @@ package updater
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -21,9 +21,8 @@ var (
 	httpGet            = func(u string) (*http.Response, error) {
 		req, err := http.NewRequest(http.MethodGet, u, nil)
 		if err != nil {
-			return nil, fmt.Errorf("create request: %w", err)
+			return nil, errors.New("create request: " + err.Error())
 		}
-
 		return httpClient.Do(req)
 	}
 )
@@ -39,7 +38,7 @@ type Release struct {
 func GetLatestVersion() (string, error) {
 	resp, err := httpGet(apiURL)
 	if err != nil {
-		return "", fmt.Errorf("fetch latest version: %w", err)
+		return "", errors.New("fetch latest version: " + err.Error())
 	}
 	if resp == nil {
 		return "", errors.New("empty response from upstream")
@@ -49,12 +48,12 @@ func GetLatestVersion() (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub API returned %s", resp.Status)
+		return "", errors.New("GitHub API returned " + resp.Status)
 	}
 	var release Release
 	dec := json.NewDecoder(io.LimitReader(resp.Body, 1<<20))
 	if err := dec.Decode(&release); err != nil {
-		return "", fmt.Errorf("decode release json: %w", err)
+		return "", errors.New("decode release json: " + err.Error())
 	}
 	return strings.TrimPrefix(release.TagName, "v"), nil
 }
@@ -63,33 +62,33 @@ func assetName() string {
 	osName := runtime.GOOS
 	arch := runtime.GOARCH
 	if osName == "windows" {
-		return fmt.Sprintf("fz-%s-%s.exe", osName, arch)
+		return "fz-" + osName + "-" + arch + ".exe"
 	}
-	return fmt.Sprintf("fz-%s-%s", osName, arch)
+	return "fz-" + osName + "-" + arch
 }
 
 func UpdateSelf(currentVersion string) error {
 	latest, err := GetLatestVersion()
 	if err != nil {
-		return fmt.Errorf("get latest version: %w", err)
+		return errors.New("get latest version: " + err.Error())
 	}
 	if latest == currentVersion {
-		fmt.Println("Already up to date.")
+		os.Stdout.WriteString("Already up to date.\n")
 		return nil
 	}
-	fmt.Printf("New version available: %s (current: %s)\n", latest, currentVersion)
+	os.Stdout.WriteString("New version available: " + latest + " (current: " + currentVersion + ")\n")
 	asset := assetName()
-	dl := fmt.Sprintf("https://github.com/forgezero-cli/ForgeZero/releases/download/v%s/%s", latest, asset)
+	dl := "https://github.com/forgezero-cli/ForgeZero/releases/download/v" + latest + "/" + asset
 	u, err := url.Parse(dl)
 	if err != nil {
-		return fmt.Errorf("invalid download URL: %w", err)
+		return errors.New("invalid download URL: " + err.Error())
 	}
 	if u.Scheme != "https" || !strings.Contains(u.Host, "github.com") {
-		return fmt.Errorf("unsafe download host: %s", u.Host)
+		return errors.New("unsafe download host: " + u.Host)
 	}
 	resp, err := httpGet(u.String())
 	if err != nil {
-		return fmt.Errorf("download binary: %w", err)
+		return errors.New("download binary: " + err.Error())
 	}
 	if resp == nil {
 		return errors.New("empty download response")
@@ -99,27 +98,27 @@ func UpdateSelf(currentVersion string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed: %s", resp.Status)
+		return errors.New("download failed: " + resp.Status)
 	}
 	maxSize := int64(200 << 20)
 	if resp.ContentLength > 0 && resp.ContentLength > maxSize {
-		return fmt.Errorf("asset too large: %d bytes", resp.ContentLength)
+		return errors.New("asset too large: " + strconv.FormatInt(resp.ContentLength, 10) + " bytes")
 	}
 	exePath, err := executablePathFunc()
 	if err != nil {
-		return fmt.Errorf("locate executable: %w", err)
+		return errors.New("locate executable: " + err.Error())
 	}
 	exePath = filepath.Clean(exePath)
 	if !filepath.IsAbs(exePath) {
 		exePath, err = filepath.Abs(exePath)
 		if err != nil {
-			return fmt.Errorf("executable path abs: %w", err)
+			return errors.New("executable path abs: " + err.Error())
 		}
 	}
 	dir := filepath.Dir(exePath)
 	tmp, err := os.CreateTemp(dir, "fz_update_*")
 	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
+		return errors.New("create temp file: " + err.Error())
 	}
 	tmpPath := tmp.Name()
 	defer func() {
@@ -128,41 +127,41 @@ func UpdateSelf(currentVersion string) error {
 	}()
 	lr := io.LimitReader(resp.Body, maxSize+1)
 	if _, err := io.Copy(tmp, lr); err != nil {
-		return fmt.Errorf("write temp file: %w", err)
+		return errors.New("write temp file: " + err.Error())
 	}
 	if fi, err := tmp.Stat(); err == nil {
 		if fi.Size() > maxSize {
-			return fmt.Errorf("download exceeded max size: %d", fi.Size())
+			return errors.New("download exceeded max size: " + strconv.FormatInt(fi.Size(), 10))
 		}
 	}
 	if err := tmp.Sync(); err != nil {
-		return fmt.Errorf("sync temp file: %w", err)
+		return errors.New("sync temp file: " + err.Error())
 	}
 	mode := os.FileMode(0o755)
 	if st, err := os.Stat(exePath); err == nil {
 		mode = st.Mode()
 	}
 	if err := tmp.Chmod(mode); err != nil {
-		return fmt.Errorf("chmod temp file: %w", err)
+		return errors.New("chmod temp file: " + err.Error())
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp file: %w", err)
+		return errors.New("close temp file: " + err.Error())
 	}
 	backupPath := exePath + ".old"
 	if _, err := os.Stat(exePath); err == nil {
 		if err := os.Rename(exePath, backupPath); err != nil {
-			return fmt.Errorf("create backup: %w", err)
+			return errors.New("create backup: " + err.Error())
 		}
 	}
 	if err := os.Rename(tmpPath, exePath); err != nil {
 		if _, statErr := os.Stat(backupPath); statErr == nil {
 			_ = os.Rename(backupPath, exePath)
 		}
-		return fmt.Errorf("install update: %w", err)
+		return errors.New("install update: " + err.Error())
 	}
 	if err := os.Chmod(exePath, mode); err != nil {
-		return fmt.Errorf("set executable mode: %w", err)
+		return errors.New("set executable mode: " + err.Error())
 	}
-	fmt.Printf("Update successful: %s\n", exePath)
+	os.Stdout.WriteString("Update successful: " + exePath + "\n")
 	return nil
 }
