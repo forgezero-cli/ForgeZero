@@ -1,25 +1,18 @@
-/*
-(c) AlexVoste
-Package testrunner — full contributor test suite for ForgeZero
-
-Commands:
-  fz test         # run all tests, human-readable output
-  fz test --alex  # run with extra diagnostics and zero-alloc checks
-  fz test --json  # machine-readable output for CI/CD
-*/
-
 package testrunner
 
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
+
+	"fz/internal/verify"
 )
 
 type TestOptions struct {
@@ -103,11 +96,10 @@ func RunSuite(verbose, jsonOut, alex bool) error {
 				Name string
 				Run  func() (string, error)
 			}{"Aegis Audit", runAudit},
-			// FIXME: Fix correct start verify
-			/* struct {
+			struct {
 				Name string
 				Run  func() (string, error)
-			}{"Source Integrity (verify)", runVerify}, */
+			}{"Source Integrity (verify)", runVerify},
 		)
 	}
 
@@ -132,7 +124,7 @@ func RunSuite(verbose, jsonOut, alex bool) error {
 		report.Stages = append(report.Stages, stage)
 
 		if opts.Verbose && output != "" {
-			fmt.Print(output)
+			os.Stdout.WriteString(output)
 		}
 	}
 
@@ -144,41 +136,44 @@ func RunSuite(verbose, jsonOut, alex bool) error {
 	}
 
 	if opts.JSON {
-		data, _ := json.MarshalIndent(report, "", "  ")
-		fmt.Println(string(data))
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(report)
 	} else {
 		printHumanReport(report)
 	}
 
 	if !allPassed {
-		return fmt.Errorf("test suite failed")
+		return errors.New("test suite failed")
 	}
 	return nil
 }
 
 func printHumanReport(r TestReport) {
-	fmt.Printf("\n\x1b[36mForgeZero Test Runner\x1b[0m (v4.8.0-dev)\n")
-	fmt.Println(strings.Repeat("─", 60))
+	var b strings.Builder
+	b.WriteString("\n\x1b[36mForgeZero Test Runner\x1b[0m (v4.8.0-dev)\n")
+	b.WriteString(strings.Repeat("─", 60) + "\n")
 
 	for _, s := range r.Stages {
 		icon := "✓"
 		if !s.Passed {
 			icon = "✗"
 		}
-		fmt.Printf("  \x1b[34m[%s]\x1b[0m %s %s (%d ms)\n", icon, s.Name, stageStatus(s.Passed), s.Duration)
+		b.WriteString("  \x1b[34m[" + icon + "]\x1b[0m " + s.Name + " " + stageStatus(s.Passed) + " (" + strconv.FormatInt(s.Duration, 10) + " ms)\n")
 		if !s.Passed && len(s.Errors) > 0 {
 			for _, e := range s.Errors {
-				fmt.Printf("      \x1b[31mError:\x1b[0m %s\n", strings.TrimSpace(e))
+				b.WriteString("      \x1b[31mError:\x1b[0m " + strings.TrimSpace(e) + "\n")
 			}
 		}
 	}
 
-	fmt.Println(strings.Repeat("─", 60))
+	b.WriteString(strings.Repeat("─", 60) + "\n")
 	if r.Status == "success" {
-		fmt.Printf("\x1b[32mSTATUS: SUCCESS\x1b[0m (%d stages passed, %d ms)\n", len(r.Stages), r.DurationMs)
+		b.WriteString("\x1b[32mSTATUS: SUCCESS\x1b[0m (" + strconv.Itoa(len(r.Stages)) + " stages passed, " + strconv.FormatInt(r.DurationMs, 10) + " ms)\n")
 	} else {
-		fmt.Printf("\x1b[31mSTATUS: FAILED\x1b[0m (see errors above)\n")
+		b.WriteString("\x1b[31mSTATUS: FAILED\x1b[0m (see errors above)\n")
 	}
+	os.Stdout.WriteString(b.String())
 }
 
 func stageStatus(passed bool) string {
@@ -215,11 +210,7 @@ func runGoTest() (string, error) {
 
 func runCoverage() (string, error) {
 	cmd := exec.Command("go", "test", "./...", "-cover")
-	out, err := runCmd(cmd)
-	if err != nil {
-		return out, err
-	}
-	return out, nil
+	return runCmd(cmd)
 }
 
 func runGoVet() (string, error) {
@@ -242,7 +233,7 @@ func runGoFmt() (string, error) {
 		return string(out), err
 	}
 	if len(out) > 0 {
-		return string(out), fmt.Errorf("unformatted files:\n%s", out)
+		return string(out), errors.New("unformatted files:\n" + string(out))
 	}
 	return "all files formatted", nil
 }
@@ -272,12 +263,7 @@ func runGloriaTest() (string, error) {
 }
 
 func runHadesTest() (string, error) {
-	// TODO: fix testdata/factorial.glo
-	return "Hades test skipped(testdata missing)", nil
-	/*
-	   cmd := exec.Command("./fz", "-gloria", "testdata/factorial.glo", "-out", "/dev/null")
-	   return runCmd(cmd)
-	*/
+	return "Hades test skipped (testdata missing)", nil
 }
 
 func runIntegrationTest() (string, error) {
@@ -292,7 +278,7 @@ func runZeroAllocBench() (string, error) {
 		return out, err
 	}
 	if !strings.Contains(out, "0 allocs/op") {
-		return out, fmt.Errorf("zero-allocation assertion failed: expected 0 allocs/op")
+		return out, errors.New("zero-allocation assertion failed: expected 0 allocs/op")
 	}
 	return out, nil
 }
@@ -308,6 +294,33 @@ func runAudit() (string, error) {
 }
 
 func runVerify() (string, error) {
-	cmd := exec.Command("./fz", "verify")
-	return runCmd(cmd)
+	root := "."
+	manifest := "blake3.manifest"
+	result, err := verify.VerifyRoot(root, manifest)
+	if err != nil {
+		return "", err
+	}
+	if len(result.Missing) == 0 && len(result.Modified) == 0 && len(result.Extra) == 0 {
+		return "source tree integrity intact", nil
+	}
+	var b strings.Builder
+	if len(result.Missing) > 0 {
+		b.WriteString("missing files:\n")
+		for _, p := range result.Missing {
+			b.WriteString("  " + p + "\n")
+		}
+	}
+	if len(result.Modified) > 0 {
+		b.WriteString("modified files:\n")
+		for _, p := range result.Modified {
+			b.WriteString("  " + p + "\n")
+		}
+	}
+	if len(result.Extra) > 0 {
+		b.WriteString("extra files:\n")
+		for _, p := range result.Extra {
+			b.WriteString("  " + p + "\n")
+		}
+	}
+	return b.String(), errors.New("integrity check failed")
 }
