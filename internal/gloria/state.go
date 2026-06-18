@@ -1,7 +1,7 @@
 package gloria
 
 import (
-	"fmt"
+	"errors"
 )
 
 type compilerState struct {
@@ -20,14 +20,14 @@ func newCompilerState() *compilerState {
 
 func (s *compilerState) getStackOffset(name string) (int, error) {
 	if !s.declared[name] {
-		return 0, fmt.Errorf("variable '%s' is not declared! Use 'let %s = ...'", name, name)
+		return 0, errors.New("variable '" + name + "' is not declared! Use 'let " + name + " = ...'")
 	}
 	return s.vars[name], nil
 }
 
 func (s *compilerState) declareAndAlloc(name string) (int, error) {
 	if s.declared[name] {
-		return 0, fmt.Errorf("variable '%s' redeclared", name)
+		return 0, errors.New("variable '" + name + "' redeclared")
 	}
 	s.stackOffset -= 8
 	s.vars[name] = s.stackOffset
