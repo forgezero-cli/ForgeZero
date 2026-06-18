@@ -2,7 +2,8 @@ package shell
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,7 +16,7 @@ import (
 
 func cmdBuild(state *BuildState) error {
 	if state.SourcePath == "" {
-		return fmt.Errorf("no source path set")
+		return errors.New("no source path set")
 	}
 
 	if state.SourceType == "dir" {
@@ -39,14 +40,14 @@ func cmdBuild(state *BuildState) error {
 
 	ext := filepath.Ext(state.SourcePath)
 	if !utils.SupportedExtension(ext) {
-		return fmt.Errorf("unsupported extension: %s", ext)
+		return errors.New("unsupported extension: " + ext)
 	}
 	binName, objName := utils.DeriveNames(state.SourcePath, state.Out, "")
 	if state.Verbose {
 		if ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" {
-			fmt.Printf("Compiling %s -> %s\n", state.SourcePath, objName)
+			os.Stdout.WriteString("Compiling " + state.SourcePath + " -> " + objName + "\n")
 		} else {
-			fmt.Printf("Assembling %s -> %s\n", state.SourcePath, objName)
+			os.Stdout.WriteString("Assembling " + state.SourcePath + " -> " + objName + "\n")
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -63,7 +64,7 @@ func cmdBuild(state *BuildState) error {
 		return err
 	}
 	if state.Verbose {
-		fmt.Printf("Linking %s -> %s (mode: %s)\n", objName, binName, state.Mode)
+		os.Stdout.WriteString("Linking " + objName + " -> " + binName + " (mode: " + state.Mode + ")\n")
 	}
 	if err := linker.Link(ctx, objName, binName, state.Verbose, state.Mode, state.NoSymbolCheck, state.Sanitize, state.Strict, nil); err != nil {
 		return err
@@ -74,18 +75,18 @@ func cmdBuild(state *BuildState) error {
 
 func cmdClean(state *BuildState) error {
 	if state.SourceType != "dir" {
-		return fmt.Errorf("clean only works for directory builds")
+		return errors.New("clean only works for directory builds")
 	}
 	return builder.CleanDir(state.SourcePath, state.Verbose)
 }
 
 func cmdSet(state *BuildState, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: set key=value")
+		return errors.New("usage: set key=value")
 	}
 	parts := strings.SplitN(args[1], "=", 2)
 	if len(parts) != 2 {
-		return fmt.Errorf("invalid format, use key=value")
+		return errors.New("invalid format, use key=value")
 	}
 	key, val := parts[0], parts[1]
 	switch key {
@@ -114,35 +115,44 @@ func cmdSet(state *BuildState, args []string) error {
 	case "out":
 		state.Out = val
 	default:
-		return fmt.Errorf("unknown key: %s", key)
+		return errors.New("unknown key: " + key)
 	}
-	fmt.Printf("Set %s = %s\n", key, val)
+	os.Stdout.WriteString("Set " + key + " = " + val + "\n")
 	return nil
 }
 
 func cmdShow(state *BuildState) {
-	fmt.Printf("Mode: %s\n", state.Mode)
-	fmt.Printf("Format: %s\n", state.Format)
-	fmt.Printf("Strict: %v\n", state.Strict)
-	fmt.Printf("Sanitize: %v\n", state.Sanitize)
-	fmt.Printf("Verbose: %v\n", state.Verbose)
-	fmt.Printf("Debug: %v\n", state.Debug)
-	fmt.Printf("NoCache: %v\n", state.NoCache)
-	fmt.Printf("NoSymbolCheck: %v\n", state.NoSymbolCheck)
-	fmt.Printf("KeepObj: %v\n", state.KeepObj)
-	fmt.Printf("LdScript: %s\n", state.LdScript)
-	fmt.Printf("TextAddr: %s\n", state.TextAddr)
-	fmt.Printf("Output: %s\n", state.Out)
-	fmt.Printf("Source: %s (type: %s)\n", state.SourcePath, state.SourceType)
+	os.Stdout.WriteString("Mode: " + state.Mode + "\n")
+	os.Stdout.WriteString("Format: " + state.Format + "\n")
+	os.Stdout.WriteString("Strict: " + boolStr(state.Strict) + "\n")
+	os.Stdout.WriteString("Sanitize: " + boolStr(state.Sanitize) + "\n")
+	os.Stdout.WriteString("Verbose: " + boolStr(state.Verbose) + "\n")
+	os.Stdout.WriteString("Debug: " + boolStr(state.Debug) + "\n")
+	os.Stdout.WriteString("NoCache: " + boolStr(state.NoCache) + "\n")
+	os.Stdout.WriteString("NoSymbolCheck: " + boolStr(state.NoSymbolCheck) + "\n")
+	os.Stdout.WriteString("KeepObj: " + boolStr(state.KeepObj) + "\n")
+	os.Stdout.WriteString("LdScript: " + state.LdScript + "\n")
+	os.Stdout.WriteString("TextAddr: " + state.TextAddr + "\n")
+	os.Stdout.WriteString("Output: " + state.Out + "\n")
+	os.Stdout.WriteString("Source: " + state.SourcePath + " (type: " + state.SourceType + ")\n")
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 func cmdHelp() {
-	fmt.Println(`Commands:
+	os.Stdout.WriteString(helpText)
+}
+
+const helpText = `Commands:
   build               Build project with current settings
   clean               Remove build artifacts
   set key=value       Change a setting (mode, format, strict, ...)
   show                Show current settings
   watch               Start watch mode (auto-rebuild)
   exit, quit          Exit shell
-  help                Show this help`)
-}
+  help                Show this help`
