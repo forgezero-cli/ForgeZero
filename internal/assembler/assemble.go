@@ -1,17 +1,18 @@
 package assembler
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"flag"
-	"fmt"
+	"fz/internal/seal"
+	"fz/internal/utils"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
-
-	"fz/internal/seal"
-	"fz/internal/utils"
 )
 
 var (
@@ -39,8 +40,25 @@ func SetRunCommand(fn func(ctx context.Context, verbose bool, name string, args 
 	runCommand = fn
 }
 
+func assembleGoAsm(ctx context.Context, src, obj string, verbose bool) error {
+	goroot := os.Getenv("GOROOT")
+	if goroot == "" {
+		goroot = runtime.GOROOT()
+	}
+	includeDir := goroot + "/src/runtime"
+
+	if verbose {
+		writeStderr("Running: go tool asm -I " + includeDir + src + "-o " + obj + "\n")
+	}
+
+	cmd := exec.CommandContext(ctx, "go", "tool", "asm", "-I", includeDir, src, "-o", obj)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	return cmd.Run()
+}
+
 func WriteFlatAssembledNotice(path string) {
-	fmt.Printf("Assembled flat binary: %s\n", path)
+	writeStderr("Assembled flat binary: " + path + "\n")
 }
 
 func validateArgs(args []string) error {
@@ -52,35 +70,18 @@ func validateArgs(args []string) error {
 	return nil
 }
 
-func CCForTarget() string {
-	return ccForTarget()
-}
-
-func CXXForTarget() string {
-	return cxxForTarget()
-}
-
-func GasCmdForTarget() string {
-	return gasCmdForTarget()
-}
-
-func FormatFlagForTarget() string {
-	return formatFlagForTarget()
-}
+func CCForTarget() string         { return ccForTarget() }
+func CXXForTarget() string        { return cxxForTarget() }
+func GasCmdForTarget() string     { return gasCmdForTarget() }
+func FormatFlagForTarget() string { return formatFlagForTarget() }
 
 func ccForTarget() string {
-	// If target choice riscv
 	if strings.Contains(Target, "riscv") {
-		// check access zig cc with cross-target :)
 		if err := utils.CheckTool("zig"); err == nil {
 			return "zig"
-		} else {
 		}
-
-		// if zig not defined then try using system cross-gcc ;0
 		return "riscv64-unknown-elf-gcc"
 	}
-
 	switch {
 	case isWasmTarget():
 		if err := utils.CheckTool("emcc"); err == nil {
@@ -89,15 +90,18 @@ func ccForTarget() string {
 		return "clang"
 	case strings.Contains(Target, "arm"):
 		return "arm-linux-gnueabihf-gcc"
-	case strings.Contains(Target, "riscv"):
-		if err := utils.CheckTool("zig"); err == nil {
-			return "zig"
-		} else {
-		}
-		return "riscv64-unknown-elf-gcc"
 	default:
 		return "gcc"
 	}
+}
+
+func isGoAsmFile(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return bytes.Contains(data, []byte("TEXT ·")) ||
+		bytes.Contains(data, []byte("#include \"textflag.h\""))
 }
 
 func cxxForTarget() string {
@@ -133,7 +137,6 @@ func getCompiler(src string) string {
 	if strings.HasSuffix(src, ".m") {
 		return "clang"
 	}
-
 	return ccForTarget()
 }
 
@@ -144,12 +147,12 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 
 	if muslFlag := flag.Lookup("musl"); muslFlag != nil && muslFlag.Value.String() != "" {
 		muslVal := muslFlag.Value.String()
-
-		if muslVal == "riscv64" {
+		switch {
+		case muslVal == "riscv64":
 			Target = "riscv64-linux-musl"
-		} else if muslVal != "true" && muslVal != "false" {
+		case muslVal != "true" && muslVal != "false":
 			Target = muslVal + "-linux-musl"
-		} else if muslVal == "true" {
+		case muslVal == "true":
 			Target = "x86_64-linux-musl"
 		}
 	}
@@ -160,10 +163,10 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 		return emitDecoyObject(obj)
 	}
 	if err := utils.ValidateCLIPath(src); err != nil {
-		return fmt.Errorf("invalid source path: %w", err)
+		return err
 	}
 	if err := utils.ValidateCLIPath(obj); err != nil {
-		return fmt.Errorf("invalid object path: %w", err)
+		return err
 	}
 	if err := utils.CheckFileExists(src); err != nil {
 		return err
@@ -176,13 +179,16 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 	switch ext {
 	case ".asm", ".fasm":
 		if mode != "raw" && mode != "auto" {
-			return fmt.Errorf("unsupported source mode: %s (supported: raw, auto)", mode)
+			return errors.New("unsupported source mode: " + mode + " (supported: raw, auto)")
 		}
 		if isWasmTarget() {
-			return fmt.Errorf("cannot assemble .asm files for wasm target")
+			return errors.New("cannot assemble .asm files for wasm target")
 		}
 		return assembleRawASM(ctx, src, obj)
 	case ".s":
+		if isGoAsmFile(src) {
+			return assembleGoAsm(ctx, src, obj, verbose)
+		}
 		return assembleS(ctx, src, obj, verbose)
 	case ".S":
 		return compileC(ctx, src, obj, verbose, ccForTarget())
@@ -193,7 +199,7 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 	case ".cpp", ".cc", ".cxx":
 		return compileC(ctx, src, obj, verbose, cxxForTarget())
 	default:
-		return fmt.Errorf("unsupported source extension: %s (supported: .asm, .s, .S, .m, .c, .cpp, .cc, .cxx)", ext)
+		return errors.New("unsupported source extension: " + ext + " (supported: .asm, .s, .S, .m, .c, .cpp, .cc, .cxx)")
 	}
 }
 
@@ -202,22 +208,19 @@ func assembleS(ctx context.Context, src, obj string, verbose bool) error {
 	return err
 }
 
-func writeStderr(s string, args ...any) {
-	_, _ = os.Stderr.WriteString(s)
+func writeStderr(s string) {
+	os.Stderr.WriteString(s)
 }
 
 func getGccIncludePath() string {
 	cmd := exec.Command("gcc", "-print-file-name=include")
-
 	out, err := cmd.Output()
 	if err == nil {
 		path := strings.TrimSpace(string(out))
-
 		if filepath.IsAbs(path) {
 			return path
 		}
 	}
-
 	return ""
 }
 
@@ -229,22 +232,22 @@ func compileC(ctx context.Context, src, obj string, verbose bool, compiler strin
 	compilerParts := strings.Fields(compiler)
 	compilerBin := compilerParts[0]
 
-	args := []string{"-c", src, "-o", obj}
+	args := make([]string, 0, 8)
+	args = append(args, "-c", src, "-o", obj)
 
 	if strings.HasSuffix(src, ".m") {
-		args = append([]string{"-x", "objective-c"}, args...)
-
+		args = append(args, "-x", "objective-c")
 		if gccInc := getGccIncludePath(); gccInc != "" {
-			args = append([]string{"-I" + gccInc}, args...)
+			args = append(args, "-I"+gccInc)
 		}
 	}
 
 	if compilerBin == "zig" && Target != "" {
-		args = append([]string{"cc", "-target", Target}, args...)
+		args = append(args, "cc", "-target", Target)
 	}
 	if len(compilerParts) > 1 {
 		if compilerBin != "zig" || compilerParts[1] != "cc" {
-			args = append(compilerParts[1:], args...)
+			args = append(args, compilerParts[1:]...)
 		}
 	}
 
