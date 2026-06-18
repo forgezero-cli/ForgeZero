@@ -6,17 +6,18 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
-	"fz/internal/config"
-	"fz/internal/utils"
-	"fz/internal/zig"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"fz/internal/config"
+	"fz/internal/utils"
+	"fz/internal/zig"
 )
 
 var (
@@ -31,6 +32,51 @@ var (
 	ForceLD      bool
 	AutoBuild    bool
 )
+
+var (
+	linkerOnce      sync.Once
+	preferredLinker string // "lld", "mold", or "" for system ld
+	hasLld          bool
+	hasMold         bool
+)
+
+func detectLinker() {
+	linkerOnce.Do(func() {
+		if _, err := exec.LookPath("ld.lld"); err == nil {
+			hasLld = true
+			preferredLinker = "lld"
+			return
+		}
+		if _, err := exec.LookPath("mold"); err == nil {
+			hasMold = true
+			preferredLinker = "mold"
+			return
+		}
+		preferredLinker = ""
+	})
+}
+
+func getLinkerName() string {
+	detectLinker()
+	if preferredLinker == "lld" {
+		return "ld.lld"
+	}
+	if preferredLinker == "mold" {
+		return "mold"
+	}
+	return "ld"
+}
+
+func getFuseLdFlag() string {
+	detectLinker()
+	if preferredLinker == "lld" {
+		return "-fuse-ld=lld"
+	}
+	if preferredLinker == "mold" {
+		return "-fuse-ld=mold"
+	}
+	return ""
+}
 
 func SetRunner(r CmdRunner) {
 	runner = r
@@ -63,6 +109,7 @@ func shouldUseResponseFile(args []string) bool {
 	}
 	return total > 8192
 }
+
 func createResponseFile(args []string) (string, error) {
 	f, err := os.CreateTemp("", "fz_link_args_*.rsp")
 	if err != nil {
@@ -150,7 +197,7 @@ func ensureContextTimeout(ctx context.Context, min time.Duration) (context.Conte
 
 func isLdExecutable(name string) bool {
 	base := filepath.Base(name)
-	if base == "ld" || base == "ld.lld" || base == "wasm-ld" {
+	if base == "ld" || base == "ld.lld" || base == "wasm-ld" || base == "mold" {
 		return true
 	}
 	return strings.HasSuffix(base, "-ld")
@@ -174,7 +221,7 @@ func runLinkerCombinedOutput(ctx context.Context, verbose bool, name string, arg
 	out := buf.String()
 
 	if verbose && len(out) > 0 {
-		fmt.Fprint(os.Stdout, out)
+		os.Stdout.WriteString(out)
 	}
 
 	return out, err
@@ -194,11 +241,20 @@ func validateLinkCall(ctx context.Context, output string) error {
 }
 
 func ldForTarget() string {
+	detectLinker()
 	if isWasmTarget() {
 		if _, err := exec.LookPath("wasm-ld"); err == nil {
 			return "wasm-ld"
 		}
 		return "ld.lld"
+	}
+	if preferredLinker != "" {
+		if preferredLinker == "lld" {
+			return "ld.lld"
+		}
+		if preferredLinker == "mold" {
+			return "mold"
+		}
 	}
 	switch {
 	case strings.Contains(Target, "arm"):
@@ -360,10 +416,10 @@ func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bo
 }
 
 func writeStderr(s string) {
-	_, _ = os.Stderr.WriteString(s)
+	os.Stderr.WriteString(s)
 }
-func AutoBuildProject(ctx context.Context) error {
 
+func AutoBuildProject(ctx context.Context) error {
 	if !AutoBuild {
 		return nil
 	}
@@ -448,7 +504,7 @@ func runBuild(files []string, backend string) error {
 }
 
 func printInfo(msg string) {
-	_, _ = os.Stdout.WriteString(msg + "\n")
+	os.Stdout.WriteString(msg + "\n")
 }
 
 func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bool, strict bool, libs []string) error {
@@ -478,7 +534,6 @@ func tryAutoLink(ctx context.Context, obj, bin string, verbose bool, sanitize bo
 		}
 
 		return errors.New("objective-c linking failed via Clang")
-
 	}
 
 	if useZig() {
@@ -527,6 +582,9 @@ func linkWithClang(ctx context.Context, obj, bin string, verbose bool, allowNoPi
 	args := []string{obj, "-o", bin}
 	if isWasmTarget() {
 		args = append([]string{"--target=wasm32-unknown-unknown"}, args...)
+	}
+	if fuse := getFuseLdFlag(); fuse != "" {
+		args = append(args, fuse)
 	}
 	if sanitize {
 		args = append(args, "-fsanitize=address", "-fsanitize=undefined")
@@ -580,6 +638,9 @@ func linkWithGcc(ctx context.Context, obj, bin string, verbose bool, allowNoPieF
 	args := []string{obj, "-o", bin}
 	if isWasmTarget() && gccForTarget() == "clang" {
 		args = append([]string{"--target=wasm32-unknown-unknown"}, args...)
+	}
+	if fuse := getFuseLdFlag(); fuse != "" {
+		args = append(args, fuse)
 	}
 	if sanitize {
 		args = append(args, "-fsanitize=address", "-fsanitize=undefined")
@@ -641,6 +702,7 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool, libs []strin
 	if err := validateLinkCall(ctx, bin); err != nil {
 		return err
 	}
+	linker := ldForTarget()
 	args := []string{obj, "-o", bin}
 	for _, lib := range libs {
 		args = append(args, "-l"+lib)
@@ -653,9 +715,9 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool, libs []strin
 		args = append(args, "-shared")
 	}
 	if verbose {
-		printInfo("Running: " + ldForTarget() + " " + strings.Join(args, " "))
+		printInfo("Running: " + linker + " " + strings.Join(args, " "))
 	}
-	output, err := runLinkerCommand(ctx, verbose, ldForTarget(), args)
+	output, err := runLinkerCommand(ctx, verbose, linker, args)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
@@ -663,7 +725,7 @@ func linkWithLd(ctx context.Context, obj, bin string, verbose bool, libs []strin
 		if !verbose {
 			return errors.New("ld link failed (use -verbose for details)")
 		}
-		return errors.New("ld failed: " + err.Error() + "\n" + output)
+		return errors.New(linker + " failed: " + err.Error() + "\n" + output)
 	}
 	return nil
 }
@@ -724,6 +786,9 @@ func linkMultipleWithClang(ctx context.Context, objFiles []string, bin string, v
 	if isWasmTarget() {
 		args = append([]string{"--target=wasm32-unknown-unknown"}, args...)
 	}
+	if fuse := getFuseLdFlag(); fuse != "" {
+		args = append(args, fuse)
+	}
 	if sanitize {
 		args = append(args, "-fsanitize=address", "-fsanitize=undefined")
 		args = append(args, "-fsanitize-address-use-after-return=always")
@@ -777,6 +842,9 @@ func linkMultipleWithGcc(ctx context.Context, objFiles []string, bin string, ver
 	if isWasmTarget() && gccForTarget() == "clang" {
 		args = append([]string{"--target=wasm32-unknown-unknown"}, args...)
 	}
+	if fuse := getFuseLdFlag(); fuse != "" {
+		args = append(args, fuse)
+	}
 	if sanitize {
 		args = append(args, "-fsanitize=address", "-fsanitize=undefined")
 		if strict {
@@ -827,6 +895,7 @@ func linkMultipleWithLd(ctx context.Context, objFiles []string, bin string, verb
 	if err := validateLinkCall(ctx, bin); err != nil {
 		return err
 	}
+	linker := ldForTarget()
 	args := append(objFiles, "-o", bin)
 	for _, lib := range libs {
 		args = append(args, "-l"+lib)
@@ -839,9 +908,9 @@ func linkMultipleWithLd(ctx context.Context, objFiles []string, bin string, verb
 		args = append(args, "-shared")
 	}
 	if verbose {
-		printInfo("Running: " + ldForTarget() + " " + strings.Join(args, " "))
+		printInfo("Running: " + linker + " " + strings.Join(args, " "))
 	}
-	output, err := runLinkerCommand(ctx, verbose, ldForTarget(), args)
+	output, err := runLinkerCommand(ctx, verbose, linker, args)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
@@ -849,7 +918,7 @@ func linkMultipleWithLd(ctx context.Context, objFiles []string, bin string, verb
 		if !verbose {
 			return errors.New("ld link failed (use -verbose for details)")
 		}
-		return errors.New("ld failed: " + err.Error() + "\n" + output)
+		return errors.New(linker + " failed: " + err.Error() + "\n" + output)
 	}
 	return nil
 }
