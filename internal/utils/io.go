@@ -2,7 +2,7 @@ package utils
 
 import (
 	"encoding/hex"
-	"fmt"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,7 +17,7 @@ func resolveOrAbs(path string) (string, error) {
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("resolve path %s: %w", path, err)
+		return "", errors.New("resolve path " + path + ": " + err.Error())
 	}
 	return filepath.Clean(abs), nil
 }
@@ -32,7 +32,7 @@ func ResolveSecurePath(path string) (string, error) {
 		if root != "" {
 			rootAbs, rootErr := resolveOrAbs(root)
 			if rootErr == nil && !pathWithinRoot(rootAbs, abs) {
-				return "", fmt.Errorf("strict isolation outside root: %s", path)
+				return "", errors.New("strict isolation outside root: " + path)
 			}
 		}
 	}
@@ -41,14 +41,14 @@ func ResolveSecurePath(path string) (string, error) {
 		if os.IsNotExist(err) {
 			return abs, nil
 		}
-		return "", fmt.Errorf("eval symlinks %s: %w", abs, err)
+		return "", errors.New("eval symlinks " + abs + ": " + err.Error())
 	}
 	if fzvfs.IsStrictIsolation() {
 		root := GetExecutionRoot()
 		if root != "" {
 			rootAbs, rootErr := resolveOrAbs(root)
 			if rootErr == nil && !pathWithinRoot(rootAbs, eval) {
-				return "", fmt.Errorf("strict isolation outside root: %s", path)
+				return "", errors.New("strict isolation outside root: " + path)
 			}
 		}
 	}
@@ -62,7 +62,7 @@ func openVerified(resolved string) (io.ReadCloser, error) {
 			os.Stderr.WriteString("strict isolation file integrity failure\n")
 			os.Exit(1)
 		}
-		return nil, fmt.Errorf("open verified %s: %w", resolved, err)
+		return nil, errors.New("open verified " + resolved + ": " + err.Error())
 	}
 	return f, nil
 }
@@ -71,7 +71,7 @@ func atomicWrite(resolved string, data []byte) error {
 	dir := filepath.Dir(resolved)
 	tmp, err := fileSystem().CreateTemp(dir, ".fz_write_*.tmp")
 	if err != nil {
-		return fmt.Errorf("create temp in %s: %w", dir, err)
+		return errors.New("create temp in " + dir + ": " + err.Error())
 	}
 	tmpName := tmp.Name()
 	cleanup := true
@@ -82,16 +82,16 @@ func atomicWrite(resolved string, data []byte) error {
 		}
 	}()
 	if err := fileSystem().Chmod(tmpName, FilePerm); err != nil {
-		return fmt.Errorf("chmod temp %s: %w", tmpName, err)
+		return errors.New("chmod temp " + tmpName + ": " + err.Error())
 	}
 	if _, err := tmp.Write(data); err != nil {
-		return fmt.Errorf("write temp %s: %w", tmpName, err)
+		return errors.New("write temp " + tmpName + ": " + err.Error())
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp %s: %w", tmpName, err)
+		return errors.New("close temp " + tmpName + ": " + err.Error())
 	}
 	if err := renameResolved(tmpName, resolved); err != nil {
-		return fmt.Errorf("rename %s to %s: %w", tmpName, resolved, err)
+		return errors.New("rename " + tmpName + " to " + resolved + ": " + err.Error())
 	}
 	cleanup = false
 	return fileSystem().Chmod(resolved, FilePerm)
@@ -108,7 +108,7 @@ func resolveDest(path string) (string, error) {
 	}
 	abs, absErr := resolveOrAbs(path)
 	if absErr != nil {
-		return "", fmt.Errorf("resolve dest %s: %w", path, err)
+		return "", errors.New("resolve dest " + path + ": " + err.Error())
 	}
 	return abs, nil
 }
@@ -146,7 +146,7 @@ func RemovePath(path string) error {
 	if err != nil {
 		abs, absErr := resolveOrAbs(path)
 		if absErr != nil {
-			return fmt.Errorf("remove %s: %w", path, err)
+			return errors.New("remove " + path + ": " + err.Error())
 		}
 		resolved = abs
 	}
@@ -156,7 +156,7 @@ func RemovePath(path string) error {
 func OpenVerifiedRead(path string) (io.ReadCloser, error) {
 	resolved, err := ResolveSecurePath(path)
 	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", path, err)
+		return nil, errors.New("open " + path + ": " + err.Error())
 	}
 	return openVerified(resolved)
 }
@@ -164,26 +164,24 @@ func OpenVerifiedRead(path string) (io.ReadCloser, error) {
 func ReadFileSecure(path string) ([]byte, error) {
 	resolved, err := ResolveSecurePath(path)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, errors.New("read " + path + ": " + err.Error())
 	}
 	f, err := openVerified(resolved)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, errors.New("read " + path + ": " + err.Error())
 	}
 	defer f.Close()
 	data, err := io.ReadAll(f)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, errors.New("read " + path + ": " + err.Error())
 	}
 	if fzvfs.IsStrictIsolation() {
 		h, herr := HashDataDigest(data)
 		if herr == nil {
-			hb := make([]byte, hex.EncodedLen(len(h)))
-			hex.Encode(hb, h[:])
-			if !seal.IsAllowedHex(string(hb)) {
-				for i := range data {
-					data[i] = 0
-				}
+			var hexBuf [64]byte
+			hex.Encode(hexBuf[:], h[:])
+			if !seal.IsAllowedHex(string(hexBuf[:])) {
+				ZeroizeBytes(data)
 				os.Exit(1)
 			}
 		}
