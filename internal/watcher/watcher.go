@@ -1,8 +1,7 @@
 package watcher
 
 import (
-	"fmt"
-	"log"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,7 +40,7 @@ func (w *Watcher) AddRecursive(root string) error {
 		return err
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("%s is not a directory", root)
+		return errors.New(root + " is not a directory")
 	}
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -71,7 +70,7 @@ func (w *Watcher) Watch(debounceDelay time.Duration, handler EventHandler) {
 				if !ok {
 					return
 				}
-				log.Printf("watcher error: %v", err)
+				os.Stderr.WriteString("watcher error: " + err.Error() + "\n")
 			}
 		}
 	}()
@@ -84,7 +83,7 @@ func (w *Watcher) Watch(debounceDelay time.Duration, handler EventHandler) {
 			timer.Reset(debounceDelay)
 		case <-timer.C:
 			if err := handler("change"); err != nil {
-				log.Printf("rebuild error: %v", err)
+				os.Stderr.WriteString("rebuild error: " + err.Error() + "\n")
 			}
 			timer.Stop()
 		case <-w.done:
