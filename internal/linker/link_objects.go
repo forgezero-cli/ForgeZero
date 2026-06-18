@@ -3,7 +3,7 @@ package linker
 import (
 	"context"
 	"errors"
-	"fmt"
+	"os"
 	"strings"
 
 	"fz/internal/config"
@@ -36,12 +36,12 @@ func LinkObjects(ctx context.Context, target string, objs []string, cfg *config.
 
 	verbose := cfg != nil && cfg.Verbose
 	if verbose {
-		fmt.Printf("Running: %s %s\n", cmd, strings.Join(args, " "))
+		os.Stdout.WriteString("Running: " + cmd + " " + strings.Join(args, " ") + "\n")
 	}
 	output, err := runLinkerCommand(ctx, verbose, cmd, args)
 	if err != nil {
 		if hasUndefinedSymbol(output) {
-			return fmt.Errorf("link failed: undefined symbols\n%s", output)
+			return errors.New("link failed: undefined symbols\n" + output)
 		}
 		return newLinkError(cmd, verbose, err, output)
 	}
@@ -136,7 +136,7 @@ func hasUndefinedSymbol(output string) bool {
 
 func newLinkError(cmd string, verbose bool, err error, output string) error {
 	if verbose {
-		return fmt.Errorf("%s failed: %w\n%s", cmd, err, output)
+		return errors.New(cmd + " failed: " + err.Error() + "\n" + output)
 	}
-	return fmt.Errorf("%s link failed (use -verbose for details)", cmd)
+	return errors.New(cmd + " link failed (use -verbose for details)")
 }
