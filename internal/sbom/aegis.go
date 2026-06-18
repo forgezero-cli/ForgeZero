@@ -1,7 +1,7 @@
 package sbom
 
 import (
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -14,13 +14,13 @@ func GenerateAndStoreSBOM(root, vendorDir, buildVersion string, cfg *config.Conf
 	if root == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
-			return fmt.Errorf("getwd: %w", err)
+			return errors.New("getwd: " + err.Error())
 		}
 		root = cwd
 	}
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
-		return fmt.Errorf("abs root: %w", err)
+		return errors.New("abs root: " + err.Error())
 	}
 	if cfg == nil {
 		cfg = &config.Config{}
@@ -34,12 +34,12 @@ func GenerateAndStoreSBOM(root, vendorDir, buildVersion string, cfg *config.Conf
 		return err
 	}
 	if err := utils.SecureWriteFile(outPath, plain); err != nil {
-		return fmt.Errorf("write sbom: %w", err)
+		return errors.New("write sbom: " + err.Error())
 	}
 	merkle, err := utils.BuildMerkleRoot(rootAbs)
 	if err == nil {
 		var mbuf [48]byte
-		n := copy(mbuf[:], []byte("sbom:merkle:"))
+		n := copy(mbuf[:], "sbom:merkle:")
 		copy(mbuf[n:], merkle[:])
 		seal.UpdateGlobalState(mbuf[:n+len(merkle)])
 	}
