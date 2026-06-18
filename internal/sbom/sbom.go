@@ -3,7 +3,7 @@ package sbom
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,13 +60,13 @@ func Generate(root, vendorDir, buildVersion string, cfg *config.Config, target s
 	if root == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
-			return nil, fmt.Errorf("getwd: %w", err)
+			return nil, errors.New("getwd error")
 		}
 		root = cwd
 	}
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
-		return nil, fmt.Errorf("abs root: %w", err)
+		return nil, errors.New("abs root error")
 	}
 	if err := utils.EnsureInsideRoot(rootAbs, rootAbs); err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func Generate(root, vendorDir, buildVersion string, cfg *config.Config, target s
 		sort.Strings(keys)
 		for _, name := range keys {
 			metadata.Properties = append(metadata.Properties, Property{
-				Name:  fmt.Sprintf("tool.checksum.%s", name),
+				Name:  "tool.checksum." + name,
 				Value: cfg.ToolChecksums[name],
 			})
 		}
@@ -145,25 +145,25 @@ func scanVendorComponents(root, vendorDir string) ([]Component, error) {
 	rootAbs := filepath.Clean(root)
 	vendorPath := filepath.Join(root, vendorDir)
 	if err := utils.EnsureInsideRoot(rootAbs, vendorPath); err != nil {
-		return nil, fmt.Errorf("vendor path: %w", err)
+		return nil, errors.New("vendor path error")
 	}
 	resolvedVendor, err := utils.ResolveSecurePath(vendorPath)
 	if err != nil {
-		return nil, fmt.Errorf("resolve vendor: %w", err)
+		return nil, errors.New("resolve vendor error")
 	}
 	info, err := utils.StatResolved(resolvedVendor)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("stat vendor: %w", err)
+		return nil, errors.New("stat vendor error")
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("vendor path is not a directory: %s", vendorPath)
+		return nil, errors.New("vendor path is not a directory")
 	}
 	entries, err := utils.ReadDirResolved(resolvedVendor)
 	if err != nil {
-		return nil, fmt.Errorf("read vendor: %w", err)
+		return nil, errors.New("read vendor error")
 	}
 	components := make([]Component, 0, len(entries))
 	for _, entry := range entries {
@@ -186,20 +186,20 @@ func scanVendorComponents(root, vendorDir string) ([]Component, error) {
 func hashVendorEntry(rootAbs, path string, entry os.DirEntry) (string, error) {
 	info, lerr := utils.LstatPath(path)
 	if lerr != nil {
-		return "", fmt.Errorf("lstat %s: %w", path, lerr)
+		return "", errors.New("lstat error")
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		resolved, rerr := utils.EvalSymlinksPath(path)
 		if rerr != nil {
-			return "", fmt.Errorf("eval symlink %s: %w", path, rerr)
+			return "", errors.New("eval symlink error")
 		}
 		if err := utils.EnsureInsideRoot(rootAbs, resolved); err != nil {
-			fmt.Fprintf(os.Stderr, "SECURITY WARNING: vendor symlink %s outside project root %s\n", path, rootAbs)
+			os.Stderr.WriteString("SECURITY WARNING: vendor symlink " + path + " outside project root " + rootAbs + "\n")
 			return utils.HashDirWithRoot(rootAbs, path)
 		}
 		st, serr := utils.StatResolved(resolved)
 		if serr != nil {
-			return "", fmt.Errorf("stat %s: %w", resolved, serr)
+			return "", errors.New("stat resolved error")
 		}
 		if st.IsDir() {
 			return utils.HashDirWithRoot(rootAbs, resolved)
