@@ -4,7 +4,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"os"
 	"os/exec"
 )
 
@@ -19,18 +19,18 @@ func main() {
 	cmd := exec.Command("python3", "parser.py", "test.py")
 	output, err := cmd.Output()
 	if err != nil {
-		fmt.Printf("Error parsing python: %v\n", err)
+		os.Stderr.WriteString("Error parsing python: " + err.Error() + "\n")
 		return
 	}
 
 	var irInstructions []IRInstruction
 	if err := json.Unmarshal(output, &irInstructions); err != nil {
-		fmt.Printf("Error decoding IR: %v\n", err)
+		os.Stderr.WriteString("Error decoding IR: " + err.Error() + "\n")
 		return
 	}
 
-	fmt.Println("[ForgeZero] Received IR from Python frontend:")
+	os.Stdout.WriteString("[ForgeZero] Received IR from Python frontend:\n")
 	for _, inst := range irInstructions {
-		fmt.Printf("Instruction: Op=%s, Dest=%s, Arg1=%s, Arg2=%s\n", inst.Op, inst.Dest, inst.Arg1, inst.Arg2)
+		os.Stdout.WriteString("Instruction: Op=" + inst.Op + ", Dest=" + inst.Dest + ", Arg1=" + inst.Arg1 + ", Arg2=" + inst.Arg2 + "\n")
 	}
 }
