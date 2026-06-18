@@ -22,13 +22,13 @@
         &nbsp;
         <img src="https://img.shields.io/github/license/forgezero-cli/ForgeZero" alt="License"/>
         &nbsp;
-        <img src="https://img.shields.io/github/commits-since/forgezero-cli/ForgeZero/v4.9.0" alt="Commits"/>
+        <img src="https://img.shields.io/github/commits-since/forgezero-cli/ForgeZero/v5.0.0" alt="Commits"/>
       </td>
     </tr>
   </table>
 </div>
 
-> **Version:** 4.9.0 &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
+> **Version:** 5.0.0 &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** MIT &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
 
 ForgeZero is a high-performance, zero-overhead build tool for assembly, C, C++, Objective-C, and Gloria developers. It wraps NASM, GAS, FASM, GCC, Clang, Zig, and LD into a single unified command-line interface — no Makefiles, no build scripts, no configuration required to get started.
 
