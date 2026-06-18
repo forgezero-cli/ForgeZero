@@ -6,7 +6,7 @@ package linker
 import (
 	"context"
 	"debug/elf"
-	"fmt"
+	"errors"
 	"os"
 	"syscall"
 	"unsafe"
@@ -86,10 +86,10 @@ func bssSectionSize(file *elf.File, name string) (uint32, error) {
 		return 0, nil
 	}
 	if section.Flags&elf.SHF_ALLOC == 0 {
-		return 0, fmt.Errorf("section %s is not allocatable", name)
+		return 0, errors.New("section is not allocatable")
 	}
 	if section.Size > uint64(^uint32(0)) {
-		return 0, fmt.Errorf("section %s too large", name)
+		return 0, errors.New("section too large")
 	}
 	return uint32(section.Size), nil
 }
@@ -98,7 +98,7 @@ func verifyNoRelocations(file *elf.File) error {
 	for _, section := range file.Sections {
 		switch section.Type {
 		case elf.SHT_REL, elf.SHT_RELA:
-			return fmt.Errorf("unsupported relocations in baremetal object: %s", section.Name)
+			return errors.New("unsupported relocations in baremetal object")
 		}
 	}
 	return nil
