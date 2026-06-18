@@ -3,16 +3,18 @@ package pkgman
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"fz/internal/utils"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -22,9 +24,7 @@ var runGit = func(ctx context.Context, args ...string) (string, error) {
 	return utils.RunCommand(ctx, false, os.Stdout, os.Stderr, "git", args...)
 }
 
-const (
-	vendorDir = "vendor"
-)
+const vendorDir = "vendor"
 
 type CatalogPackage struct {
 	Name        string `json:"name"`
@@ -55,21 +55,21 @@ func Add(ctx context.Context, pkgURL, version string) error {
 		return err
 	}
 	if err := utils.SecureMkdirAll(dest); err != nil {
-		return fmt.Errorf("prepare vendor dir: %w", err)
+		return errors.New("prepare vendor dir: " + err.Error())
 	}
-	cloneURL := fmt.Sprintf("https://%s", repo)
+	cloneURL := "https://" + repo
 	if _, err := runGit(ctx, "clone", cloneURL, dest); err != nil {
-		return fmt.Errorf("git clone %s: %w", repo, err)
+		return errors.New("git clone " + repo + ": " + err.Error())
 	}
 	if tag != "" {
 		if _, err := runGit(ctx, "-C", dest, "checkout", tag); err != nil {
-			return fmt.Errorf("git checkout %s@%s: %w", repo, tag, err)
+			return errors.New("git checkout " + repo + "@" + tag + ": " + err.Error())
 		}
 	}
 	if err := updateConfig(destRel, true); err != nil {
 		return err
 	}
-	fmt.Printf("Package %s installed.\n", pkgURL)
+	os.Stdout.WriteString("Package " + pkgURL + " installed.\n")
 	return nil
 }
 
@@ -96,7 +96,7 @@ func removePackage(path string) error {
 		return err
 	}
 	if err := os.RemoveAll(path); err != nil {
-		return fmt.Errorf("failed to remove %s: %w", path, err)
+		return errors.New("failed to remove " + path + ": " + err.Error())
 	}
 	dir := filepath.Dir(path)
 	for dir != vendorDir && dir != "." {
@@ -116,7 +116,7 @@ func removePackage(path string) error {
 	if err := cleanConfig(path); err != nil {
 		return err
 	}
-	fmt.Printf("Package %s removed.\n", path)
+	os.Stdout.WriteString("Package " + path + " removed.\n")
 	return nil
 }
 
@@ -172,7 +172,7 @@ func cleanConfig(pkgPath string) error {
 
 func List() error {
 	if _, err := os.Stat(vendorDir); os.IsNotExist(err) {
-		fmt.Println("No packages installed.")
+		os.Stdout.WriteString("No packages installed.\n")
 		return nil
 	}
 	var packages []string
@@ -195,11 +195,11 @@ func List() error {
 		return err
 	}
 	if len(packages) == 0 {
-		fmt.Println("No packages installed.")
+		os.Stdout.WriteString("No packages installed.\n")
 		return nil
 	}
 	for _, pkg := range packages {
-		fmt.Println(pkg)
+		os.Stdout.WriteString(pkg + "\n")
 	}
 	return nil
 }
@@ -208,7 +208,7 @@ func Update(ctx context.Context) error {
 	entries, err := os.ReadDir(vendorDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Println("No packages to update.")
+			os.Stdout.WriteString("No packages to update.\n")
 			return nil
 		}
 		return err
@@ -216,9 +216,9 @@ func Update(ctx context.Context) error {
 	for _, entry := range entries {
 		pkgPath := filepath.Join(vendorDir, entry.Name())
 		if _, err := runGit(ctx, "-C", pkgPath, "pull"); err != nil {
-			fmt.Printf("Warning: failed to update %s: %v\n", entry.Name(), err)
+			os.Stderr.WriteString("Warning: failed to update " + entry.Name() + ": " + err.Error() + "\n")
 		} else {
-			fmt.Printf("Updated %s\n", entry.Name())
+			os.Stdout.WriteString("Updated " + entry.Name() + "\n")
 		}
 	}
 	return nil
@@ -231,7 +231,7 @@ func getCatalogURLs() []string {
 	if envURL := os.Getenv("FZ_CATALOG_URL"); envURL != "" {
 		urls = append([]string{envURL}, urls...)
 	}
-	urls = append(urls, "https://git.wienton.ru/alexvoste/Catalog/raw/branch/main/catalog.json")
+	urls = append(urls, "https://github.com/forgezero-cli/pkgman/raw/branch/main/catalog.json")
 	return urls
 }
 
@@ -249,7 +249,7 @@ func fetchCatalogFromURL(url string) (*Catalog, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+		return nil, errors.New("HTTP " + strconv.Itoa(resp.StatusCode))
 	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -270,9 +270,9 @@ func fetchCatalog() (*Catalog, error) {
 			return cat, nil
 		}
 		lastErr = err
-		fmt.Fprintf(os.Stderr, "Warning: failed to fetch catalog from %s: %v\n", url, err)
+		os.Stderr.WriteString("Warning: failed to fetch catalog from " + url + ": " + err.Error() + "\n")
 	}
-	return nil, fmt.Errorf("all catalog URLs failed: %w", lastErr)
+	return nil, errors.New("all catalog URLs failed: " + lastErr.Error())
 }
 
 func ListCatalog(ctx context.Context) error {
@@ -280,9 +280,9 @@ func ListCatalog(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Available packages (catalog version %d):\n", cat.Version)
+	os.Stdout.WriteString("Available packages (catalog version " + strconv.Itoa(cat.Version) + "):\n")
 	for _, p := range cat.Packages {
-		fmt.Printf("  %s (%s) - %s\n", p.Name, p.Category, p.Description)
+		os.Stdout.WriteString("  " + p.Name + " (" + p.Category + ") - " + p.Description + "\n")
 	}
 	return nil
 }
@@ -292,18 +292,19 @@ func SearchCatalog(ctx context.Context, keyword string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Search results for '%s':\n", keyword)
+	os.Stdout.WriteString("Search results for '" + keyword + "':\n")
 	found := false
+	kw := strings.ToLower(keyword)
 	for _, p := range cat.Packages {
-		if strings.Contains(strings.ToLower(p.Name), strings.ToLower(keyword)) ||
-			strings.Contains(strings.ToLower(p.Description), strings.ToLower(keyword)) ||
-			strings.Contains(strings.ToLower(p.Category), strings.ToLower(keyword)) {
-			fmt.Printf("  %s (%s) - %s\n", p.Name, p.Category, p.Description)
+		if strings.Contains(strings.ToLower(p.Name), kw) ||
+			strings.Contains(strings.ToLower(p.Description), kw) ||
+			strings.Contains(strings.ToLower(p.Category), kw) {
+			os.Stdout.WriteString("  " + p.Name + " (" + p.Category + ") - " + p.Description + "\n")
 			found = true
 		}
 	}
 	if !found {
-		fmt.Println("No matching packages found.")
+		os.Stdout.WriteString("No matching packages found.\n")
 	}
 	return nil
 }
@@ -321,7 +322,7 @@ func InstallFromCatalog(ctx context.Context, pkgName string) error {
 		}
 	}
 	if pkg == nil {
-		return fmt.Errorf("package %s not found in catalog", pkgName)
+		return errors.New("package " + pkgName + " not found in catalog")
 	}
 	repoWithTag := pkg.Repo
 	if pkg.Tag != "" {
@@ -337,12 +338,12 @@ func InstallFromCatalog(ctx context.Context, pkgName string) error {
 	if pkg.Hash != "" {
 		actualHash, err := utils.HashDir(hashDirPath)
 		if err != nil {
-			fmt.Printf("Warning: failed to compute hash for %s: %v\n", pkgName, err)
+			os.Stderr.WriteString("Warning: failed to compute hash for " + pkgName + ": " + err.Error() + "\n")
 		} else if actualHash != pkg.Hash {
 			_ = Remove(ctx, pkgName)
-			return fmt.Errorf("hash mismatch for package %s (expected %s, got %s)", pkgName, pkg.Hash, actualHash)
+			return errors.New("hash mismatch for package " + pkgName + " (expected " + pkg.Hash + ", got " + actualHash + ")")
 		} else {
-			fmt.Printf("Hash verification passed for %s\n", pkgName)
+			os.Stdout.WriteString("Hash verification passed for " + pkgName + "\n")
 		}
 	}
 	if pkg.SourceDir != "" {
@@ -352,16 +353,13 @@ func InstallFromCatalog(ctx context.Context, pkgName string) error {
 			return err
 		}
 	}
-	fmt.Printf("Installed catalog package %s\n", pkgName)
+	os.Stdout.WriteString("Installed catalog package " + pkgName + "\n")
 	return nil
 }
 
 func secureVendorPath(repo string) (string, error) {
-	if strings.Contains(repo, "..") {
-		return "", fmt.Errorf("invalid repository path: %s", repo)
-	}
-	if strings.Contains(repo, "\\") {
-		return "", fmt.Errorf("invalid repository path: %s", repo)
+	if strings.Contains(repo, "..") || strings.Contains(repo, "\\") {
+		return "", errors.New("invalid repository path: " + repo)
 	}
 	dest := filepath.Join(vendorDir, repo)
 	absVendor, err := filepath.Abs(vendorDir)
@@ -377,7 +375,7 @@ func secureVendorPath(repo string) (string, error) {
 		return "", err
 	}
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("package path escapes vendor directory: %s", repo)
+		return "", errors.New("package path escapes vendor directory: " + repo)
 	}
 	return absDest, nil
 }
@@ -396,7 +394,7 @@ func ensureVendorSubpath(resolved string) error {
 		return err
 	}
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("path outside vendor directory: %s", resolved)
+		return errors.New("path outside vendor directory: " + resolved)
 	}
 	return nil
 }
@@ -415,25 +413,25 @@ func parsePkgURL(raw string) (repo, tag string, err error) {
 	}
 	repo = strings.Replace(repo, ":", "/", 1)
 	if repo == "." || repo == "/" || strings.HasPrefix(repo, "/") || strings.Contains(repo, "..") || strings.Contains(repo, "\\") {
-		return "", "", fmt.Errorf("invalid repository format: %s", raw)
+		return "", "", errors.New("invalid repository format: " + raw)
 	}
 	repo = path.Clean(repo)
 	if repo == "." || repo == "/" || strings.HasPrefix(repo, "/") || strings.Contains(repo, "..") || strings.Contains(repo, "\\") {
-		return "", "", fmt.Errorf("invalid repository format: %s", raw)
+		return "", "", errors.New("invalid repository format: " + raw)
 	}
 	if strings.Contains(repo, "//") {
-		return "", "", fmt.Errorf("invalid repository format: %s", raw)
+		return "", "", errors.New("invalid repository format: " + raw)
 	}
 	parts := strings.Split(repo, "/")
 	if len(parts) < 2 {
-		return "", "", fmt.Errorf("invalid repository format: %s", raw)
+		return "", "", errors.New("invalid repository format: " + raw)
 	}
 	for _, p := range parts {
 		if p == "" {
-			return "", "", fmt.Errorf("invalid repository format: %s", raw)
+			return "", "", errors.New("invalid repository format: " + raw)
 		}
 		if err := utils.ValidateCLIArg(p); err != nil {
-			return "", "", fmt.Errorf("invalid repository segment: %w", err)
+			return "", "", errors.New("invalid repository segment: " + err.Error())
 		}
 	}
 	return repo, tag, nil
@@ -481,7 +479,7 @@ func updateConfig(pkgPath string, add bool) error {
 
 func findPackagePath(name string) (string, error) {
 	if strings.Contains(name, "..") || strings.Contains(name, "\\") {
-		return "", fmt.Errorf("invalid package name: %s", name)
+		return "", errors.New("invalid package name: " + name)
 	}
 	clean := strings.TrimPrefix(name, "github.com/")
 	var found string
@@ -516,7 +514,7 @@ func findPackagePath(name string) (string, error) {
 		return "", err
 	}
 	if found == "" {
-		return "", fmt.Errorf("package %s not found", name)
+		return "", errors.New("package " + name + " not found")
 	}
 	return found, nil
 }
