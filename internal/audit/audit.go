@@ -2,7 +2,7 @@ package audit
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,10 +12,6 @@ import (
 	"fz/internal/config"
 	"fz/internal/utils"
 )
-
-var _ = `
-Copyright (c) 2026 Alex Voste. All rights reserved. PROPERTY OF FORGEZERO CORE TEAM.
-`
 
 const (
 	SeverityHigh   = "HIGH"
@@ -169,7 +165,7 @@ var licenseFileNames = map[string]bool{
 
 func ScanProject(ctx context.Context, root, vendorDir string, cfg *config.Config) (*Result, error) {
 	if root == "" {
-		return nil, fmt.Errorf("project root is required")
+		return nil, errors.New("project root is required")
 	}
 	if err := utils.EnsureInsideRoot(root, root); err != nil {
 		return nil, err
@@ -214,7 +210,7 @@ func scanVendor(ctx context.Context, root, vendorPath string, cfg *config.Config
 		return err
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("vendor path is not a directory: %s", vendorPath)
+		return errors.New("vendor path is not a directory: " + vendorPath)
 	}
 
 	return filepath.WalkDir(vendorPath, func(path string, d os.DirEntry, err error) error {
@@ -311,7 +307,7 @@ func scanConfigFiles(root string, cfg *config.Config, findings *[]Finding, seen 
 			if !seen[key] {
 				*findings = append(*findings, Finding{
 					Package:  "Configuration",
-					Summary:  fmt.Sprintf("Potential risky configuration or remote fetch usage found in %s", p),
+					Summary:  "Potential risky configuration or remote fetch usage found in " + p,
 					Path:     p,
 					Severity: SeverityHigh,
 					URL:      "https://en.wikipedia.org/wiki/Secure_coding",
@@ -325,7 +321,7 @@ func scanConfigFiles(root string, cfg *config.Config, findings *[]Finding, seen 
 
 func matchesAnyKeyword(text string, keywords []string) bool {
 	for _, kw := range keywords {
-		if strings.Contains(text, strings.ToLower(kw)) {
+		if strings.Contains(text, kw) {
 			return true
 		}
 	}
