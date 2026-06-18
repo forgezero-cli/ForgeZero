@@ -2,7 +2,7 @@ package musl
 
 import (
 	"embed"
-	"fmt"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,30 +17,32 @@ type Toolchain struct {
 }
 
 func GetLinkerArgsZeroAlloc(dst []string, muslDir string, objFiles []string, outputFile string) []string {
-	args := []string{
-		"-static",
-		"-nostdlib",
-		filepath.Join(muslDir, "crt1.o"),
-		filepath.Join(muslDir, "crti.o"),
+	i := 0
+	dst[i] = "-static"
+	i++
+	dst[i] = "-nostdlib"
+	i++
+	dst[i] = filepath.Join(muslDir, "crt1.o")
+	i++
+	dst[i] = filepath.Join(muslDir, "crti.o")
+	i++
+	for _, obj := range objFiles {
+		dst[i] = obj
+		i++
 	}
-
-	args = append(args, objFiles...)
-	args = append(args,
-		"-L"+muslDir,
-		"-lc",
-		filepath.Join(muslDir, "libgcc.a"),
-		filepath.Join(muslDir, "crtn.o"),
-		"-o", outputFile,
-	)
-
-	for i, arg := range args {
-		if i < len(dst) {
-			dst[i] = arg
-		}
-	}
-
-	return dst
-
+	dst[i] = "-L" + muslDir
+	i++
+	dst[i] = "-lc"
+	i++
+	dst[i] = filepath.Join(muslDir, "libgcc.a")
+	i++
+	dst[i] = filepath.Join(muslDir, "crtn.o")
+	i++
+	dst[i] = "-o"
+	i++
+	dst[i] = outputFile
+	i++
+	return dst[:i]
 }
 
 func NewToolchain(arch string) *Toolchain {
@@ -50,7 +52,7 @@ func NewToolchain(arch string) *Toolchain {
 func (t *Toolchain) Prepare() (string, error) {
 	tmpDir, err := os.MkdirTemp("", "fz-musl-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to create build temp dir: %w", err)
+		return "", errors.New("failed to create build temp dir: " + err.Error())
 	}
 	t.tmpDir = tmpDir
 
@@ -59,7 +61,7 @@ func (t *Toolchain) Prepare() (string, error) {
 	entries, err := fs.ReadDir(muslAssets, subDir)
 	if err != nil {
 		t.Close()
-		return "", fmt.Errorf("architecture %s is not supported by ForgeZero musl toolchain", t.TargetArch)
+		return "", errors.New("architecture " + t.TargetArch + " is not supported by ForgeZero musl toolchain")
 	}
 
 	for _, entry := range entries {
@@ -85,24 +87,17 @@ func (t *Toolchain) Prepare() (string, error) {
 
 func (t *Toolchain) GetLinkerArgs(userObjFiles []string, outputFile string) ([]string, error) {
 	if t.tmpDir == "" {
-		return nil, fmt.Errorf("toolchain is not prepared, call Prepare() first")
+		return nil, errors.New("toolchain is not prepared, call Prepare() first")
 	}
 
-	args := []string{
-		"-static",
-		"-nostdlib",
-		filepath.Join(t.tmpDir, "crt1.o"),
-		filepath.Join(t.tmpDir, "crti.o"),
-	}
-
+	args := make([]string, 0, len(userObjFiles)+9)
+	args = append(args, "-static", "-nostdlib")
+	args = append(args, filepath.Join(t.tmpDir, "crt1.o"))
+	args = append(args, filepath.Join(t.tmpDir, "crti.o"))
 	args = append(args, userObjFiles...)
-
-	args = append(args,
-		"-L"+t.tmpDir,
-		"-lc",
-		filepath.Join(t.tmpDir, "crtn.o"),
-		"-o", outputFile,
-	)
+	args = append(args, "-L"+t.tmpDir, "-lc")
+	args = append(args, filepath.Join(t.tmpDir, "crtn.o"))
+	args = append(args, "-o", outputFile)
 
 	return args, nil
 }
