@@ -129,6 +129,9 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
+	if c.SourceDir == "" && len(c.SourceDirs) == 0 && c.SourceFile == "" && len(c.SourceFiles) == 0 {
+		return nil
+	}
 	if c.SourceDir != "" && len(c.SourceDirs) > 0 {
 		return errors.New("cannot set both source_dir and source_dirs")
 	}
