@@ -1,4 +1,4 @@
-// Copyright forgezero-cli! Mit LICENSE
+// SPDX-License-Identifier: MIT
 
 package main
 
@@ -72,11 +72,11 @@ func (helperFakeRunner) Run(ctx context.Context, verbose bool, name string, args
 }
 
 const (
-	versionCore     = "4.9.1"
-	versionCodename = "Valkyrie"
+	versionCore     = "5.0.0"
+	versionCodename = "Razor"
 )
 
-var version = "4.9.1 Valkyrie"
+var version = "5.0.0"
 
 func versionText() string {
 	var b strings.Builder
