@@ -1,9 +1,9 @@
 package shell
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/c-bata/go-prompt"
@@ -20,17 +20,17 @@ func Run() {
 	if os.Getenv("FZ_STAGING") == "1" {
 		status = "STAGING"
 	}
-	fmt.Println("FORGEZERO 4.0 ZERO [MIL-SPEC] // STATUS: " + status + " // AUTONOMY: ACTIVE")
-	fmt.Println("┌─────────────────────────────────┐")
-	fmt.Println("│  fz interactive shell           │")
-	fmt.Println("│  Type 'help' for commands       │")
-	fmt.Println("└─────────────────────────────────┘")
+	os.Stdout.WriteString("FORGEZERO 4.0 ZERO [MIL-SPEC] // STATUS: " + status + " // AUTONOMY: ACTIVE\n")
+	os.Stdout.WriteString("┌─────────────────────────────────┐\n")
+	os.Stdout.WriteString("│  fz interactive shell           │\n")
+	os.Stdout.WriteString("│  Type 'help' for commands       │\n")
+	os.Stdout.WriteString("└─────────────────────────────────┘\n")
 
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sc
-		fmt.Println("\nExiting...")
+		os.Stdout.WriteString("\nExiting...\n")
 		os.Exit(0)
 	}()
 
@@ -43,27 +43,27 @@ func Run() {
 		switch cmd {
 		case "build":
 			if err := cmdBuild(state); err != nil {
-				fmt.Printf("error: %v\n", err)
+				os.Stderr.WriteString("error: " + err.Error() + "\n")
 			}
 		case "clean":
 			if err := cmdClean(state); err != nil {
-				fmt.Printf("error: %v\n", err)
+				os.Stderr.WriteString("error: " + err.Error() + "\n")
 			}
 		case "set":
 			if err := cmdSet(state, args); err != nil {
-				fmt.Printf("error: %v\n", err)
+				os.Stderr.WriteString("error: " + err.Error() + "\n")
 			}
 		case "show":
 			cmdShow(state)
 		case "watch":
-			fmt.Println("watch mode coming soon")
+			os.Stdout.WriteString("watch mode coming soon\n")
 		case "exit", "quit":
-			fmt.Println("Goodbye.")
+			os.Stdout.WriteString("Goodbye.\n")
 			os.Exit(0)
 		case "help":
 			cmdHelp()
 		default:
-			fmt.Printf("unknown command: %s\n", cmd)
+			os.Stderr.WriteString("unknown command: " + cmd + "\n")
 		}
 	}
 
@@ -80,23 +80,23 @@ func Run() {
 }
 
 func splitCommand(s string) []string {
-	var res []string
-	var cur string
+	var parts []string
+	var b strings.Builder
 	inQuote := false
 	for _, ch := range s {
 		if ch == '"' {
 			inQuote = !inQuote
 		} else if ch == ' ' && !inQuote {
-			if cur != "" {
-				res = append(res, cur)
-				cur = ""
+			if b.Len() > 0 {
+				parts = append(parts, b.String())
+				b.Reset()
 			}
 		} else {
-			cur += string(ch)
+			b.WriteRune(ch)
 		}
 	}
-	if cur != "" {
-		res = append(res, cur)
+	if b.Len() > 0 {
+		parts = append(parts, b.String())
 	}
-	return res
+	return parts
 }
