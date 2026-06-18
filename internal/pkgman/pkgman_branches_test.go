@@ -27,6 +27,27 @@ func chdirTemp(t *testing.T, dir string) func() {
 	return func() { _ = os.Chdir(oldWd) }
 }
 
+func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
+	t.Helper()
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	rOut, wOut, _ := os.Pipe()
+	rErr, wErr, _ := os.Pipe()
+	os.Stdout = wOut
+	os.Stderr = wErr
+	defer func() {
+		os.Stdout = oldStdout
+		os.Stderr = oldStderr
+	}()
+	fn()
+	_ = wOut.Close()
+	_ = wErr.Close()
+	var outBuf, errBuf bytes.Buffer
+	_, _ = io.Copy(&outBuf, rOut)
+	_, _ = io.Copy(&errBuf, rErr)
+	return outBuf.String(), errBuf.String()
+}
+
 func TestAddInvalidURL(t *testing.T) {
 	err := Add(context.Background(), "invalid", "")
 	if err == nil {
@@ -141,21 +162,13 @@ func TestRemovePackagePrunesEmptyParent(t *testing.T) {
 func TestUpdateNoVendor(t *testing.T) {
 	tmp := t.TempDir()
 	defer chdirTemp(t, tmp)()
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	err := Update(context.Background())
-	w.Close()
-	os.Stdout = oldStdout
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
-		t.Fatal(err)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(buf.String(), "No packages") {
-		t.Fatal(buf.String())
+	stdout, stderr := captureOutput(t, func() {
+		if err := Update(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(stdout, "No packages") && !strings.Contains(stderr, "No packages") {
+		t.Fatalf("expected 'No packages', got stdout=%q stderr=%q", stdout, stderr)
 	}
 }
 
@@ -189,18 +202,11 @@ func TestUpdateGitPullFail(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join("vendor", "broken"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	_ = Update(context.Background())
-	w.Close()
-	os.Stdout = oldStdout
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(buf.String(), "Warning") {
-		t.Fatal(buf.String())
+	stdout, stderr := captureOutput(t, func() {
+		_ = Update(context.Background())
+	})
+	if !strings.Contains(stdout, "Warning") && !strings.Contains(stderr, "Warning") {
+		t.Fatalf("expected Warning, got stdout=%q stderr=%q", stdout, stderr)
 	}
 }
 
@@ -388,18 +394,11 @@ func TestSearchCatalogNoMatch(t *testing.T) {
 		body := `{"version":1,"packages":[{"name":"alpha","description":"beta","category":"gamma"}]}`
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 	})}
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	_ = SearchCatalog(context.Background(), "zzznone")
-	w.Close()
-	os.Stdout = oldStdout
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(buf.String(), "No matching") {
-		t.Fatal(buf.String())
+	stdout, _ := captureOutput(t, func() {
+		_ = SearchCatalog(context.Background(), "zzznone")
+	})
+	if !strings.Contains(stdout, "No matching") {
+		t.Fatalf("expected 'No matching', got %q", stdout)
 	}
 }
 
@@ -479,18 +478,14 @@ func TestInstallFromCatalogHashComputeWarn(t *testing.T) {
 	})}
 	tmp := t.TempDir()
 	defer chdirTemp(t, tmp)()
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	_ = InstallFromCatalog(context.Background(), "pkg")
-	w.Close()
-	os.Stdout = oldStdout
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
-		t.Fatal(err)
+	stdout, stderr := captureOutput(t, func() {
+		_ = InstallFromCatalog(context.Background(), "pkg")
+	})
+	if !strings.Contains(stdout, "Installed catalog package") {
+		t.Fatalf("expected success message in stdout, got %q", stdout)
 	}
-	if !strings.Contains(buf.String(), "Warning") {
-		t.Fatal(buf.String())
+	if !strings.Contains(stderr, "Warning") {
+		t.Fatalf("expected warning in stderr, got %q", stderr)
 	}
 }
 
