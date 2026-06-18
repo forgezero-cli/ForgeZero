@@ -131,13 +131,13 @@ func TestLinkWithZigUnavailable(t *testing.T) {
 	}
 }
 
-func TestLinkMultipleWithLdMockCoverage(t *testing.T) {
+func TestLinkWithLdMockCoverage(t *testing.T) {
 	oldRunner := runner
 	defer func() { runner = oldRunner }()
 	runner = &MockRunner{RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
 		return "", nil
 	}}
-	err := linkMultipleWithLd(context.Background(), []string{"a.o", "b.o"}, "out", false, nil)
+	err := linkWithLd(context.Background(), []string{"a.o", "b.o"}, "out", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestUseZigFlags(t *testing.T) {
 	}
 }
 
-func TestTryAutoLinkMultipleStrict(t *testing.T) {
+func TestTryAutoLinkStrict(t *testing.T) {
 	oldRunner := runner
 	oldTarget := Target
 	oldCheck := utils.CheckToolFunc
@@ -198,7 +198,7 @@ func TestTryAutoLinkMultipleStrict(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "out")
-	err := tryAutoLinkMultiple(context.Background(), []string{obj}, bin, true, false, true, nil)
+	err := tryAutoLink(context.Background(), []string{obj}, bin, true, false, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestLinkWithLdVerboseFail(t *testing.T) {
 	runner = &MockRunner{RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
 		return "ld err", errors.New("fail")
 	}}
-	err := linkWithLd(context.Background(), "a.o", "out", true, nil)
+	err := linkWithLd(context.Background(), []string{"a.o"}, "out", true, nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -291,12 +291,12 @@ func TestLinkWindowsImplMock(t *testing.T) {
 	if err := os.WriteFile(obj, []byte{1, 2, 3}, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := linkWindowsImpl(context.Background(), obj, filepath.Join(dir, "out.exe"), false, "c", false, nil); err != nil {
+	if err := linkWindowsImpl(context.Background(), []string{obj}, filepath.Join(dir, "out.exe"), false, false, nil); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestLinkMultipleWindowsImplMock(t *testing.T) {
+func TestLinkWindowsImplMultipleMock(t *testing.T) {
 	oldRunner := runner
 	oldCheck := utils.CheckToolFunc
 	defer func() {
@@ -312,20 +312,12 @@ func TestLinkMultipleWindowsImplMock(t *testing.T) {
 	if err := os.WriteFile(obj, []byte{1, 2, 3}, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := linkMultipleWindowsImpl(context.Background(), []string{obj}, filepath.Join(dir, "out.exe"), true, "c", true, []string{"m"}); err != nil {
+	if err := linkWindowsImpl(context.Background(), []string{obj}, filepath.Join(dir, "out.exe"), true, true, []string{"m"}); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestReadSymbolsFallbackObjdump(t *testing.T) {
-	oldLook := lookPathFunc
-	defer func() { lookPathFunc = oldLook }()
-	lookPathFunc = func(name string) (string, error) {
-		if name == "nm" {
-			return "", errors.New("no nm")
-		}
-		return exec.LookPath(name)
-	}
 	if _, err := exec.LookPath("objdump"); err != nil {
 		t.Skip("objdump required")
 	}
@@ -338,11 +330,11 @@ func TestReadSymbolsFallbackObjdump(t *testing.T) {
 	if out, err := exec.Command("gcc", "-c", src, "-o", obj).CombinedOutput(); err != nil {
 		t.Skip(string(out))
 	}
-	syms, err := readSymbols(context.Background(), obj, false)
+	syms, err := readSymbolsWithObjdump(context.Background(), obj, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(syms) == 0 {
-		t.Fatal("expected symbols via objdump")
+		t.Fatal("expected symbols")
 	}
 }
