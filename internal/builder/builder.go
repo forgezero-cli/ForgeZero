@@ -3,7 +3,6 @@ package builder
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -108,13 +107,12 @@ func cacheEntryPath(dir, key string) string {
 
 func RunHooks(ctx context.Context, hooks []config.Hook) error {
 	for _, h := range hooks {
-		out, err := utils.RunCommand(ctx, false, nil, nil, "sh", "-c", h.Cmd)
-		_ = out
+		_, err := utils.RunCommand(ctx, false, nil, nil, "sh", "-c", h.Cmd)
 		if err != nil {
 			if h.Critical {
-				return fmt.Errorf("hook failed (critical): %w", err)
+				return errors.New("hook failed (critical): " + err.Error())
 			}
-			return fmt.Errorf("hook failed: %w", err)
+			return errors.New("hook failed: " + err.Error())
 		}
 	}
 	return nil
@@ -170,10 +168,10 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 		}
 	}
 	if info, err := os.Stat(outBin); err == nil && info.IsDir() {
-		return nil, fmt.Errorf("output path %s is a directory, cannot write binary", outBin)
+		return nil, errors.New("output path is a directory: " + outBin)
 	}
 	if err := utils.EnsureDir(outBin); err != nil {
-		return nil, fmt.Errorf("cannot create output directory: %w", err)
+		return nil, errors.New("cannot create output directory: " + err.Error())
 	}
 
 	var srcFiles []string
@@ -189,7 +187,7 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 					name := info.Name()
 					if name == ".git" || name == ".svn" || name == "node_modules" || matchExclude(path, exclude) {
 						if verbose {
-							fmt.Printf("Skipping directory tree: %s\n", path)
+							os.Stdout.WriteString("Skipping directory tree: " + path + "\n")
 						}
 						return filepath.SkipDir
 					}
@@ -197,7 +195,7 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 				}
 				if matchExclude(path, exclude) {
 					if verbose {
-						fmt.Printf("Excluding file: %s\n", path)
+						os.Stdout.WriteString("Excluding file: " + path + "\n")
 					}
 					return nil
 				}
@@ -208,23 +206,23 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 				return nil
 			})
 			if err != nil {
-				return nil, fmt.Errorf("walk error in %s: %w", dir, err)
+				return nil, errors.New("walk error in " + dir + ": " + err.Error())
 			}
 		}
 	}
 	if len(srcFiles) == 0 {
-		return nil, fmt.Errorf("no supported files found")
+		return nil, errors.New("no supported files found")
 	}
 	sort.Strings(srcFiles)
 
 	objDir := joinPath(filepath.Dir(outBin), ".fz_objs")
 	cacheDir := joinPath(filepath.Dir(outBin), ".fz_cache")
 	if err := utils.SecureMkdirAll(joinPath(objDir, ".keep")); err != nil {
-		return nil, fmt.Errorf("cannot create object temp dir: %w", err)
+		return nil, errors.New("cannot create object temp dir: " + err.Error())
 	}
 	if !noCache {
 		if err := utils.SecureMkdirAll(joinPath(cacheDir, ".keep")); err != nil {
-			return nil, fmt.Errorf("cannot create cache dir: %w", err)
+			return nil, errors.New("cannot create cache dir: " + err.Error())
 		}
 	}
 	cleanupObjDir := !keepObj
@@ -274,7 +272,7 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 		pb.appendString(".o")
 		objPath := pb.String()
 		if err := utils.SecureMkdirAll(objPath); err != nil {
-			return nil, fmt.Errorf("cannot create subdir for object: %w", err)
+			return nil, errors.New("cannot create subdir for object: " + err.Error())
 		}
 		pairs[i] = pair{src: src, obj: objPath}
 	}
@@ -311,7 +309,7 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 			if !noCache {
 				restored, err := restoreShadowCache(p.src, p.obj, debug, mode)
 				if err != nil {
-					recordError(fmt.Errorf("shadow cache %s: %w", p.src, err))
+					recordError(errors.New("shadow cache " + p.src + ": " + err.Error()))
 					return
 				}
 				if restored {
@@ -324,12 +322,11 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 					cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
 					if err == nil && cachedObj != "" {
 						if verbose {
-							fmt.Printf("Cache hit for %s\n", p.src)
+							os.Stdout.WriteString("Cache hit for " + p.src + "\n")
 						}
 						if err := utils.CopyFile(cachedObj, p.obj); err == nil {
 							cachedSyms := strings.TrimSuffix(cachedObj, ".o") + ".syms"
 							_ = utils.CopyFile(cachedSyms, p.obj+".syms")
-
 							needAssemble = false
 							var mbuf [512]byte
 							n := copy(mbuf[:], "cache:hit:")
@@ -341,23 +338,23 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 			}
 			if needAssemble {
 				if verbose {
-					fmt.Printf("Assembling %s -> %s\n", p.src, p.obj)
+					os.Stdout.WriteString("Assembling " + p.src + " -> " + p.obj + "\n")
 				}
 				var mbuf [512]byte
 				n := copy(mbuf[:], "assemble:")
 				n += copy(mbuf[n:], p.src)
 				seal.UpdateGlobalState(mbuf[:n])
 				if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
-					recordError(fmt.Errorf("assemble %s: %w", p.src, err))
+					recordError(errors.New("assemble " + p.src + ": " + err.Error()))
 					return
 				}
 				if !noCache {
 					if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil {
-						recordError(fmt.Errorf("cache %s: %w", p.src, err))
+						recordError(errors.New("cache " + p.src + ": " + err.Error()))
 						return
 					}
 					if err := storeShadowCache(p.src, p.obj, debug, mode); err != nil {
-						recordError(fmt.Errorf("shadow cache %s: %w", p.src, err))
+						recordError(errors.New("shadow cache " + p.src + ": " + err.Error()))
 						return
 					}
 					var mbuf2 [512]byte
@@ -391,24 +388,23 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 		// no action
 	} else if buildType == "static" {
 		if verbose {
-			_, _ = os.Stdout.WriteString("Creating static library " + outBin + "\n")
+			os.Stdout.WriteString("Creating static library " + outBin + "\n")
 		}
-
 		if err := createArchive(ctx, objFiles, outBin, verbose); err != nil {
 			if cleanupObjDir {
 				os.RemoveAll(objDir)
 			}
-			return nil, fmt.Errorf("Archive creation failed: %w", err)
+			return nil, errors.New("Archive creation failed: " + err.Error())
 		}
 	} else {
 		if verbose {
-			_, _ = os.Stdout.WriteString("Linking object files -> " + outBin + "\n")
+			os.Stdout.WriteString("Linking object files -> " + outBin + "\n")
 		}
 		if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck, sanitize, strict, libs); err != nil {
 			if cleanupObjDir {
 				os.RemoveAll(objDir)
 			}
-			return nil, fmt.Errorf("link failed: %w", err)
+			return nil, errors.New("link failed: " + err.Error())
 		}
 	}
 
@@ -460,7 +456,7 @@ func restoreShadowCache(src, obj string, debug bool, mode string) (bool, error) 
 		return false, err
 	}
 	if debug {
-		fmt.Printf("Shadow cache restored %s -> %s\n", shadowObj, obj)
+		os.Stdout.WriteString("Shadow cache restored " + shadowObj + " -> " + obj + "\n")
 	}
 	return true, nil
 }
@@ -495,9 +491,11 @@ func storeShadowCache(src, obj string, debug bool, mode string) error {
 }
 
 func createArchive(ctx context.Context, objFiles []string, outBin string, verbose bool) error {
-	args := append([]string{"rcs", outBin}, objFiles...)
+	args := make([]string, 0, 2+len(objFiles))
+	args = append(args, "rcs", outBin)
+	args = append(args, objFiles...)
 	if verbose {
-		fmt.Printf("Running: ar %s\n", strings.Join(args, " "))
+		os.Stdout.WriteString("Running: ar " + strings.Join(args, " ") + "\n")
 	}
 	_, err := utils.RunCommand(ctx, verbose, os.Stdout, os.Stderr, "ar", args...)
 	return err
@@ -506,15 +504,15 @@ func createArchive(ctx context.Context, objFiles []string, outBin string, verbos
 func removeIfExists(path string, isDir bool, verbose bool) error {
 	if _, err := os.Stat(path); err == nil {
 		if verbose {
-			fmt.Printf("Removing %s\n", path)
+			os.Stdout.WriteString("Removing " + path + "\n")
 		}
 		if isDir {
 			if err := os.RemoveAll(path); err != nil {
-				return fmt.Errorf("failed to remove %s: %w", path, err)
+				return errors.New("failed to remove " + path + ": " + err.Error())
 			}
 		} else {
 			if err := os.Remove(path); err != nil {
-				return fmt.Errorf("failed to remove %s: %w", path, err)
+				return errors.New("failed to remove " + path + ": " + err.Error())
 			}
 		}
 	}
@@ -543,23 +541,22 @@ func CleanDir(dir string, verbose bool) error {
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return fmt.Errorf("cannot read directory %s: %w", dir, err)
+		return errors.New("cannot read directory " + dir + ": " + err.Error())
 	}
 
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-
 		name := entry.Name()
 		path := joinPath(dir, name)
 
 		if strings.HasSuffix(name, ".o") {
 			if verbose {
-				fmt.Printf("Removing object file %s\n", path)
+				os.Stdout.WriteString("Removing object file " + path + "\n")
 			}
 			if err := os.Remove(path); err != nil {
-				return fmt.Errorf("failed to remove %s: %w", path, err)
+				return errors.New("failed to remove " + path + ": " + err.Error())
 			}
 			continue
 		}
@@ -568,27 +565,25 @@ func CleanDir(dir string, verbose bool) error {
 		if err != nil {
 			continue
 		}
-
 		if info.Mode()&0o111 != 0 {
 			ext := strings.ToLower(filepath.Ext(name))
 			if !utils.SupportedExtension(ext) && ext != "" {
 				if verbose {
-					fmt.Printf("Removing executable %s\n", path)
+					os.Stdout.WriteString("Removing executable " + path + "\n")
 				}
 				if err := os.Remove(path); err != nil {
-					return fmt.Errorf("failed to remove %s: %w", path, err)
+					return errors.New("failed to remove " + path + ": " + err.Error())
 				}
 			} else if ext == "" {
 				if verbose {
-					fmt.Printf("Removing executable (no extension) %s\n", path)
+					os.Stdout.WriteString("Removing executable (no extension) " + path + "\n")
 				}
 				if err := os.Remove(path); err != nil {
-					return fmt.Errorf("failed to remove %s: %w", path, err)
+					return errors.New("failed to remove " + path + ": " + err.Error())
 				}
 			}
 		}
 	}
-
 	return nil
 }
 
