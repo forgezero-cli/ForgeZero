@@ -2,7 +2,7 @@ package verify
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -32,17 +32,22 @@ type VerifyResult struct {
 	Extra    []string `json:"extra"`
 }
 
+var ignoredFiles = map[string]bool{
+	"blake3.manifest":                          true,
+	"internal/contribute/CONTRIBUTING_USER.md": true,
+}
+
 func LoadManifest(path string) (*Manifest, error) {
 	if err := utils.ValidateCLIPath(path); err != nil {
 		return nil, err
 	}
 	data, err := utils.ReadFileSecure(path)
 	if err != nil {
-		return nil, fmt.Errorf("load manifest %s: %w", path, err)
+		return nil, errors.New("load manifest " + path + ": " + err.Error())
 	}
 	var manifest Manifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("parse manifest %s: %w", path, err)
+		return nil, errors.New("parse manifest " + path + ": " + err.Error())
 	}
 	return &manifest, nil
 }
@@ -65,7 +70,7 @@ func WriteManifest(path, root string) error {
 	}
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshal manifest: %w", err)
+		return errors.New("marshal manifest: " + err.Error())
 	}
 	return utils.SecureWriteFile(path, data)
 }
@@ -85,7 +90,7 @@ func VerifyRoot(root, manifestPath string) (*VerifyResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	current := map[string]string{}
+	current := make(map[string]string, len(entries))
 	for _, entry := range entries {
 		current[entry.Path] = entry.Hash
 	}
@@ -137,7 +142,7 @@ func BuildManifest(root string) ([]ManifestEntry, error) {
 			defer func() {
 				if r := recover(); r != nil {
 					select {
-					case errCh <- fmt.Errorf("panic hashing %s: %v", fileRel, r):
+					case errCh <- errors.New("panic hashing " + fileRel + ": " + toString(r)):
 					default:
 					}
 				}
@@ -146,7 +151,7 @@ func BuildManifest(root string) ([]ManifestEntry, error) {
 			hash, err := utils.HashFile(fullPath)
 			if err != nil {
 				select {
-				case errCh <- fmt.Errorf("hash %s: %w", fullPath, err):
+				case errCh <- errors.New("hash " + fullPath + ": " + err.Error()):
 				default:
 				}
 				return
@@ -167,6 +172,17 @@ func BuildManifest(root string) ([]ManifestEntry, error) {
 	return entries, nil
 }
 
+func toString(v interface{}) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case error:
+		return x.Error()
+	default:
+		return "unknown panic"
+	}
+}
+
 func collectFiles(root string) ([]string, error) {
 	root = filepath.Clean(root)
 	var files []string
@@ -181,9 +197,8 @@ func collectFiles(root string) ([]string, error) {
 			return nil
 		}
 		if d.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlinks not permitted: %s", path)
+			return errors.New("symlinks not permitted: " + path)
 		}
-
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
@@ -191,15 +206,11 @@ func collectFiles(root string) ([]string, error) {
 		if filepath.Base(rel) == "manifest.json" {
 			return nil
 		}
-		ignoredFiles := map[string]bool{
-			"blake3.manifest":                          true,
-			"internal/contribute/CONTRIBUTING_USER.md": true,
-		}
 		if ignoredFiles[rel] {
 			return nil
 		}
 		if rel == "." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-			return fmt.Errorf("invalid path outside root: %s", path)
+			return errors.New("invalid path outside root: " + path)
 		}
 		files = append(files, rel)
 		return nil
