@@ -1,11 +1,13 @@
 package linker
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 
 	"fz/internal/assembler"
 )
+
+var validFormats = []string{"elf32", "elf64", "bin"}
 
 func ApplyGccLdFlags(args []string, ldScript, textAddr string) []string {
 	if ldScript != "" {
@@ -34,10 +36,11 @@ func ApplyLdFlags(args []string, ldScript, textAddr string) []string {
 }
 
 func SetOutputFormat(format string) error {
-	valid := map[string]bool{"elf32": true, "elf64": true, "bin": true}
-	if !valid[format] {
-		return fmt.Errorf("invalid output format: %s (supported: elf32, elf64, bin)", format)
+	for _, f := range validFormats {
+		if f == format {
+			assembler.OutputFormat = format
+			return nil
+		}
 	}
-	assembler.OutputFormat = format
-	return nil
+	return errors.New("invalid output format: " + format + " (supported: elf32, elf64, bin)")
 }
