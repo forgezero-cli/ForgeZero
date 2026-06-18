@@ -44,6 +44,8 @@ test.sh
 *.log
 *.pid
 
+
+cmake_bench/
 .venv
 // After remove
 docs/*
