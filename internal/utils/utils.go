@@ -4,16 +4,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/subtle"
-	"encoding/hex"
 	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -70,7 +69,7 @@ func SelfAttest() error {
 func BuildMerkleRoot(root string) ([32]byte, error) {
 	var out [32]byte
 	if root == "" {
-		return out, fmt.Errorf("invalid merkle root")
+		return out, errors.New("invalid merkle root")
 	}
 	files, err := collectRootFiles(root)
 	if err != nil {
@@ -80,7 +79,7 @@ func BuildMerkleRoot(root string) ([32]byte, error) {
 	count := 0
 	for i := range files {
 		if count >= len(reg) {
-			return out, fmt.Errorf("merkle registry overflow")
+			return out, errors.New("merkle registry overflow")
 		}
 		h, err := HashFileDigest(files[i])
 		if err != nil {
@@ -136,7 +135,7 @@ func collectRootFiles(root string) ([]string, error) {
 			return err
 		}
 		if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-			return fmt.Errorf("invalid path outside root: %s", path)
+			return errors.New("invalid path outside root: " + path)
 		}
 		files = append(files, path)
 		return nil
@@ -250,7 +249,6 @@ func fnv1aHexUint64(h uint64) string {
 		out[i*2] = hextable[b>>4]
 		out[i*2+1] = hextable[b&0x0f]
 	}
-
 	return string(out[:])
 }
 
@@ -263,13 +261,11 @@ func fnv1aHashString(s string) uint64 {
 		offset uint64 = 1469598103934665603
 		prime  uint64 = 1099511628211
 	)
-
 	h := offset
 	for i := 0; i < len(s); i++ {
 		h ^= uint64(s[i])
 		h *= prime
 	}
-
 	return h
 }
 
@@ -279,7 +275,6 @@ func fnv1aHashAppendString(h uint64, s string) uint64 {
 		h ^= uint64(s[i])
 		h *= prime
 	}
-
 	return h
 }
 
@@ -358,7 +353,7 @@ func fnv1aHashAppend(h uint64, data []byte) uint64 {
 func checkToolInternal(name string) error {
 	path, err := lookExecutable(name)
 	if err != nil {
-		return fmt.Errorf("required tool not found in PATH: %s", name)
+		return errors.New("required tool not found in PATH: " + name)
 	}
 	v, ok := ToolChecksums.Load(name)
 	if !ok {
@@ -370,10 +365,10 @@ func checkToolInternal(name string) error {
 	}
 	actual, err := HashFile(path)
 	if err != nil {
-		return fmt.Errorf("cannot verify checksum for %s: %w", path, err)
+		return errors.New("cannot verify checksum for " + path + ": " + err.Error())
 	}
 	if !constantTimeEqual(actual, expected) {
-		return fmt.Errorf("tool checksum mismatch for %s", name)
+		return errors.New("tool checksum mismatch for " + name)
 	}
 	return nil
 }
@@ -417,7 +412,7 @@ func EnsureInsideRoot(root, path string) error {
 	if pathWithinRoot(rootEval, targetEval) {
 		return nil
 	}
-	return fmt.Errorf("path %s outside project root %s", path, root)
+	return errors.New("path " + path + " outside project root " + root)
 }
 
 func ValidateCLIArg(value string) error {
@@ -425,10 +420,10 @@ func ValidateCLIArg(value string) error {
 		return nil
 	}
 	if strings.ContainsAny(value, forbiddenArgChars()) {
-		return fmt.Errorf("invalid CLI argument: %s", value)
+		return errors.New("invalid CLI argument: " + value)
 	}
 	if strings.ContainsAny(value, "\x00\n\r") {
-		return fmt.Errorf("invalid CLI argument: %s", value)
+		return errors.New("invalid CLI argument: " + value)
 	}
 	return nil
 }
@@ -438,18 +433,18 @@ func ValidateCLIPath(value string) error {
 		return nil
 	}
 	if strings.ContainsAny(value, forbiddenPathChars()) {
-		return fmt.Errorf("invalid path: %s", value)
+		return errors.New("invalid path: " + value)
 	}
 	sep := string(os.PathSeparator)
 	if strings.Contains(value, ".."+sep) || strings.Contains(value, sep+"..") {
-		return fmt.Errorf("path traversal not permitted: %s", value)
+		return errors.New("path traversal not permitted: " + value)
 	}
 	if runtime.GOOS == "windows" {
 		if strings.Contains(value, "..\\") || strings.Contains(value, "\\..") {
-			return fmt.Errorf("path traversal not permitted: %s", value)
+			return errors.New("path traversal not permitted: " + value)
 		}
 		if isUnsafeUNC(value) {
-			return fmt.Errorf("invalid UNC path: %s", value)
+			return errors.New("invalid UNC path: " + value)
 		}
 	}
 	return nil
@@ -502,15 +497,15 @@ func CheckFileExists(path string) error {
 	info, err := LstatPath(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("file does not exist: %s", path)
+			return errors.New("file does not exist: " + path)
 		}
-		return fmt.Errorf("stat file %s: %w", path, err)
+		return errors.New("stat file " + path + ": " + err.Error())
 	}
 	if info.IsDir() {
-		return fmt.Errorf("path is a directory, not a file: %s", path)
+		return errors.New("path is a directory, not a file: " + path)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("symlink not permitted: %s", path)
+		return errors.New("symlink not permitted: " + path)
 	}
 	resolved, err := ResolveSecurePath(path)
 	if err != nil {
@@ -535,7 +530,7 @@ func SecureMkdirAll(path string) error {
 	if err != nil {
 		resolved, err = resolveOrAbs(dir)
 		if err != nil {
-			return fmt.Errorf("mkdir %s: %w", dir, err)
+			return errors.New("mkdir " + dir + ": " + err.Error())
 		}
 	}
 	return fileSystem().MkdirAll(resolved, DirPerm)
@@ -575,17 +570,17 @@ func buildCommand(ctx context.Context, name string, args ...string) (*exec.Cmd, 
 		return nil, errors.New("command name required")
 	}
 	if err := ValidateCLIArg(name); err != nil {
-		return nil, fmt.Errorf("invalid command name: %w", err)
+		return nil, errors.New("invalid command name: " + err.Error())
 	}
 	resolved, err := FindExecutable(ctx, name)
 	if err != nil {
-		return nil, fmt.Errorf("executable not found: %s", name)
+		return nil, errors.New("executable not found: " + name)
 	}
 	base := filepath.Base(resolved)
 	if base == "sh" || base == "bash" {
 		if len(args) >= 1 {
 			if err := ValidateCLIArg(args[0]); err != nil {
-				return nil, fmt.Errorf("invalid arg: %w", err)
+				return nil, errors.New("invalid arg: " + err.Error())
 			}
 		}
 	}
@@ -594,7 +589,7 @@ func buildCommand(ctx context.Context, name string, args ...string) (*exec.Cmd, 
 			continue
 		}
 		if err := ValidateCLIArg(a); err != nil {
-			return nil, fmt.Errorf("invalid arg: %w", err)
+			return nil, errors.New("invalid arg: " + err.Error())
 		}
 	}
 	cmd := exec.CommandContext(ctx, resolved, args...)
@@ -723,13 +718,12 @@ func ScrubHostPaths(path string, hostRoot string) (string, error) {
 		}
 	}
 	if !changed {
-		h := hex.EncodeToString(nil)
-		return h, nil
+		return "", nil
 	}
 	if err := fileSystem().WriteFile(path, data, 0o755); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("scrubbed:%d", len(root)), nil
+	return "scrubbed:" + strconv.Itoa(len(root)), nil
 }
 
 func RunCommand(ctx context.Context, verbose bool, stdout, stderr io.Writer, name string, args ...string) (string, error) {
@@ -774,28 +768,28 @@ func RunCommandOutput(ctx context.Context, name string, args ...string) ([]byte,
 func CopyFile(src, dst string) error {
 	srcResolved, err := ResolveSecurePath(src)
 	if err != nil {
-		return fmt.Errorf("copy src %s: %w", src, err)
+		return errors.New("copy src " + src + ": " + err.Error())
 	}
 	if err := SecureMkdirAll(dst); err != nil {
 		return err
 	}
 	dstResolved, err := resolveDest(dst)
 	if err != nil {
-		return fmt.Errorf("copy dst %s: %w", dst, err)
+		return errors.New("copy dst " + dst + ": " + err.Error())
 	}
 	in, err := openVerified(srcResolved)
 	if err != nil {
-		return fmt.Errorf("open src %s: %w", src, err)
+		return errors.New("open src " + src + ": " + err.Error())
 	}
 	tmp, err := fileSystem().CreateTemp(filepath.Dir(dstResolved), "fz_copy_*.tmp")
 	if err != nil {
-		return fmt.Errorf("create temp for %s: %w", dst, err)
+		return errors.New("create temp for " + dst + ": " + err.Error())
 	}
 	tmpName := tmp.Name()
 	if err := fileSystem().Chmod(tmpName, FilePerm); err != nil {
 		tmp.Close()
 		_ = fileSystem().Remove(tmpName)
-		return fmt.Errorf("chmod temp %s: %w", tmpName, err)
+		return errors.New("chmod temp " + tmpName + ": " + err.Error())
 	}
 	bufp := copyBufferPool.Get().(*[]byte)
 	buf := *bufp
@@ -805,21 +799,21 @@ func CopyFile(src, dst string) error {
 		in.Close()
 		tmp.Close()
 		_ = fileSystem().Remove(tmpName)
-		return fmt.Errorf("copy data to %s: %w", tmpName, err)
+		return errors.New("copy data to " + tmpName + ": " + err.Error())
 	}
 	ZeroizeBytes(buf)
 	copyBufferPool.Put(bufp)
 	if err := in.Close(); err != nil {
 		tmp.Close()
 		_ = fileSystem().Remove(tmpName)
-		return fmt.Errorf("close src %s: %w", srcResolved, err)
+		return errors.New("close src " + srcResolved + ": " + err.Error())
 	}
 	if err := tmp.Close(); err != nil {
 		_ = fileSystem().Remove(tmpName)
-		return fmt.Errorf("close temp %s: %w", tmpName, err)
+		return errors.New("close temp " + tmpName + ": " + err.Error())
 	}
 	if err := renameResolved(tmpName, dstResolved); err != nil {
-		return fmt.Errorf("rename %s to %s: %w", tmpName, dstResolved, err)
+		return errors.New("rename " + tmpName + " to " + dstResolved + ": " + err.Error())
 	}
 	return fileSystem().Chmod(dstResolved, FilePerm)
 }
@@ -895,7 +889,7 @@ func HashFile(path string) (string, error) {
 func HashDir(root string) (string, error) {
 	rootAbs, err := resolveOrAbs(root)
 	if err != nil {
-		return "", fmt.Errorf("hash dir %s: %w", root, err)
+		return "", errors.New("hash dir " + root + ": " + err.Error())
 	}
 	return HashDirWithRoot(rootAbs, rootAbs)
 }
