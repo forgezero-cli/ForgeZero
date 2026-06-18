@@ -50,6 +50,7 @@ docs/*
 CONTRIBUTING_USER.md
 blake3.manifest
 .fzignore
+assets/
 # Go
 /go.sum.bak
 /vendor/
