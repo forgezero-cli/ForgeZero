@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -60,9 +59,7 @@ func getMachineIDZeroAlloc() (string, error) {
 	if err != nil && err != unix.EINTR && n == 0 {
 		return "", err
 	}
-	s := string(buf[:n])
-	s = strings.TrimSpace(s)
-	return s, nil
+	return string(bytes.TrimSpace(buf[:n])), nil
 }
 
 func computeFileHash(path string) ([32]byte, error) {
@@ -159,9 +156,16 @@ func debuggerPresent() bool {
 	if err != nil && err != unix.EINTR {
 		return false
 	}
-	for _, line := range strings.Split(string(buf[:n]), "\n") {
-		if strings.HasPrefix(line, "TracerPid:") {
-			return strings.TrimSpace(line[10:]) != "0"
+	data := buf[:n]
+	start := 0
+	for i := 0; i <= n; i++ {
+		if i == n || data[i] == '\n' {
+			line := data[start:i]
+			if len(line) >= 10 && bytes.HasPrefix(line, []byte("TracerPid:")) {
+				val := bytes.TrimSpace(line[10:])
+				return !bytes.Equal(val, []byte("0"))
+			}
+			start = i + 1
 		}
 	}
 	return false
@@ -323,12 +327,16 @@ func Seal() error {
 		return err
 	}
 	defer unix.Close(fd)
-	hexb := make([]byte, hex.EncodedLen(len(sum)))
-	hex.Encode(hexb, sum)
-	hexb = append(hexb, '\n')
-	if err := writeAll(fd, hexb); err != nil {
+
+	hexBuf := make([]byte, hex.EncodedLen(32))
+	hex.Encode(hexBuf, sum[:32])
+	if err := writeAll(fd, hexBuf); err != nil {
 		return err
 	}
+	if err := writeAll(fd, []byte{'\n'}); err != nil {
+		return err
+	}
+
 	root := filepath.Dir(execPath)
 	if err := walkProjectFiles(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -342,12 +350,18 @@ func Seal() error {
 			return err
 		}
 		JournalEvent(h[:])
-		hb := make([]byte, hex.EncodedLen(len(h)))
-		hex.Encode(hb, h[:])
-		hb = append(hb, '\t')
-		hb = append(hb, []byte(path)...)
-		hb = append(hb, '\n')
-		if err := writeAll(fd, hb); err != nil {
+		hexBuf := make([]byte, hex.EncodedLen(32))
+		hex.Encode(hexBuf, h[:])
+		if err := writeAll(fd, hexBuf); err != nil {
+			return err
+		}
+		if err := writeAll(fd, []byte{'\t'}); err != nil {
+			return err
+		}
+		if err := writeAll(fd, []byte(path)); err != nil {
+			return err
+		}
+		if err := writeAll(fd, []byte{'\n'}); err != nil {
 			return err
 		}
 		return nil
@@ -406,13 +420,14 @@ func Verify() (bool, error) {
 			break
 		}
 	}
-	lines := strings.Split(string(buf[:off]), "\n")
+	lines := bytes.Split(buf[:off], []byte{'\n'})
 	if len(lines) == 0 {
 		return false, nil
 	}
-	data, err := hex.DecodeString(strings.TrimSpace(lines[0]))
-	if err != nil {
-		return false, err
+	first := bytes.TrimSpace(lines[0])
+	sealHash := make([]byte, 32)
+	if _, err := hex.Decode(sealHash, first); err != nil || len(sealHash) != 32 {
+		return false, nil
 	}
 	execHash, err := computeFileHash(execPath)
 	if err != nil {
@@ -432,7 +447,7 @@ func Verify() (bool, error) {
 	sum := hasher.Sum(nil)
 	var local [32]byte
 	copy(local[:], sum[:32])
-	if !bytes.Equal(local[:], data[:32]) {
+	if !bytes.Equal(local[:], sealHash) {
 		if debuggerPresent() && !isStagingMode() {
 			triggerDecoy()
 			return true, nil
@@ -446,17 +461,16 @@ func Verify() (bool, error) {
 	allowedMu.Lock()
 	allowed = make(map[string]struct{})
 	for i := 1; i < len(lines); i++ {
-		ln := strings.TrimSpace(lines[i])
-		if ln == "" {
+		ln := bytes.TrimSpace(lines[i])
+		if len(ln) == 0 {
 			continue
 		}
-		parts := strings.SplitN(ln, "\t", 2)
+		parts := bytes.SplitN(ln, []byte{'\t'}, 2)
 		if len(parts) >= 1 {
-			allowed[parts[0]] = struct{}{}
+			allowed[string(parts[0])] = struct{}{}
 		}
 	}
 	allowedMu.Unlock()
-	sealed = true
 	return true, nil
 }
 
