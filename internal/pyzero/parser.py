@@ -4,6 +4,7 @@ import ast
 import json
 import sys
 
+
 class IRGenerator(ast.NodeVisitor):
     def __init__(self):
         self.instructions = []
@@ -25,9 +26,7 @@ class IRGenerator(ast.NodeVisitor):
             self.instructions.append(
                 {"op": op_type, "dest": temp, "arg1": left, "arg2": right}
             )
-            self.instructions.append(
-                {"op": "Store", "dest": target, "arg1": temp}
-            )
+            self.instructions.append({"op": "Store", "dest": target, "arg1": temp})
         elif isinstance(node.value, ast.Constant):
             self.instructions.append(
                 {"op": "Store", "dest": target, "arg1": str(node.value.value)}
@@ -44,6 +43,7 @@ class IRGenerator(ast.NodeVisitor):
             arg = self.visit(node.args[0])
             self.instructions.append({"op": "Print", "arg1": arg})
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit(1)
@@ -56,3 +56,4 @@ if __name__ == "__main__":
     generator.visit(tree)
 
     print(json.dumps(generator.instructions, indent=2))
+
