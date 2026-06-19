@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -90,7 +90,13 @@ func CheckDuplicateSymbols(ctx context.Context, objFiles []string, verbose bool)
 	for res := range resultsChan {
 		if res.err != nil {
 			if verbose {
-				fmt.Printf("Warning: cannot read symbols from %s: %v\n", res.obj, res.err)
+				var b strings.Builder
+				b.WriteString("Warning: cannot read symbols from ")
+				b.WriteString(res.obj)
+				b.WriteString(": ")
+				b.WriteString(res.err.Error())
+				b.WriteByte('\n')
+				os.Stderr.WriteString(b.String())
 			}
 			continue
 		}
@@ -99,20 +105,36 @@ func CheckDuplicateSymbols(ctx context.Context, objFiles []string, verbose bool)
 		}
 	}
 
-	duplicates := []string{}
+	var dupBuf strings.Builder
+	first := true
 	for name, syms := range symbolMap {
 		if len(syms) > 1 && shouldCheckDuplicate(name) {
-			var files []string
-			for _, s := range syms {
-				files = append(files, fmt.Sprintf("%s (%s)", s.File, s.Type))
+			if first {
+				first = false
+			} else {
+				dupBuf.WriteByte('\n')
 			}
-			dup := fmt.Sprintf("  symbol '%s' defined in:\n    %s", name, strings.Join(files, "\n    "))
-			duplicates = append(duplicates, dup)
+			dupBuf.WriteString("  symbol '")
+			dupBuf.WriteString(name)
+			dupBuf.WriteString("' defined in:\n    ")
+			for i, s := range syms {
+				if i > 0 {
+					dupBuf.WriteString("\n    ")
+				}
+				dupBuf.WriteString(s.File)
+				dupBuf.WriteString(" (")
+				dupBuf.WriteString(s.Type)
+				dupBuf.WriteByte(')')
+			}
 		}
 	}
 
-	if len(duplicates) > 0 {
-		return fmt.Errorf("duplicate global symbols found:\n%s\nUse -no-symbol-check to skip this check", strings.Join(duplicates, "\n"))
+	if dupBuf.Len() > 0 {
+		var errBuf strings.Builder
+		errBuf.WriteString("duplicate global symbols found:\n")
+		errBuf.WriteString(dupBuf.String())
+		errBuf.WriteString("\nUse -no-symbol-check to skip this check")
+		return errors.New(errBuf.String())
 	}
 	return nil
 }
@@ -136,7 +158,11 @@ func readSymbols(ctx context.Context, objPath string, verbose bool) ([]SymbolInf
 
 			if data, rerr := os.ReadFile(cacheFile); rerr == nil {
 				if verbose {
-					fmt.Printf("Symbol cache hit for %s\n", objPath)
+					var b strings.Builder
+					b.WriteString("Symbol cache hit for ")
+					b.WriteString(objPath)
+					b.WriteByte('\n')
+					os.Stderr.WriteString(b.String())
 				}
 				return deserializeSymbols(data, objPath), nil
 			}
@@ -167,18 +193,18 @@ func readSymbols(ctx context.Context, objPath string, verbose bool) ([]SymbolInf
 }
 
 func serializeSymbols(syms []SymbolInfo) []byte {
-	var sb strings.Builder
+	var buf bytes.Buffer
 	for _, s := range syms {
-		sb.WriteString(s.Name)
-		sb.WriteByte('\t')
-		sb.WriteString(s.Type)
-		sb.WriteByte('\t')
-		sb.WriteString(strconv.Itoa(s.Size))
-		sb.WriteByte('\t')
-		sb.WriteString(s.Bound)
-		sb.WriteByte('\n')
+		buf.WriteString(s.Name)
+		buf.WriteByte('\t')
+		buf.WriteString(s.Type)
+		buf.WriteByte('\t')
+		buf.WriteString(strconv.Itoa(s.Size))
+		buf.WriteByte('\t')
+		buf.WriteString(s.Bound)
+		buf.WriteByte('\n')
 	}
-	return []byte(sb.String())
+	return buf.Bytes()
 }
 
 func deserializeSymbols(data []byte, objPath string) []SymbolInfo {
@@ -208,7 +234,12 @@ func deserializeSymbols(data []byte, objPath string) []SymbolInfo {
 func readSymbolsWithNm(ctx context.Context, objPath string, verbose bool) ([]SymbolInfo, error) {
 	out, err := utils.RunCommandOutput(ctx, "nm", "-g", objPath)
 	if err != nil {
-		return nil, fmt.Errorf("nm %s: %w", objPath, err)
+		var b strings.Builder
+		b.WriteString("nm ")
+		b.WriteString(objPath)
+		b.WriteString(": ")
+		b.WriteString(err.Error())
+		return nil, errors.New(b.String())
 	}
 	return parseNmOutput(objPath, string(out)), nil
 }
@@ -216,7 +247,12 @@ func readSymbolsWithNm(ctx context.Context, objPath string, verbose bool) ([]Sym
 func readSymbolsWithObjdump(ctx context.Context, objPath string, verbose bool) ([]SymbolInfo, error) {
 	out, err := utils.RunCommandOutput(ctx, "objdump", "-t", objPath)
 	if err != nil {
-		return nil, fmt.Errorf("objdump %s: %w", objPath, err)
+		var b strings.Builder
+		b.WriteString("objdump ")
+		b.WriteString(objPath)
+		b.WriteString(": ")
+		b.WriteString(err.Error())
+		return nil, errors.New(b.String())
 	}
 	return parseObjdumpOutput(objPath, string(out)), nil
 }
@@ -224,7 +260,12 @@ func readSymbolsWithObjdump(ctx context.Context, objPath string, verbose bool) (
 func readSymbolsWithReadelf(ctx context.Context, objPath string, verbose bool) ([]SymbolInfo, error) {
 	out, err := utils.RunCommandOutput(ctx, "readelf", "-s", objPath)
 	if err != nil {
-		return nil, fmt.Errorf("readelf %s: %w", objPath, err)
+		var b strings.Builder
+		b.WriteString("readelf ")
+		b.WriteString(objPath)
+		b.WriteString(": ")
+		b.WriteString(err.Error())
+		return nil, errors.New(b.String())
 	}
 	return parseReadelfOutput(objPath, string(out)), nil
 }

@@ -48,14 +48,14 @@ var (
 		".asm": true, ".nasm": true,
 		".fasm": true,
 	}
-	targetInfoMu   sync.RWMutex
-	cachedTarget   string
-	cachedIsWasm   bool
-	cachedIsArm    bool
-	cachedIsRisc   bool
-	flagInitOnce   sync.Once
-	toolchainVal   string
-	muslVal        string
+	targetInfoMu sync.RWMutex
+	cachedTarget string
+	cachedIsWasm bool
+	cachedIsArm  bool
+	cachedIsRisc bool
+	flagInitOnce sync.Once
+	toolchainVal string
+	muslVal      string
 )
 
 var ErrSkip = errors.New("skip this linker attempt")
