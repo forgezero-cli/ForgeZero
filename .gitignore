@@ -43,7 +43,7 @@ test.sh
 *.tmp
 *.log
 *.pid
-
+bench/*
 TODO.md
 cmake_bench/
 .venv
