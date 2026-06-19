@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: MIT
-
 package utils
 
 import (
@@ -18,7 +16,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 	"unsafe"
 
 	"fz/internal/config"
@@ -157,31 +154,43 @@ var (
 	ErrScanOpen     = errors.New("scan: open")
 	ErrScanMmap     = errors.New("scan: mmap")
 	ErrScanResolve  = errors.New("scan: resolve")
-	includeBytes    = [7]byte{'i', 'n', 'c', 'l', 'u', 'd', 'e'}
+	includeBytes    = []byte("include")
 	warnOutsideHead = []byte("WARNING: include outside root ignored: ")
 )
 
-var globalScratchPad = func() []byte {
-	b := make([]byte, 1024*1024+64)
-	base := uintptr(unsafe.Pointer(&b[0]))
-	off := int((64 - (base % 64)) % 64)
-	return b[off:]
-}()
+var alignedBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 1024*1024+64)
+		base := uintptr(unsafe.Pointer(&b[0]))
+		off := int((64 - (base % 64)) % 64)
+		s := b[off : off+1024*1024]
+		return &s
+	},
+}
 
-func alignedSlice(n int) []byte {
-	if n <= len(globalScratchPad) {
-		return globalScratchPad[:n]
+func getAlignedBuf(size int) []byte {
+	bufPtr := alignedBufPool.Get().(*[]byte)
+	b := *bufPtr
+	if cap(b) < size {
+		b = make([]byte, size+64)
+		base := uintptr(unsafe.Pointer(&b[0]))
+		off := int((64 - (base % 64)) % 64)
+		b = b[off : off+size]
+		*bufPtr = b
 	}
-	b := make([]byte, n+64)
-	base := uintptr(unsafe.Pointer(&b[0]))
-	off := int((64 - (base % 64)) % 64)
-	return b[off : off+n]
+	return b[:size]
+}
+
+func putAlignedBuf(b []byte) {
+	alignedBufPool.Put(&b)
 }
 
 var (
 	executionRoot atomic.Value
 	ToolChecksums sync.Map
 	CheckToolFunc func(name string) error = checkToolInternal
+	resolveCache  sync.Map
+	fileHashCache sync.Map
 )
 
 func SetExecutionRoot(v string) {
@@ -313,7 +322,7 @@ func fnv1aHashAppendByte(h uint64, b byte) uint64 {
 }
 
 func ShadowCacheKey(src string, flags []string) (string, error) {
-	resolved, err := ResolveSecurePath(src)
+	resolved, err := ResolveSecurePathCached(src)
 	if err != nil {
 		return "", err
 	}
@@ -333,7 +342,7 @@ func ShadowCacheKey(src string, flags []string) (string, error) {
 		h = fnv1aHashAppendByte(h, 0)
 	}
 	for _, file := range files {
-		hv, err := HashFile(file)
+		hv, err := HashFileCached(file)
 		if err != nil {
 			return "", err
 		}
@@ -495,7 +504,6 @@ func CheckFileExists(path string) error {
 	if _, exists := fileExistsCache.Load(path); exists {
 		return nil
 	}
-
 	info, err := LstatPath(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -518,7 +526,6 @@ func CheckFileExists(path string) error {
 		return err
 	}
 	defer f.Close()
-
 	fileExistsCache.Store(path, struct{}{})
 	return nil
 }
@@ -796,14 +803,12 @@ func CopyFile(src, dst string) error {
 	bufp := copyBufferPool.Get().(*[]byte)
 	buf := *bufp
 	if _, err := io.CopyBuffer(tmp, in, buf); err != nil {
-		ZeroizeBytes(buf)
 		copyBufferPool.Put(bufp)
 		in.Close()
 		tmp.Close()
 		_ = fileSystem().Remove(tmpName)
 		return errors.New("copy data to " + tmpName + ": " + err.Error())
 	}
-	ZeroizeBytes(buf)
 	copyBufferPool.Put(bufp)
 	if err := in.Close(); err != nil {
 		tmp.Close()
@@ -836,14 +841,10 @@ func hashEmptyDigest() ([32]byte, error) {
 
 func fileIsStable(of interface {
 	Stat() (os.FileInfo, error)
-}, delay time.Duration,
-) bool {
+}) bool {
 	fi1, err := of.Stat()
 	if err != nil {
 		return false
-	}
-	if delay > 0 {
-		time.Sleep(delay)
 	}
 	fi2, err := of.Stat()
 	if err != nil {
@@ -873,7 +874,7 @@ func HashDataDigest(data []byte) ([32]byte, error) {
 
 func HashFileDigest(path string) ([32]byte, error) {
 	var out [32]byte
-	resolved, err := ResolveSecurePath(path)
+	resolved, err := ResolveSecurePathCached(path)
 	if err != nil {
 		return out, ErrHashOpen
 	}
@@ -886,6 +887,28 @@ func HashFile(path string) (string, error) {
 		return "", err
 	}
 	return blake3HexDigestToString(out), nil
+}
+
+func HashFileCached(path string) (string, error) {
+	if v, ok := fileHashCache.Load(path); ok {
+		return v.(string), nil
+	}
+	h, err := HashFile(path)
+	if err == nil {
+		fileHashCache.Store(path, h)
+	}
+	return h, err
+}
+
+func ResolveSecurePathCached(path string) (string, error) {
+	if v, ok := resolveCache.Load(path); ok {
+		return v.(string), nil
+	}
+	resolved, err := ResolveSecurePath(path)
+	if err == nil {
+		resolveCache.Store(path, resolved)
+	}
+	return resolved, err
 }
 
 func HashDir(root string) (string, error) {
@@ -962,75 +985,51 @@ func HashDirDigest(rootAbs, dir string) ([32]byte, error) {
 		return out, ErrHashRead
 	}
 	sort.Strings(files)
+
+	type fileHash struct {
+		rel string
+		h   [32]byte
+		err error
+	}
+	results := make([]fileHash, len(files))
+	var wg sync.WaitGroup
+	wg.Add(len(files))
+	for i, rel := range files {
+		go func(idx int, rel string) {
+			defer wg.Done()
+			fullPath := filepath.Join(dirAbs, rel)
+			h, err := hashRawFileDigest(fullPath)
+			results[idx] = fileHash{rel: rel, h: h, err: err}
+		}(i, rel)
+	}
+	wg.Wait()
+
 	hasher := hasherPool.Get().(*blake3.Hasher)
-	buf := alignedSlice(32 * 1024)
-	var f io.ReadCloser
-	for _, rel := range files {
-		n := copy(buf, rel)
+	buf := getAlignedBuf(32 * 1024)
+	defer putAlignedBuf(buf)
+
+	for _, res := range results {
+		if res.err != nil {
+			hasher.Reset()
+			hasherPool.Put(hasher)
+			return out, res.err
+		}
+		n := copy(buf, res.rel)
 		if _, err := hasher.Write(buf[:n]); err != nil {
-			if f != nil {
-				f.Close()
-			}
 			hasher.Reset()
 			hasherPool.Put(hasher)
 			return out, ErrHashRead
 		}
 		if _, err := hasher.Write(hashSep); err != nil {
-			if f != nil {
-				f.Close()
-			}
 			hasher.Reset()
 			hasherPool.Put(hasher)
 			return out, ErrHashRead
 		}
-		fullPath := dirAbs + string(os.PathSeparator) + rel
-		f, err = openVerified(fullPath)
-		if err != nil {
+		if _, err := hasher.Write(res.h[:]); err != nil {
 			hasher.Reset()
 			hasherPool.Put(hasher)
-			return out, ErrHashOpen
+			return out, ErrHashRead
 		}
-		mmapped := false
-		if of, ok := f.(interface {
-			Stat() (os.FileInfo, error)
-			Fd() uintptr
-		}); ok {
-			fi, _ := of.Stat()
-			if fi != nil && fi.Size() > 0 {
-				size := fi.Size()
-				fd := getFileDescriptor(of)
-				if err := lockFileShared(fd); err == nil {
-					if !fileIsStable(of, 1*time.Millisecond) {
-						_ = unlockFile(fd)
-					} else {
-						data, merr := mmapFile(fd, size)
-						if merr == nil {
-							if fi2, err := of.Stat(); err == nil && fi2.Size() == size {
-								madviseNormal(data)
-								if _, err := hasher.Write(data); err == nil {
-									_ = unmapFile(data)
-									mmapped = true
-								} else {
-									_ = unmapFile(data)
-								}
-							} else {
-								_ = unmapFile(data)
-							}
-						}
-						_ = unlockFile(fd)
-					}
-				}
-			}
-		}
-		if !mmapped {
-			if _, err := io.CopyBuffer(hasher, f, buf); err != nil {
-				f.Close()
-				hasher.Reset()
-				hasherPool.Put(hasher)
-				return out, ErrHashRead
-			}
-		}
-		f.Close()
 		if _, err := hasher.Write(hashSep); err != nil {
 			hasher.Reset()
 			hasherPool.Put(hasher)
@@ -1066,7 +1065,7 @@ func resolveIncludePathBytes(currentDir string, include []byte) (string, error) 
 	}
 	m := copy(tmp[n:], include)
 	resolved := filepath.Clean(string(tmp[:n+m]))
-	return ResolveSecurePath(resolved)
+	return ResolveSecurePathCached(resolved)
 }
 
 func warnOutsideRoot(path string) {
@@ -1084,7 +1083,7 @@ func warnOutsideRoot(path string) {
 }
 
 func mmapPath(path string) ([]byte, error) {
-	resolved, err := ResolveSecurePath(path)
+	resolved, err := ResolveSecurePathCached(path)
 	if err != nil {
 		return nil, ErrScanResolve
 	}
@@ -1109,6 +1108,14 @@ func mmapPath(path string) ([]byte, error) {
 		f.Close()
 		return nil, nil
 	}
+	if fi.Size() < 64*1024 {
+		f.Close()
+		data, err := fileSystem().ReadFile(resolved)
+		if err != nil {
+			return nil, ErrScanOpen
+		}
+		return data, nil
+	}
 	data, err := mmapFile(getFileDescriptor(of), fi.Size())
 	f.Close()
 	if err != nil {
@@ -1125,72 +1132,81 @@ func scanFileIncludes(path string, buf []string) ([]string, error) {
 	if len(data) == 0 {
 		return buf, nil
 	}
-	defer func() { _ = unmapFile(data) }()
+	defer func() {
+		if cap(data) > 64*1024 {
+			_ = unmapFile(data)
+		}
+	}()
 
 	currentDir := filepath.Dir(path)
-
-	for i := 0; i < len(data); i++ {
-		if data[i] != '#' {
+	pos := 0
+	for {
+		idx := bytes.Index(data[pos:], includeBytes)
+		if idx == -1 {
+			break
+		}
+		start := pos + idx
+		hashPos := start
+		if hashPos > 0 && data[hashPos-1] != '#' {
+			pos = start + len(includeBytes)
 			continue
 		}
-		j := i + 1
-		for j < len(data) && (data[j] == ' ' || data[j] == '\t') {
-			j++
+		i := hashPos - 1
+		for i > 0 && (data[i] == ' ' || data[i] == '\t') {
+			i--
 		}
-		if j+len(includeBytes) >= len(data) {
+		if i < 0 || data[i] != '#' {
+			pos = start + len(includeBytes)
 			continue
 		}
-		ok := true
-		for k := 0; k < len(includeBytes); k++ {
-			if data[j+k] != includeBytes[k] {
-				ok = false
+		i = start + len(includeBytes)
+		for i < len(data) && (data[i] == ' ' || data[i] == '\t') {
+			i++
+		}
+		if i >= len(data) {
+			pos = len(data)
+			break
+		}
+		switch data[i] {
+		case '"':
+			begin := i + 1
+			end := begin
+			for end < len(data) && data[end] != '"' {
+				end++
+			}
+			if end >= len(data) {
+				pos = len(data)
 				break
 			}
-		}
-		if !ok {
-			continue
-		}
-		j += len(includeBytes)
-		for j < len(data) && (data[j] == ' ' || data[j] == '\t') {
-			j++
-		}
-		if j >= len(data) {
-			continue
-		}
-		switch data[j] {
-		case '"':
-			start := j + 1
-			k := start
-			for k < len(data) && data[k] != '"' {
-				k++
-			}
-			if k >= len(data) {
-				continue
-			}
-			resolved, err := resolveIncludePathBytes(currentDir, data[start:k])
+			resolved, err := resolveIncludePathBytes(currentDir, data[begin:end])
 			if err == nil {
 				buf = append(buf, resolved)
 			}
+			pos = end + 1
 		case '<':
-			start := j + 1
-			k := start
-			for k < len(data) && data[k] != '>' {
-				k++
+			begin := i + 1
+			end := begin
+			for end < len(data) && data[end] != '>' {
+				end++
 			}
-			if k >= len(data) {
-				continue
+			if end >= len(data) {
+				pos = len(data)
+				break
 			}
-			resolved, err := resolveIncludePathBytes(currentDir, data[start:k])
+			resolved, err := resolveIncludePathBytes(currentDir, data[begin:end])
 			if err == nil {
 				buf = append(buf, resolved)
 			}
+			pos = end + 1
+		default:
+			pos = start + len(includeBytes)
 		}
 	}
 	return buf, nil
 }
 
 func ScanDependencies(path string) ([]string, error) {
-	resolved, err := ResolveSecurePath(path)
+	resolved, err := ResolveSecurePathCached(path)
 	if err != nil {
 		return nil, err
 	}
@@ -1198,7 +1214,6 @@ func ScanDependencies(path string) ([]string, error) {
 	stack := []string{resolved}
 	visited := make(map[uint64]struct{}, 64)
 	deps := make([]string, 0, 64)
-
 	incBuffer := make([]string, 0, 16)
 
 	for len(stack) > 0 {
@@ -1212,12 +1227,10 @@ func ScanDependencies(path string) ([]string, error) {
 		deps = append(deps, cur)
 
 		incBuffer = incBuffer[:0]
-
 		includes, err := scanFileIncludes(cur, incBuffer)
 		if err != nil {
 			return nil, err
 		}
-
 		for _, inc := range includes {
 			if !pathWithinRoot(rootDir, inc) {
 				warnOutsideRoot(inc)
@@ -1228,7 +1241,6 @@ func ScanDependencies(path string) ([]string, error) {
 				continue
 			}
 			stack = append(stack, inc)
-
 			incBuffer = includes
 		}
 	}
