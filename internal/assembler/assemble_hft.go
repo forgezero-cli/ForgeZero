@@ -1,7 +1,8 @@
 /*
-(c) AlexVoste
-Package assembler — hot-path zero-allocation memory copy
-*/
+ * Author: (c) AlexVoste
+ * Description: Package assembler — hot-path zero-allocation memory copy
+ * SPDX-License-Identifier: MIT
+ */
 
 package assembler
 
