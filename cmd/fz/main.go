@@ -24,6 +24,7 @@ import (
 	"fz/internal/config"
 	"fz/internal/contribute"
 	"fz/internal/cplugin"
+	"fz/internal/reverse"
 
 	"fz/internal/doctor"
 	fzvfs "fz/internal/fs"
@@ -43,6 +44,8 @@ import (
 	"fz/internal/utils"
 	"fz/internal/verify"
 	"fz/internal/watcher"
+
+	"gopkg.in/yaml.v3"
 )
 
 type BuildReport struct {
@@ -878,6 +881,8 @@ func main() {
 		muslOpt            string
 		profileFlag        string
 		pyzeroFlag         bool
+
+		oldReverseFile string
 	)
 
 	type targetKeyType string
@@ -937,10 +942,31 @@ func main() {
 	flag.StringVar(&profileFlag, "p", "balanced", "build profile (shorthand)")
 	flag.BoolVar(&testrunner.AlexMode, "alex", false, "run full test scanner projects for contribution")
 	flag.BoolVar(&pyzeroFlag, "pyzero", false, "bump python format file to binaries(e.g: fz -pyzero main.py); Important: this is an experimental feature and may not work as expected! Supported platform: x86_64-linux-gnu only for now")
+	flag.StringVar(&oldReverseFile, "old-reverse", "", "generate .fz.yaml from legacy build files (Makefile, CMakeLists.txt)")
 
 	flag.Usage = printHelp
 
 	flag.Parse()
+
+	// !Important: ONLY EXPEREMENTAL. Sample MVP
+	if oldReverseFile != "" {
+		cfg, err := reverse.ReverseFile(oldReverseFile)
+		if err != nil {
+			writeFmt(2, "reverse failed: %v\n", err)
+			os.Exit(2)
+		}
+		data, err := yaml.Marshal(cfg)
+		if err != nil {
+			writeFmt(2, "failed to marshal config: %v\n", err)
+			os.Exit(2)
+		}
+		if err := os.WriteFile(".fz.yaml", data, 0o644); err != nil {
+			writeFmt(2, "failed to write .fz.yaml: %v\n", err)
+			os.Exit(2)
+		}
+		writeFmt(1, "Generated .fz.yaml from %s\n", oldReverseFile)
+		return
+	}
 
 	profileProvided := false
 	flag.Visit(func(f *flag.Flag) {
