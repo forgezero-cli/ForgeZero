@@ -369,6 +369,10 @@ func (p *parser) parseLine(line []byte) error {
 		return p.emitArith(0x08, 0x81, rest)
 	case equalWord(tok, "xor"):
 		return p.emitArith(0x30, 0x81, rest)
+	case equalWord(tok, "adc"):
+		return p.emitArith(0x10, 0x81, rest)
+	case equalWord(tok, "sbb"):
+		return p.emitArith(0x18, 0x81, rest)
 	case equalWord(tok, "inc"):
 		return p.emitInc(rest)
 	case equalWord(tok, "dec"):
@@ -381,6 +385,18 @@ func (p *parser) parseLine(line []byte) error {
 		return p.emitPush(rest)
 	case equalWord(tok, "pop"):
 		return p.emitPop(rest)
+	case equalWord(tok, "pushf"):
+		p.current.data = append(p.current.data, 0x9C)
+		return nil
+	case equalWord(tok, "popf"):
+		p.current.data = append(p.current.data, 0x9D)
+		return nil
+	case equalWord(tok, "pusha"):
+		p.current.data = append(p.current.data, 0x60)
+		return nil
+	case equalWord(tok, "popa"):
+		p.current.data = append(p.current.data, 0x61)
+		return nil
 	case equalWord(tok, "lea"):
 		return p.emitLea(rest)
 	case equalWord(tok, "jmp"):
@@ -401,6 +417,26 @@ func (p *parser) parseLine(line []byte) error {
 		return p.emitJcc(0x86, rest)
 	case equalWord(tok, "jae"):
 		return p.emitJcc(0x83, rest)
+	case equalWord(tok, "jc"):
+		return p.emitJcc(0x82, rest)
+	case equalWord(tok, "jnc"):
+		return p.emitJcc(0x83, rest)
+	case equalWord(tok, "jz"):
+		return p.emitJcc(0x84, rest)
+	case equalWord(tok, "jnz"):
+		return p.emitJcc(0x85, rest)
+	case equalWord(tok, "jo"):
+		return p.emitJcc(0x80, rest)
+	case equalWord(tok, "jno"):
+		return p.emitJcc(0x81, rest)
+	case equalWord(tok, "js"):
+		return p.emitJcc(0x88, rest)
+	case equalWord(tok, "jns"):
+		return p.emitJcc(0x89, rest)
+	case equalWord(tok, "jp"):
+		return p.emitJcc(0x8A, rest)
+	case equalWord(tok, "jnp"):
+		return p.emitJcc(0x8B, rest)
 	case equalWord(tok, "test"):
 		return p.emitTest(rest)
 	case equalWord(tok, "shl"):
@@ -411,6 +447,14 @@ func (p *parser) parseLine(line []byte) error {
 		return p.emitShift(0xD2, 7, rest)
 	case equalWord(tok, "sal"):
 		return p.emitShift(0xD2, 4, rest)
+	case equalWord(tok, "rol"):
+		return p.emitShift(0xD2, 0, rest)
+	case equalWord(tok, "ror"):
+		return p.emitShift(0xD2, 1, rest)
+	case equalWord(tok, "rcl"):
+		return p.emitShift(0xD2, 2, rest)
+	case equalWord(tok, "rcr"):
+		return p.emitShift(0xD2, 3, rest)
 	case equalWord(tok, "mul"):
 		return p.emitMulDiv(0xF7, 4, rest)
 	case equalWord(tok, "div"):
@@ -419,6 +463,12 @@ func (p *parser) parseLine(line []byte) error {
 		return p.emitMulDiv(0xF7, 7, rest)
 	case equalWord(tok, "mov"):
 		return p.emitMov(rest)
+	case equalWord(tok, "movzx"):
+		return p.emitMovzx(rest)
+	case equalWord(tok, "movsx"):
+		return p.emitMovsx(rest)
+	case equalWord(tok, "xchg"):
+		return p.emitXchg(rest)
 	case equalWord(tok, "call"):
 		return p.emitCall(rest)
 	case equalWord(tok, "imul"):
@@ -429,12 +479,78 @@ func (p *parser) parseLine(line []byte) error {
 		return p.emitJump(0x8E, rest)
 	case equalWord(tok, "jg"):
 		return p.emitJump(0x8F, rest)
+	case equalWord(tok, "nop"):
+		p.current.data = append(p.current.data, 0x90)
+		return nil
+	case equalWord(tok, "hlt"):
+		p.current.data = append(p.current.data, 0xF4)
+		return nil
+	case equalWord(tok, "cli"):
+		p.current.data = append(p.current.data, 0xFA)
+		return nil
+	case equalWord(tok, "sti"):
+		p.current.data = append(p.current.data, 0xFB)
+		return nil
+	case equalWord(tok, "iret"):
+		p.current.data = append(p.current.data, 0xCF)
+		return nil
+	case equalWord(tok, "int"):
+		tok2, _ := readToken(rest)
+		num, err := parseNumber(tok2)
+		if err != nil {
+			return err
+		}
+		if num == 3 {
+			p.current.data = append(p.current.data, 0xCC)
+		} else {
+			p.current.data = append(p.current.data, 0xCD, byte(num))
+		}
+		return nil
+	case equalWord(tok, "ud2"):
+		p.current.data = append(p.current.data, 0x0F, 0x0B)
+		return nil
+	case equalWord(tok, "cpuid"):
+		p.current.data = append(p.current.data, 0x0F, 0xA2)
+		return nil
+	case equalWord(tok, "rdtsc"):
+		p.current.data = append(p.current.data, 0x0F, 0x31)
+		return nil
 	case equalWord(tok, "syscall"):
 		p.current.data = append(p.current.data, 0x0F, 0x05)
+		return nil
+	case equalWord(tok, "sysret"):
+		p.current.data = append(p.current.data, 0x0F, 0x07)
+		return nil
+	case equalWord(tok, "swapgs"):
+		p.current.data = append(p.current.data, 0x0F, 0x01, 0xF8)
 		return nil
 	case equalWord(tok, "ret"):
 		p.current.data = append(p.current.data, 0xC3)
 		return nil
+	case equalWord(tok, "retf"):
+		p.current.data = append(p.current.data, 0xCB)
+		return nil
+	case equalWord(tok, "enter"):
+		tok2, rest2 := readToken(rest)
+		bytes, err := parseNumber(tok2)
+		if err != nil {
+			return err
+		}
+		level, _ := parseNumber(trimSpace(rest2))
+		p.current.data = append(p.current.data, 0xC8)
+		p.current.data = append(p.current.data, byte(bytes), byte(bytes>>8))
+		p.current.data = append(p.current.data, byte(level))
+		return nil
+	case equalWord(tok, "leave"):
+		p.current.data = append(p.current.data, 0xC9)
+		return nil
+	case equalWord(tok, "pause"):
+		p.current.data = append(p.current.data, 0xF3, 0x90)
+		return nil
+	case equalWord(tok, "lock"):
+		p.current.data = append(p.current.data, 0xF0)
+		tok2, rest2 := readToken(rest)
+		return p.parseLine(append(tok2, rest2...))
 	}
 	return errors.New("unsupported assembler directive")
 }
@@ -1130,6 +1246,38 @@ func parseRegister(tok []byte) (registerInfo, bool) {
 		return registerInfo{code: 14, width: 32}, true
 	case "r15d":
 		return registerInfo{code: 15, width: 32}, true
+	case "ax":
+		return registerInfo{code: 0, width: 16}, true
+	case "cx":
+		return registerInfo{code: 1, width: 16}, true
+	case "dx":
+		return registerInfo{code: 2, width: 16}, true
+	case "bx":
+		return registerInfo{code: 3, width: 16}, true
+	case "sp":
+		return registerInfo{code: 4, width: 16}, true
+	case "bp":
+		return registerInfo{code: 5, width: 16}, true
+	case "si":
+		return registerInfo{code: 6, width: 16}, true
+	case "di":
+		return registerInfo{code: 7, width: 16}, true
+	case "al":
+		return registerInfo{code: 0, width: 8}, true
+	case "cl":
+		return registerInfo{code: 1, width: 8}, true
+	case "dl":
+		return registerInfo{code: 2, width: 8}, true
+	case "bl":
+		return registerInfo{code: 3, width: 8}, true
+	case "ah":
+		return registerInfo{code: 4, width: 8}, true
+	case "ch":
+		return registerInfo{code: 5, width: 8}, true
+	case "dh":
+		return registerInfo{code: 6, width: 8}, true
+	case "bh":
+		return registerInfo{code: 7, width: 8}, true
 	}
 	return registerInfo{}, false
 }
@@ -1796,6 +1944,107 @@ func (p *parser) emitMov(rest []byte) error {
 		return nil
 	}
 	return errors.New("unsupported mov operands")
+}
+
+func (p *parser) emitMovzx(rest []byte) error {
+	args := p.splitArgs(trimSpace(rest))
+	if len(args) != 2 {
+		return errors.New("invalid movzx operands")
+	}
+	dst, err := parseOperand(args[0])
+	if err != nil {
+		return err
+	}
+	src, err := parseOperand(args[1])
+	if err != nil {
+		return err
+	}
+	if dst.typ != opReg || src.typ != opMem {
+		return errors.New("movzx requires register destination and memory source")
+	}
+	p.current.data = append(p.current.data, 0x0F, 0xB6)
+	modrm, sib, disp := encodeMemOperand(src, dst.reg, false)
+	p.current.data = append(p.current.data, modrm)
+	if sib != 0 {
+		p.current.data = append(p.current.data, sib)
+	}
+	if disp != nil {
+		p.current.data = append(p.current.data, disp...)
+	}
+	return nil
+}
+
+func (p *parser) emitMovsx(rest []byte) error {
+	args := p.splitArgs(trimSpace(rest))
+	if len(args) != 2 {
+		return errors.New("invalid movsx operands")
+	}
+	dst, err := parseOperand(args[0])
+	if err != nil {
+		return err
+	}
+	src, err := parseOperand(args[1])
+	if err != nil {
+		return err
+	}
+	if dst.typ != opReg || src.typ != opMem {
+		return errors.New("movsx requires register destination and memory source")
+	}
+	p.current.data = append(p.current.data, 0x0F, 0xBE)
+	modrm, sib, disp := encodeMemOperand(src, dst.reg, false)
+	p.current.data = append(p.current.data, modrm)
+	if sib != 0 {
+		p.current.data = append(p.current.data, sib)
+	}
+	if disp != nil {
+		p.current.data = append(p.current.data, disp...)
+	}
+	return nil
+}
+
+func (p *parser) emitXchg(rest []byte) error {
+	args := p.splitArgs(trimSpace(rest))
+	if len(args) != 2 {
+		return errors.New("invalid xchg operands")
+	}
+	dst, err := parseOperand(args[0])
+	if err != nil {
+		return err
+	}
+	src, err := parseOperand(args[1])
+	if err != nil {
+		return err
+	}
+	if dst.typ == opReg && src.typ == opReg {
+		p.current.data = append(p.current.data, 0x48, 0x87)
+		p.current.data = append(p.current.data, encodeModRM(3, src.reg, dst.reg))
+		return nil
+	}
+	if dst.typ == opMem && src.typ == opReg {
+		p.current.data = append(p.current.data, 0x48, 0x87)
+		modrm, sib, disp := encodeMemOperand(dst, src.reg, false)
+		p.current.data = append(p.current.data, modrm)
+		if sib != 0 {
+			p.current.data = append(p.current.data, sib)
+		}
+		if disp != nil {
+			p.current.data = append(p.current.data, disp...)
+		}
+		return nil
+	}
+	if dst.typ == opReg && src.typ == opMem {
+		p.current.data = append(p.current.data, 0x48, 0x87)
+		modrm, sib, disp := encodeMemOperand(src, dst.reg, false)
+		p.current.data = append(p.current.data, modrm)
+		if sib != 0 {
+			p.current.data = append(p.current.data, sib)
+		}
+		if disp != nil {
+			p.current.data = append(p.current.data, disp...)
+		}
+		return nil
+	}
+	return errors.New("unsupported xchg operands")
 }
 
 func (p *parser) emitCall(rest []byte) error {
