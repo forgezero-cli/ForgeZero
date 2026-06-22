@@ -44,6 +44,11 @@ func TestAssembleNASMBootSector(t *testing.T) {
 	oldFmt := OutputFormat
 	defer func() { OutputFormat = oldFmt }()
 	OutputFormat = "bin"
+
+	oldForce := ForceInternalAsm
+	defer func() { ForceInternalAsm = oldForce }()
+	ForceInternalAsm = true
+
 	dir := t.TempDir()
 	src := filepath.Join(dir, "boot.asm")
 	asm := `section .text

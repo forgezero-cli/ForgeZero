@@ -108,6 +108,10 @@ func TestAssembleRawBinary(t *testing.T) {
 	defer func() { OutputFormat = old }()
 	OutputFormat = "bin"
 
+	oldForce := ForceInternalAsm
+	defer func() { ForceInternalAsm = oldForce }()
+	ForceInternalAsm = true
+
 	dir := t.TempDir()
 	src := writeTempFile(t, dir, "boot.asm", `section .text
     db 0x90
