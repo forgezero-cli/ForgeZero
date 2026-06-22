@@ -2,7 +2,7 @@
 set -euo pipefail
 
 TEST_DIR="benchmark_test"
-NUM_MODULES=200
+NUM_MODULES=1000
 
 echo "🛠️  ForgeZero vs NASM/Make Benchmark Script"
 echo "=========================================="
@@ -83,8 +83,8 @@ cd "$TEST_DIR"
 
 hyperfine --warmup 3 \
   --prepare "make clean && rm -rf .fz_objs fz_out" \
-  "../fzt -dir . -out fz_out" \
-  "make -j4"
+  "fz -dir . -out fz_out -j 16" \
+  "make -j16"
 
 cd ..
 
