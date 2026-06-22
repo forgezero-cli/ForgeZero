@@ -36,7 +36,8 @@ ninja_benchmark_*/
 stress_test_*/
 bench_*/
 test_results/
-
+!internal/musl/assets/musl/**/*.o
+!internal/musl/assets/musl/**/*.a
 # Local scripts & temp files
 ningja.sh
 test.sh
