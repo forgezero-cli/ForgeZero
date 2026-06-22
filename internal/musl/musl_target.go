@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 )
 
@@ -56,7 +57,7 @@ func (t *Toolchain) Prepare() (string, error) {
 	}
 	t.tmpDir = tmpDir
 
-	subDir := filepath.Join("assets", "musl", t.TargetArch)
+	subDir := path.Join("assets", "musl", t.TargetArch)
 
 	entries, err := fs.ReadDir(muslAssets, subDir)
 	if err != nil {
@@ -69,7 +70,7 @@ func (t *Toolchain) Prepare() (string, error) {
 			continue
 		}
 
-		data, err := muslAssets.ReadFile(filepath.Join(subDir, entry.Name()))
+		data, err := muslAssets.ReadFile(path.Join(subDir, entry.Name()))
 		if err != nil {
 			t.Close()
 			return "", err
