@@ -1,6 +1,7 @@
 package musl
 
 import (
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,6 +9,18 @@ import (
 )
 
 func TestToolchainPrepareSuccess(t *testing.T) {
+
+	// DEBUG:
+	t.Log("---- DEBUG EMBED FILES ----")
+	fs.WalkDir(muslAssets, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err 
+		}
+		t.Logf("Embed file found: %s (isDir: %t)", path, d.IsDir())
+		return nil 
+	})
+
+	t.Log("------------")
 	tc := NewToolchain("x86_64")
 	defer tc.Close()
 
