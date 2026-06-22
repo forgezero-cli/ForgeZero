@@ -24,6 +24,7 @@ var (
 	ZigRequested  bool
 	ZigEnabled    bool
 	CcFLagsParsed []string
+	ForceInternalAsm bool
 	CcFlagsOnce   sync.Once
 	runCommand    = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
 		return utils.RunCommandSilent(ctx, verbose, name, args...)
@@ -140,6 +141,30 @@ func getCompiler(src string) string {
 	return ccForTarget()
 }
 
+func assembleWithNasm(ctx context.Context, src, obj string, debug, verbose bool) error {
+    nasmPath := "nasm"
+    if path, err := exec.LookPath("nasm"); err == nil {
+        nasmPath = path
+    } else {
+        return errors.New("nasm not found in PATH; install nasm or rename .asm to .S")
+    }
+    
+    args := []string{"-f", "elf64", "-o", obj}
+    if debug {
+        args = append(args, "-g", "-F", "dwarf")
+    }
+    if len(AsmFlags) > 0 {
+        args = append(args, AsmFlags...)
+    }
+    args = append(args, src)
+    
+    if verbose {
+        writeStderr("Running: " + nasmPath + " " + strings.Join(args, " ") + "\n")
+    }
+    _, err := runCommand(ctx, verbose, nasmPath, args...)
+    return err
+}
+
 func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode string) error {
 	if ctxTarget, ok := ctx.Value(utils.TargetCtxKey).(string); ok {
 		Target = ctxTarget
@@ -184,6 +209,11 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 		if isWasmTarget() {
 			return errors.New("cannot assemble .asm files for wasm target")
 		}
+
+		if strings.HasSuffix(src, ".asm") && !ForceInternalAsm {
+			return assembleWithNasm(ctx, src, obj, debug, verbose)
+		}
+
 		return assembleRawASM(ctx, src, obj)
 	case ".s":
 		if isGoAsmFile(src) {
