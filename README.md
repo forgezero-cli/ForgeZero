@@ -34,6 +34,8 @@ ForgeZero is a high-performance, zero-overhead build tool for assembly, C, C++, 
 
 > Inspired by the simplicity of **Suckless** and the efficiency of **TinyCC**
 
+**Author:** [alexvoste](https://github.com/alexvoste)
+
 *Non nobis, Domine, non nobis, sed nomini tuo da Gloriam*
 
 ---
