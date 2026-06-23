@@ -53,6 +53,7 @@ docs/*
 CONTRIBUTING_USER.md
 blake3.manifest
 .fzignore
+.fz.yaml
 assets/
 # Go
 /go.sum.bak
