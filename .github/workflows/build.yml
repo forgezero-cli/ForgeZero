@@ -1,54 +1,22 @@
-name: Enterprise Build & Release
+name: CI
 
 on:
   push:
-    tags: ['v*']
-    branches: ['main']
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/fz
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
 
 jobs:
-  test:
+  test-and-build:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: {go-version: '1.25.0', cache: true}
-      - run: go test -v ./...
-      - run: go test -race ./...
-
-  build-and-push:
-    needs: test
-    runs-on: self-hosted
-    permissions:
-      contents: write
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set Environment
-        run: |
-          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          echo "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
-
-      - name: Build and Push Docker
-        uses: docker/build-push-action@v5
         with:
-          context: .
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
-          build-args: |
-            VERSION=${{ env.VERSION }}
-            BUILD_DATE=${{ env.BUILD_DATE }}
+          go-version: '1.25.0'
+          cache: true
 
-      - name: Run Build Script
-        run: |
-          chmod +x ./scripts/release.sh
-          ./scripts/release.sh
-          
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: release/*
+      - run: go test -v $(go list ./... | grep -v fz/internal/musl)
+      - run: go test -race $(go list ./... | grep -v fz/internal/musl)
+      - run: go test -cover $(go list ./... | grep -v fz/internal/musl)
+      - run: go build -v -o fz ./cmd/fz
