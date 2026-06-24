@@ -1,3 +1,5 @@
+// SPDX-LICENSE-INDITIFIER MIT
+
 package audit
 
 import (
