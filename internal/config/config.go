@@ -98,6 +98,7 @@ type Config struct {
 	OptimizationLevel  int               `yaml:"optimization_level"`
 	Exclude            []string          `yaml:"exclude"`
 	Include            []string          `yaml:"include"`
+	Scripts            []string          `yaml:"scripts"`
 	Libs               []string          `yaml:"libs"`
 	IgnoreFile         string            `yaml:"ignore_file"`
 	AuditIgnore        []string          `yaml:"audit_ignore"`
@@ -327,6 +328,10 @@ func (c *Config) Merge(other *Config) {
 	if other.OptimizationLevel > 0 {
 		c.OptimizationLevel = other.OptimizationLevel
 	}
+
+	if len(other.Scripts) > 0 {
+		c.Scripts = other.Scripts
+	}
 }
 
 func FindConfigs() (system, user, local string) {
@@ -392,4 +397,60 @@ func LoadMerged(explicitPath string) (*Config, error) {
 func DefaultConfigPath() string {
 	_, _, local := FindConfigs()
 	return local
+}
+
+func GenerateFromScan(root string) (*Config, error) {
+	var sourceDirs []string
+	var includeDirs []string
+	found := make(map[string]bool)
+
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			name := d.Name()
+			if name == ".git" || name == ".fz_objs" || name == "build" || name == "vendor" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		switch ext {
+		case ".c", ".cpp", ".cc", ".cxx", ".asm", ".s", ".S", ".fasm":
+			dir := filepath.Dir(path)
+			if !found[dir] {
+				sourceDirs = append(sourceDirs, dir)
+				found[dir] = true
+			}
+		case ".h", ".hpp":
+			dir := filepath.Dir(path)
+			key := "inc:" + dir
+			if !found[key] {
+				includeDirs = append(includeDirs, dir)
+				found[key] = true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(sourceDirs) == 0 {
+		return nil, errors.New("no source files found")
+	}
+
+	cfg := &Config{
+		SourceDirs: sourceDirs,
+		Include:    includeDirs,
+		Output:     "app",
+		Mode:       "auto",
+		Profile:    "balanced",
+		Debug:      false,
+		Verbose:    false,
+		KeepObj:    false,
+		NoCache:    false,
+	}
+	return cfg, nil
 }
