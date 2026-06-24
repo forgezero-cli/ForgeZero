@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-// Author: Alex Voste (github.com/alexvoste) | License: MIT | Binary Integrity: Verified
-
 package main
 
 import (
@@ -80,12 +78,6 @@ func (helperFakeRunner) Run(ctx context.Context, verbose bool, name string, args
 const (
 	versionCore     = "5.1.0"
 	versionCodename = "Forge"
-)
-
-var (
-	Version   = "dev"
-	BuildDate = "unknown"
-	Commit    = "unknown"
 )
 
 var version = "5.1.0"
@@ -705,6 +697,7 @@ func benchMain(args []string) {
 		assembler.ZigRequested = true
 		linker.ZigRequested = true
 	}
+
 	if utils.CheckTool("zig") == nil {
 		assembler.ZigEnabled = true
 		linker.ZigEnabled = true
@@ -892,10 +885,6 @@ func main() {
 		pyzeroFlag         bool
 
 		oldReverseFile string
-
-		isoHybridFlag bool
-
-		autoScanFilesFlag bool
 	)
 
 	type targetKeyType string
@@ -956,45 +945,12 @@ func main() {
 	flag.BoolVar(&testrunner.AlexMode, "alex", false, "run full test scanner projects for contribution")
 	flag.BoolVar(&pyzeroFlag, "pyzero", false, "bump python format file to binaries(e.g: fz -pyzero main.py); Important: this is an experimental feature and may not work as expected! Supported platform: x86_64-linux-gnu only for now")
 	flag.StringVar(&oldReverseFile, "old-reverse", "", "generate .fz.yaml from legacy build files (Makefile, CMakeLists.txt)")
-	flag.BoolVar(&isoHybridFlag, "iso-hybrid", false, "generate ISO image with hybrid ISO/UEFI support (requires -format iso and -out with .iso extension)")
-	flag.BoolVar(&autoScanFilesFlag, "scan", false, "automatically scan this directory in you stay(.) for source files(e.g., fz -scan and find all (.c, .cpp, .asm, .h files))")
 
 	flag.Usage = printHelp
 
 	flag.Parse()
 
-	if autoScanFilesFlag {
-		root, err := os.Getwd()
-		if err != nil {
-			writeFmt(2, "scan failed: %v\n", err)
-			os.Exit(1)
-		}
-
-		cfg, err := config.GenerateFromScan(root)
-		if err != nil {
-			writeFmt(2, "scan failed: %v\n", err)
-			os.Exit(1)
-		}
-
-		data, err := yaml.Marshal(cfg)
-		if err != nil {
-			writeFmt(2, "scan failed: %v\n", err)
-			os.Exit(1)
-		}
-
-		if _, err := os.Stat(".fz.yaml"); err == nil {
-			_ = os.Rename(".fz.yaml", ".fz.yaml.bak")
-		}
-
-		if err := os.WriteFile(".fz.yaml", data, 0o644); err != nil {
-			writeFmt(2, "scan failed: %v\n", err)
-			os.Exit(1)
-		}
-
-		writeFmt(1, "Generated .fz.yaml from scanned sources (backup: .fz.yaml.bak)\n")
-		return
-	}
-
+	// !Important: ONLY EXPEREMENTAL. Sample MVP
 	if oldReverseFile != "" {
 		cfg, err := reverse.ReverseFile(oldReverseFile)
 		if err != nil {
@@ -1389,7 +1345,7 @@ func main() {
 	}
 	if gloriaPath != "" {
 		srcPath = gloriaPath
-
+	}
 	var cfg *config.Config
 	if configPath != "" {
 		cfg, err = config.Load(configPath)
@@ -1900,7 +1856,6 @@ func main() {
 	durationMs := time.Since(startTime).Milliseconds()
 
 	if buildErr == nil && cfg != nil && len(cfg.Scripts) > 0 {
-
 		scriptsConfig := &scripts.ScriptsConfigure{
 			Commands: cfg.Scripts,
 			Verbose:  verbose,
