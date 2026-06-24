@@ -5,14 +5,33 @@ package variables
 
 import "strings"
 
+const escMarker = "\x01"
+
 func ExpandString(s string, vars map[string]string) string {
 	if len(vars) == 0 || s == "" {
 		return s
 	}
+	prev := s
+	for i := 0; i < 10; i++ {
+		cur := expandOne(prev, vars)
+		if cur == prev {
+			return strings.ReplaceAll(cur, escMarker, "$")
+		}
+		prev = cur
+	}
+	return strings.ReplaceAll(prev, escMarker, "$")
+}
+
+func expandOne(s string, vars map[string]string) string {
 	var b strings.Builder
 	b.Grow(len(s) * 2)
 	for i := 0; i < len(s); {
 		if s[i] == '$' && i+1 < len(s) {
+			if s[i+1] == '$' {
+				b.WriteString(escMarker)
+				i += 2
+				continue
+			}
 			if s[i+1] == '{' {
 				j := i + 2
 				for j < len(s) && s[j] != '}' {
