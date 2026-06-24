@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"fz/internal/doctor"
+	"github.com/forgezero-cli/ForgeZero/internal/doctor"
 )
 
 type ContributeReport struct {

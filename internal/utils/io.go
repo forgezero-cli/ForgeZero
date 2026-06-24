@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	fzvfs "fz/internal/fs"
-	"fz/internal/seal"
+	fzvfs "github.com/forgezero-cli/ForgeZero/internal/fs"
+	"github.com/forgezero-cli/ForgeZero/internal/seal"
 )
 
 func resolveOrAbs(path string) (string, error) {

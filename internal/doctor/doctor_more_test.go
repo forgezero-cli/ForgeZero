@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	fzvfs "fz/internal/fs"
-	"fz/internal/utils"
+	fzvfs "github.com/forgezero-cli/ForgeZero/internal/fs"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func TestScanTreeOpenFail(t *testing.T) {

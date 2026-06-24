@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"fz/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
 	"math/rand"
 	"os"
 	"os/exec"

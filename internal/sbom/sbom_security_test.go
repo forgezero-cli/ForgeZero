@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"fz/internal/config"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func TestGenerateWasmTarget(t *testing.T) {

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"fz/internal/builder"
-	"fz/internal/config"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/builder"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func writeDummySource(dir string) (string, error) {

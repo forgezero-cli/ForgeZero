@@ -5,7 +5,7 @@ package config
 
 import (
 	"errors"
-	"fz/internal/variables"
+	"github.com/forgezero-cli/ForgeZero/internal/variables"
 	"os"
 	"path/filepath"
 	"strings"
@@ -384,7 +384,7 @@ func (c *Config) Merge(other *Config) {
 }
 
 func FindConfigs() (system, user, local string) {
-	systemPaths := []string{"/etc/fz/config.yaml", "/etc/fz.yaml"}
+	systemPaths := []string{"/etc/github.com/forgezero-cli/ForgeZero/config.yaml", "/etc/fz.yaml"}
 	for _, p := range systemPaths {
 		if _, err := os.Stat(p); err == nil {
 			system = p

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"fz/internal/config"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func TestGenerateMalformedVendorWalk(t *testing.T) {

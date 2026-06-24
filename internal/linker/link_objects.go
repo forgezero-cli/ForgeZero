@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"fz/internal/config"
-	"fz/internal/utils"
-	"fz/internal/zig"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/zig"
 )
 
 func LinkObjects(ctx context.Context, target string, objs []string, cfg *config.Config) error {

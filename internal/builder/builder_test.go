@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"fz/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
 )
 
 func writeASM(t *testing.T, dir, name, content string) string {

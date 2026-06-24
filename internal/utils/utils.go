@@ -18,8 +18,8 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"fz/internal/config"
-	"fz/internal/seal"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/seal"
 
 	"github.com/zeebo/blake3"
 )

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"fz/internal/verify"
+	"github.com/forgezero-cli/ForgeZero/internal/verify"
 )
 
 type TestOptions struct {

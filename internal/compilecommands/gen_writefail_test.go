@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"fz/internal/config"
-	fzvfs "fz/internal/fs"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	fzvfs "github.com/forgezero-cli/ForgeZero/internal/fs"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func TestGenerateSecureWriteFail(t *testing.T) {

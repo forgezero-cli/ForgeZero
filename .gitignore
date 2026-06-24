@@ -1,5 +1,6 @@
 # Binary files (Output)
 .idea
+internal/iso
 hello
 *.o
 *.out

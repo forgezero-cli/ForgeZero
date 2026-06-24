@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 type ManifestEntry struct {

@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	fzvfs "fz/internal/fs"
-	"fz/internal/utils"
+	fzvfs "github.com/forgezero-cli/ForgeZero/internal/fs"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 type Options struct {

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"fz/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
 )
 
 func TestScanProjectWithVendorRisk(t *testing.T) {

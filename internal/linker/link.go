@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"fz/internal/config"
-	"fz/internal/utils"
-	"fz/internal/zig"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/zig"
 )
 
 var (

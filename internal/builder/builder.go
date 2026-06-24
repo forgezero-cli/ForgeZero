@@ -14,11 +14,11 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"fz/internal/assembler"
-	"fz/internal/config"
-	"fz/internal/linker"
-	"fz/internal/seal"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/assembler"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/linker"
+	"github.com/forgezero-cli/ForgeZero/internal/seal"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 type BuildResult struct {

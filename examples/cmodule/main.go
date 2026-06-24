@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	"fz/internal/cplugin"
+	"github.com/forgezero-cli/ForgeZero/internal/cplugin"
 )
 
 func main() {

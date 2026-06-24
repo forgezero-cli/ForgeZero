@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"fz/internal/config"
-	"fz/internal/sbom"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/sbom"
 )
 
 func TestIsWasmTarget(t *testing.T) {

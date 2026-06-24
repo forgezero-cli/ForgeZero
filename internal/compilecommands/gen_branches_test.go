@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"fz/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
 )
 
 func chdirTemp(t *testing.T, dir string) func() {

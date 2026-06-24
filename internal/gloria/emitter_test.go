@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"testing"
 
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func TestGloriaRegisterCarnage(t *testing.T) {

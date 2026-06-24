@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	fzvfs "fz/internal/fs"
+	fzvfs "github.com/forgezero-cli/ForgeZero/internal/fs"
 )
 
 func TestRemovePath(t *testing.T) {

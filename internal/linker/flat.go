@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"unsafe"
 
-	"fz/internal/assembler"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/assembler"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func linkFlatBinary(ctx context.Context, obj, bin string) error {

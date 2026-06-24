@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 type SymbolInfo struct {

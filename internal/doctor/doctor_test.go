@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"testing"
 
-	fzvfs "fz/internal/fs"
-	"fz/internal/utils"
+	fzvfs "github.com/forgezero-cli/ForgeZero/internal/fs"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func TestRunHealthy(t *testing.T) {

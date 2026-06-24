@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"fz/internal/assembler"
-	"fz/internal/linker"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/assembler"
+	"github.com/forgezero-cli/ForgeZero/internal/linker"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 type fakeCmdRunner struct{}

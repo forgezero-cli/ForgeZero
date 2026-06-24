@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"fz/internal/assembler"
-	"fz/internal/builder"
-	"fz/internal/config"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/assembler"
+	"github.com/forgezero-cli/ForgeZero/internal/builder"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 type CompileCommand struct {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	fzvfs "fz/internal/fs"
+	fzvfs "github.com/forgezero-cli/ForgeZero/internal/fs"
 )
 
 func withMock(t *testing.T, m *fzvfs.Mock) {

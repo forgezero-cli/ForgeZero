@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"fz/internal/config"
-	"fz/internal/seal"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/seal"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 type SBOM struct {

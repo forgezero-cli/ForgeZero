@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"fz/internal/assembler"
-	"fz/internal/builder"
-	"fz/internal/linker"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/assembler"
+	"github.com/forgezero-cli/ForgeZero/internal/builder"
+	"github.com/forgezero-cli/ForgeZero/internal/linker"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func cmdBuild(state *BuildState) error {

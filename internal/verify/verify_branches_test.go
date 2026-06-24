@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func TestLoadManifestInvalidJSON(t *testing.T) {

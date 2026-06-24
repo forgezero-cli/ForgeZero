@@ -4,7 +4,7 @@ import (
 	"errors"
 	"os"
 
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 var readmeTemplate = []byte(`# Your Project

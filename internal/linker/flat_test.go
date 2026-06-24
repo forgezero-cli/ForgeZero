@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"fz/internal/assembler"
+	"github.com/forgezero-cli/ForgeZero/internal/assembler"
 )
 
 func TestLinkFlatBinaryCopy(t *testing.T) {

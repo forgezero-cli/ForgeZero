@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 
 	"gopkg.in/yaml.v3"
 )
@@ -242,7 +242,7 @@ func fetchCatalogFromURL(url string) (*Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "fz/2.0.0")
+	req.Header.Set("User-Agent", "github.com/forgezero-cli/ForgeZero/2.0.0")
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err

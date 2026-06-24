@@ -5,7 +5,7 @@ package scripts
 
 import (
 	"context"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 	"os"
 )
 

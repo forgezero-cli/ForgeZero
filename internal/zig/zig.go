@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 var (

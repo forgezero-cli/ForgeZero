@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"fz/internal/utils"
-	"fz/internal/zig"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/zig"
 )
 
 func TestCreateResponseFileOK(t *testing.T) {

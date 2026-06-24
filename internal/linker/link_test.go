@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 type MockRunner struct {

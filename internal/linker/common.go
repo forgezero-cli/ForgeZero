@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"fz/internal/assembler"
+	"github.com/forgezero-cli/ForgeZero/internal/assembler"
 )
 
 var validFormats = []string{"elf32", "elf64", "bin"}

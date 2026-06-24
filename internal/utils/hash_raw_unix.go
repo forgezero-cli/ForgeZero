@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	fzvfs "fz/internal/fs"
+	fzvfs "github.com/forgezero-cli/ForgeZero/internal/fs"
 
 	"github.com/zeebo/blake3"
 )

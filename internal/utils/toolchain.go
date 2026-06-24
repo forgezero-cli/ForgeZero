@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"fz/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
 )
 
 var strictToolchain string

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func TestCompilerForSource(t *testing.T) {

@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"fz/internal/config"
-	"fz/internal/seal"
-	"fz/internal/utils"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/seal"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func GenerateAndStoreSBOM(root, vendorDir, buildVersion string, cfg *config.Config, target, outPath string) error {

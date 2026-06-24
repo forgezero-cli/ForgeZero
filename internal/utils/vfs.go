@@ -5,7 +5,7 @@ package utils
 import (
 	"sync"
 
-	fzvfs "fz/internal/fs"
+	fzvfs "github.com/forgezero-cli/ForgeZero/internal/fs"
 )
 
 var (
