@@ -2,7 +2,8 @@
 set -euo pipefail
 
 TEST_DIR="benchmark_test"
-NUM_MODULES=1000
+NUM_MODULES=2500 
+
 
 echo "🛠️  ForgeZero vs NASM/Make Benchmark Script"
 echo "=========================================="
