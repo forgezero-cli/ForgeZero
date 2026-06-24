@@ -1,7 +1,11 @@
+// SPDX-LICENSE-INDITIFIER MIT
+// AUTHOR: @alexvoste
+
 package config
 
 import (
 	"errors"
+	"fz/internal/variables"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,6 +107,7 @@ type Config struct {
 	IgnoreFile         string            `yaml:"ignore_file"`
 	AuditIgnore        []string          `yaml:"audit_ignore"`
 	ToolChecksums      map[string]string `yaml:"tool_checksums"`
+	Variables          map[string]string `yaml:"variables"`
 	Flags              Flags             `yaml:"flags"`
 	Isolation          IsolationMode     `yaml:"isolation"`
 	DeterministicStrip bool              `yaml:"deterministic_strip"`
@@ -112,6 +117,43 @@ type Config struct {
 		ToolPaths      map[string]string `yaml:"tool_paths"`
 	} `yaml:"toolchain_opts"`
 	Hooks Hooks `yaml:"hooks"`
+}
+
+func (c *Config) expand() {
+	if len(c.Variables) == 0 {
+		return
+	}
+	vars := c.Variables
+	c.Name = variables.ExpandString(c.Name, vars)
+	c.Profile = variables.ExpandString(c.Profile, vars)
+	c.Target = variables.ExpandString(c.Target, vars)
+	c.Sysroot = variables.ExpandString(c.Sysroot, vars)
+	c.SourceDir = variables.ExpandString(c.SourceDir, vars)
+	variables.ExpandSlice(c.SourceDirs, vars)
+	variables.ExpandSlice(c.SourceFiles, vars)
+	c.SourceFile = variables.ExpandString(c.SourceFile, vars)
+	c.Output = variables.ExpandString(c.Output, vars)
+	c.OutObj = variables.ExpandString(c.OutObj, vars)
+	c.Mode = variables.ExpandString(c.Mode, vars)
+	c.Toolchain = variables.ExpandString(c.Toolchain, vars)
+	c.IgnoreFile = variables.ExpandString(c.IgnoreFile, vars)
+	variables.ExpandSlice(c.Exclude, vars)
+	variables.ExpandSlice(c.Include, vars)
+	variables.ExpandSlice(c.Scripts, vars)
+	variables.ExpandSlice(c.Libs, vars)
+	variables.ExpandSlice(c.AuditIgnore, vars)
+	variables.ExpandSlice(c.Flags.Asm, vars)
+	variables.ExpandSlice(c.Flags.Cc, vars)
+	variables.ExpandSlice(c.Flags.Ld, vars)
+	variables.ExpandMap(c.ToolChecksums, vars)
+	variables.ExpandMap(c.ToolchainSettings.ToolPaths, vars)
+	variables.ExpandSlice(c.ToolchainSettings.SearchPriority, vars)
+	variables.ExpandSlice(c.ToolchainSettings.EnvAllow, vars)
+	for i := range c.Hooks.PreBuild {
+		c.Hooks.PreBuild[i].Cmd = variables.ExpandString(c.Hooks.PreBuild[i].Cmd, vars)
+	}
+	c.Hooks.OnFailure = variables.ExpandString(c.Hooks.OnFailure, vars)
+	c.Isolation = IsolationMode(variables.ExpandString(string(c.Isolation), vars))
 }
 
 func Load(path string) (*Config, error) {
@@ -328,9 +370,16 @@ func (c *Config) Merge(other *Config) {
 	if other.OptimizationLevel > 0 {
 		c.OptimizationLevel = other.OptimizationLevel
 	}
-
 	if len(other.Scripts) > 0 {
 		c.Scripts = other.Scripts
+	}
+	if len(other.Variables) > 0 {
+		if c.Variables == nil {
+			c.Variables = make(map[string]string)
+		}
+		for k, v := range other.Variables {
+			c.Variables[k] = v
+		}
 	}
 }
 
@@ -373,6 +422,7 @@ func LoadMerged(explicitPath string) (*Config, error) {
 			return nil, err
 		}
 		cfg.Merge(explicitCfg)
+		cfg.expand()
 		return &cfg, nil
 	}
 	systemPath, userPath, localPath := FindConfigs()
@@ -391,6 +441,7 @@ func LoadMerged(explicitPath string) (*Config, error) {
 			cfg.Merge(localCfg)
 		}
 	}
+	cfg.expand()
 	return &cfg, nil
 }
 
