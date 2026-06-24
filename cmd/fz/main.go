@@ -97,7 +97,7 @@ func versionText() string {
 	b.WriteString(versionCore)
 	b.WriteString(" [")
 	b.WriteString(versionCodename)
-	b.WriteString("] Latest.\nBuild: ")
+	b.WriteString("] Corp.\nBuild: ")
 	b.WriteString(time.Now().Format("2006-01-02"))
 	b.WriteString(" | OS: ")
 	b.WriteString(runtime.GOOS)
