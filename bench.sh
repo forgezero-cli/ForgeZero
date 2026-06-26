@@ -84,8 +84,8 @@ cd "$TEST_DIR"
 
 hyperfine --warmup 3 \
   --prepare "make clean && rm -rf .fz_objs fz_out" \
-  "fz -dir . -out fz_out -j 16" \
-  "make -j16"
+  "fz -profile=perfomance -dir . -out fz_out -j $(nproc)" \
+  "make -j $(nproc)" \
 
 cd ..
 
