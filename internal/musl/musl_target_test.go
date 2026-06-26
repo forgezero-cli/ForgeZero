@@ -10,10 +10,8 @@ import (
 	"testing"
 )
 
-func TestToolchainPrepareSuccess(t *testing.T) {
+	func TestToolchainPrepareSuccess(t *testing.T) {
 
-	// DEBUG:
-	t.Log("---- DEBUG EMBED FILES ----")
 	fs.WalkDir(muslAssets, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err 
@@ -22,7 +20,6 @@ func TestToolchainPrepareSuccess(t *testing.T) {
 		return nil 
 	})
 
-	t.Log("------------")
 	tc := NewToolchain("x86_64")
 	defer tc.Close()
 
