@@ -17,6 +17,7 @@ jobs:
           cache: true
 
       - name: Run Go tests
+        run: 	go get github.com/forgezero-cli/ForgeZero/cmd/fz/helpers
         run: go test -v $(go list ./... | grep -v fz/internal/musl)
       - name: Run Go race detector
         run: go test -race $(go list ./... | grep -v fz/internal/musl)
