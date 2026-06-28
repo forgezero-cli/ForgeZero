@@ -16,7 +16,38 @@ jobs:
           go-version: '1.25.0'
           cache: true
 
-      - run: go test -v $(go list ./... | grep -v fz/internal/musl)
-      - run: go test -race $(go list ./... | grep -v fz/internal/musl)
-      - run: go test -cover $(go list ./... | grep -v fz/internal/musl)
-      - run: go build -v -o fz ./cmd/fz
+      - name: Run Go tests
+        run: go test -v $(go list ./... | grep -v fz/internal/musl)
+      - name: Run Go race detector
+        run: go test -race $(go list ./... | grep -v fz/internal/musl)
+      - name: Run Go coverage
+        run: go test -cover $(go list ./... | grep -v fz/internal/musl)
+
+      - name: Cross-compile all platforms
+        run: |
+          set -e
+          mkdir -p release
+
+          echo "Building Linux amd64 (with CGO for local plugins)..."
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-linux-amd64 ./cmd/fz
+
+          echo "Building Linux arm64 (pure Go, no CGO)..."
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-linux-arm64 ./cmd/fz
+
+          echo "Building Windows amd64 (pure Go, no CGO!)..."
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-windows-amd64.exe ./cmd/fz
+
+          echo "Building macOS Intel amd64 (pure Go, no CGO)..."
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-darwin-amd64 ./cmd/fz
+
+          echo "Building macOS Apple Silicon arm64 (pure Go, no CGO)..."
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-darwin-arm64 ./cmd/fz
+
+          echo "ALL BUILDS ARE READY, BOSS!"
+          ls -la release/
+
+      - name: Upload compiled binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: fz-binaries
+          path: release/
