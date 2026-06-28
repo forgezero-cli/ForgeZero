@@ -1,3 +1,5 @@
+# After delete
+.github/workflows/
 # Binary files (Output)
 .idea
 hello
@@ -20,7 +22,8 @@ x86_64-linux-musl-cross/
 fzt
 fzt.exe
 fzt.old
-
+internal/drivers/
+internal/iso
 
 # Script for build release binaries 
 release.sh
