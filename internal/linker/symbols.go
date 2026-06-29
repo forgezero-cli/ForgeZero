@@ -25,10 +25,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"strconv"
 	"strings"
-	"sync"
 
+	"github.com/forgezero-cli/ForgeZero/internal/drivers/concurrency"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
@@ -47,9 +48,9 @@ var (
 
 func getSymbolsTool() string {
 	detectedToolOnce.Do(func() {
-		if _, err := exec.LookPath("nm"); err != nil {
+		if _, err := exec.LookPath("nm"); err == nil {
 			detectedTool = "nm"
-		} else if _, err := exec.LookPath("objdump"); err != nil {
+		} else if _, err := exec.LookPath("objdump"); err == nil {
 			detectedTool = "objdump"
 		} else {
 			detectedTool = "readelf"
@@ -72,21 +73,19 @@ func CheckDuplicateSymbols(ctx context.Context, objFiles []string, verbose bool)
 		err  error
 	}
 
-	sem := make(chan struct{}, 16)
+	sem := concurrency.NewSemaphore(16)
 	resultsChan := make(chan result, len(objFiles))
-	var wg sync.WaitGroup
+	var wg concurrency.WaitGroup
 
 	for _, obj := range objFiles {
 		wg.Add(1)
 		go func(objFile string) {
 			defer wg.Done()
-			select {
-			case sem <- struct{}{}:
-				defer func() { <-sem }()
-			case <-ctx.Done():
-				resultsChan <- result{obj: objFile, err: ctx.Err()}
+			if err := sem.AcquireContext(ctx, 1); err != nil {
+				resultsChan <- result{obj: objFile, err: err}
 				return
 			}
+			defer sem.Release(1)
 
 			if err := utils.CheckFileExists(objFile); err != nil {
 				resultsChan <- result{obj: objFile, err: err}
