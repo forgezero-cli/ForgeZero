@@ -18,7 +18,7 @@
 package utils
 
 import (
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +27,7 @@ import (
 func symlinkAllowed(rootEval, path, target string) (bool, error) {
 	linkTarget, err := fileSystem().Readlink(path)
 	if err != nil {
-		return false, fmt.Errorf("cannot read symlink %s: %w", path, err)
+		return false, errors.New("cannot read symlink " + path + ": " + err.Error())
 	}
 	var targetAbs string
 	if !filepath.IsAbs(linkTarget) {
@@ -37,12 +37,12 @@ func symlinkAllowed(rootEval, path, target string) (bool, error) {
 	}
 	targetEval, err := fileSystem().EvalSymlinks(targetAbs)
 	if err != nil {
-		return false, fmt.Errorf("cannot resolve symlink %s target %s: %w", path, targetAbs, err)
+		return false, errors.New("cannot resolve symlink " + path + " target " + targetAbs + ": " + err.Error())
 	}
 	rootClean := filepath.Clean(rootEval)
 	if targetEval == rootClean || strings.HasPrefix(targetEval, rootClean+string(os.PathSeparator)) {
 		return true, nil
 	}
-	fmt.Fprintf(os.Stderr, "SECURITY WARNING: skipping symlink %s -> %s outside project root %s\n", path, targetAbs, rootClean)
+	os.Stderr.WriteString("SECURITY WARNING: skipping symlink " + path + " -> " + targetAbs + " outside project root " + rootClean + "\n")
 	return false, nil
 }
