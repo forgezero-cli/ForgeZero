@@ -124,13 +124,14 @@ func BuildMerkleRoot(root string) ([32]byte, error) {
 }
 
 func hashDataPair(left, right [32]byte) [32]byte {
-	var out [32]byte
-	h, err := HashDataDigest(append(left[:], right[:]...))
+	var buf [64]byte
+	copy(buf[:32], left[:])
+	copy(buf[32:], right[:])
+	h, err := HashDataDigest(buf[:])
 	if err != nil {
-		return out
+		return [32]byte{}
 	}
-	out = h
-	return out
+	return h
 }
 
 func collectRootFiles(root string) ([]string, error) {
@@ -256,19 +257,6 @@ func blake3HexDigestToString(d [32]byte) string {
 	return string(out[:])
 }
 
-func fnv1aHash(data []byte) uint64 {
-	const (
-		offset uint64 = 1469598103934665603
-		prime  uint64 = 1099511628211
-	)
-	h := offset
-	for _, b := range data {
-		h ^= uint64(b)
-		h *= prime
-	}
-	return h
-}
-
 func fnv1aHexUint64(h uint64) string {
 	var out [16]byte
 	const hextable = "0123456789abcdef"
@@ -278,10 +266,6 @@ func fnv1aHexUint64(h uint64) string {
 		out[i*2+1] = hextable[b&0x0f]
 	}
 	return string(out[:])
-}
-
-func fnv1aHex(data []byte) string {
-	return fnv1aHexUint64(fnv1aHash(data))
 }
 
 func fnv1aHashString(s string) uint64 {
@@ -367,15 +351,6 @@ func ShadowCacheKey(src string, flags []string) (string, error) {
 		h = fnv1aHashAppendByte(h, 0)
 	}
 	return fnv1aHexUint64(h), nil
-}
-
-func fnv1aHashAppend(h uint64, data []byte) uint64 {
-	const prime uint64 = 1099511628211
-	for _, b := range data {
-		h ^= uint64(b)
-		h *= prime
-	}
-	return h
 }
 
 func checkToolInternal(name string) error {
@@ -1258,7 +1233,6 @@ func ScanDependencies(path string) ([]string, error) {
 				continue
 			}
 			stack = append(stack, inc)
-			incBuffer = includes
 		}
 	}
 	return deps, nil
