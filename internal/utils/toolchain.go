@@ -20,7 +20,7 @@ package utils
 import (
 	"context"
 	"flag"
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -160,7 +160,7 @@ func localToolCandidates(name string) []string {
 
 func findTool(ctx context.Context, cfg *config.Config, name string) (string, error) {
 	if name == "" {
-		return "", fmt.Errorf("tool name required")
+		return "", errors.New("tool name required")
 	}
 	enforceStrictToolchain(name)
 	if filepath.IsAbs(name) {
@@ -191,12 +191,12 @@ func findTool(ctx context.Context, cfg *config.Config, name string) (string, err
 	if pth, err := lookExecutable(name); err == nil {
 		return filepath.Abs(pth)
 	}
-	return "", fmt.Errorf("toolchain executable not found: %s", name)
+	return "", errors.New("toolchain executable not found: " + name)
 }
 
 func ResolveToolPath(ctx context.Context, cfg *config.Config, tool, target string) (string, error) {
 	if tool == "" {
-		return "", fmt.Errorf("tool name required")
+		return "", errors.New("tool name required")
 	}
 	if cfg != nil && cfg.Toolchain == "zig" {
 		tool = "zig"
@@ -206,5 +206,5 @@ func ResolveToolPath(ctx context.Context, cfg *config.Config, tool, target strin
 			return pth, nil
 		}
 	}
-	return "", fmt.Errorf("toolchain executable not found: %s", tool)
+	return "", errors.New("toolchain executable not found: " + tool)
 }
