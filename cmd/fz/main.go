@@ -19,11 +19,14 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"time"
 
-	"github.com/forgezero-cli/ForgeZero/cmd/fz/helpers"
+	"github.com/forgezero-cli/ForgeZero/cmd/fz/app"
+	"github.com/forgezero-cli/ForgeZero/cmd/fz/buildcmd"
+	"github.com/forgezero-cli/ForgeZero/cmd/fz/cli"
+	"github.com/forgezero-cli/ForgeZero/cmd/fz/stdio"
+	"github.com/forgezero-cli/ForgeZero/cmd/fz/subcmd"
 	"github.com/forgezero-cli/ForgeZero/internal/assembler"
 	initpkg "github.com/forgezero-cli/ForgeZero/internal/init"
 	"github.com/forgezero-cli/ForgeZero/internal/linker"
@@ -36,64 +39,64 @@ import (
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
-			if _, ok := r.(helpers.ExitPanic); ok {
+			if _, ok := r.(cli.ExitPanic); ok {
 				return
 			}
 			panic(r)
 		}
 	}()
 
-	if helpers.IsTestMode() {
-		helpers.SetupTestMode()
+	if cli.IsTestMode() {
+		app.SetupTestMode()
 	}
 
-	if helpers.HandleSeal() {
+	if app.HandleSeal() {
 		return
 	}
 
 	if err := utils.SelfAttest(); err != nil {
-		helpers.WriteFmt(2, "self-attestation failed: %v\n", err)
+		stdio.WriteFmt(2, "self-attestation failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	if helpers.HandleSubcommands() {
+	if app.HandleSubcommands() {
 		return
 	}
 
-	flags := helpers.SetupFlags()
+	flags := cli.SetupFlags()
 
-	if helpers.HandleReverse(flags) {
+	if app.HandleReverse(flags) {
 		return
 	}
 
-	helpers.SetupProfile(flags)
+	cli.SetupProfile(flags)
 
 	if flags.AlexMode {
 		if err := testrunner.RunSuite(flags.Verbose, flags.JSONOutput, flags.AlexMode); err != nil {
-			helpers.WriteFmt(2, "test suite failed: %v\n", err)
+			stdio.WriteFmt(2, "test suite failed: %v\n", err)
 			os.Exit(1)
 		}
 		os.Exit(0)
 	}
 
-	muslCtx := helpers.SetupMusl(flags.MuslOpt)
+	muslCtx := buildcmd.SetupMusl(flags.MuslOpt)
 
-	if !helpers.ValidateAll(flags) {
-		helpers.Exit(2)
+	if !cli.ValidateAll(flags) {
+		cli.Exit(2)
 	}
 
 	if flags.InitMode {
 		if err := initpkg.Run(); err != nil {
-			helpers.WriteFmt(2, "init failed: %v\n", err)
+			stdio.WriteFmt(2, "init failed: %v\n", err)
 			os.Exit(1)
 		}
-		helpers.WriteFmt(1, "%s\n", "project initialized. edit .fz.yaml to configure ur build.")
+		stdio.WriteFmt(1, "%s\n", "project initialized. edit .fz.yaml to configure ur build.")
 		return
 	}
 
 	if flags.ContributeMode {
-		if err := helpers.HandleContribute(flags); err != nil {
-			helpers.WriteFmt(2, "contribute failed: %v\n", err)
+		if err := app.HandleContribute(flags); err != nil {
+			stdio.WriteFmt(2, "contribute failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
@@ -105,19 +108,20 @@ func main() {
 	}
 
 	if len(os.Args) >= 2 && os.Args[1] == "pm" {
-		helpers.HandlePackageManager(ctx, os.Args)
+		subcmd.HandlePackageManager(ctx, os.Args)
 		return
 	}
 
 	if flags.AutoBuild {
 		if err := linker.AutoBuildProject(ctx); err != nil {
-			helpers.WriteStderr("auto build failed!\n")
+			stdio.WriteStderr("auto build failed!\n")
+			os.Exit(1)
 		}
 	}
 
-	helpers.SetupAssemblerAndLinker(flags)
+	app.SetupAssemblerAndLinker(flags)
 
-	if helpers.HandleUpdate(flags) {
+	if app.HandleUpdate(flags) {
 		return
 	}
 
@@ -126,15 +130,15 @@ func main() {
 		return
 	}
 
-	if helpers.HandleMan(flags) {
+	if app.HandleMan(flags) {
 		return
 	}
 
-	if helpers.HandleHelp(flags) {
+	if app.HandleHelp(flags) {
 		return
 	}
 
-	if helpers.HandleVersion(flags) {
+	if app.HandleVersion(flags) {
 		return
 	}
 
@@ -144,53 +148,51 @@ func main() {
 	}
 
 	if flags.Watch && flags.JSONOutput {
-		helpers.WriteFmt(2, "%s\n", "error: -watch and -json cannot be used together")
-		helpers.Exit(2)
+		stdio.WriteFmt(2, "%s\n", "error: -watch and -json cannot be used together")
+		cli.Exit(2)
 	}
 
-	cfg, srcPath, err := helpers.LoadConfig(flags)
+	cfg, srcPath, err := cli.LoadConfig(flags)
 	if err != nil {
-		helpers.HandleConfigError(err, flags.JSONOutput)
-		helpers.Exit(2)
+		app.HandleConfigError(err, flags.JSONOutput)
+		cli.Exit(2)
 	}
 
 	if flags.GloriaPath != "" {
-		if err := helpers.ProcessGloria(flags.GloriaPath, flags.OutBin); err != nil {
-			helpers.WriteFmt(2, "%v\n", err)
-			helpers.Exit(2)
+		if err := buildcmd.ProcessGloria(flags.GloriaPath, flags.OutBin); err != nil {
+			stdio.WriteFmt(2, "%v\n", err)
+			cli.Exit(2)
 		}
 		os.Exit(0)
 	}
 
-	helpers.ApplyConfigToFlags(cfg, flags)
-	helpers.SetupZig(cfg, flags.Toolchain)
+	cli.ApplyConfigToFlags(cfg, flags)
+	buildcmd.SetupZig(cfg, flags.Toolchain)
 
 	if flags.GenCompileCommands {
-		if err := helpers.GenerateCompileCommands(cfg); err != nil {
-			helpers.WriteFmt(2, "error generating compile_commands.json: %v\n", err)
+		if err := app.GenerateCompileCommands(cfg); err != nil {
+			stdio.WriteFmt(2, "error generating compile_commands.json: %v\n", err)
 			os.Exit(1)
 		}
-		helpers.WriteFmt(1, "%s\n", "compile_commands.json generated")
+		stdio.WriteFmt(1, "%s\n", "compile_commands.json generated")
 		return
 	}
 
 	if flags.Clean {
-		if err := helpers.HandleClean(flags, cfg); err != nil {
+		if err := app.HandleClean(flags, cfg); err != nil {
 			if flags.JSONOutput {
-				report := helpers.BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
-				_ = json.NewEncoder(os.Stdout).Encode(report)
+				stdio.WriteErrorReport(1, err)
 			}
 			os.Exit(1)
 		}
 		if flags.JSONOutput {
-			report := helpers.BuildReport{Status: "success", ExitCode: 0, DurationMs: 0, Binary: "cleaned"}
-			_ = json.NewEncoder(os.Stdout).Encode(report)
+			_ = stdio.EncodeBuildReport(stdio.BuildReport{Status: "success", ExitCode: 0, DurationMs: 0, Binary: "cleaned"})
 		}
 		return
 	}
 
 	if flags.PluginPath != "" {
-		if err := helpers.HandlePlugin(flags, cfg, srcPath); err != nil {
+		if err := app.HandlePlugin(flags, cfg, srcPath); err != nil {
 			os.Exit(1)
 		}
 	}
@@ -204,7 +206,7 @@ func main() {
 		ctx = utils.ContextWithConfig(ctx, cfg)
 	}
 
-	buildCtx := helpers.BuildContext{
+	buildCtx := buildcmd.BuildContext{
 		SrcPath:       srcPath,
 		DirPath:       flags.DirPath,
 		OutBin:        flags.OutBin,
@@ -224,7 +226,7 @@ func main() {
 		MuslCtx:       muslCtx,
 	}
 
-	result := helpers.Build(ctx, buildCtx, cfg)
+	result := buildcmd.Build(ctx, buildCtx, cfg)
 
 	if result.Err == nil && cfg != nil && len(cfg.Scripts) > 0 {
 		scriptsConfig := &scripts.ScriptsConfigure{
@@ -232,44 +234,27 @@ func main() {
 			Verbose:  flags.Verbose,
 		}
 		if err := scriptsConfig.Run(ctx); err != nil {
-			helpers.WriteFmt(2, "script failed: %v\n", err)
+			stdio.WriteFmt(2, "script failed: %v\n", err)
 			os.Exit(1)
 		}
 	}
 
 	if result.Err != nil {
 		if flags.JSONOutput {
-			report := helpers.BuildReport{
-				Status:      "error",
-				ExitCode:    1,
-				DurationMs:  result.DurationMs,
-				Binary:      result.Binary,
-				SourceFiles: result.SourceFiles,
-				ObjectFiles: result.ObjectFiles,
-				Error:       result.Err.Error(),
-			}
-			_ = json.NewEncoder(os.Stdout).Encode(report)
+			stdio.WriteErrorReport(1, result.Err)
 		} else {
-			helpers.WriteFmt(2, "build failed: %v\n", result.Err)
+			stdio.WriteFmt(2, "build failed: %v\n", result.Err)
 		}
 		if !flags.Watch {
 			os.Exit(1)
 		}
 	} else if flags.JSONOutput {
-		report := helpers.BuildReport{
-			Status:      "success",
-			ExitCode:    0,
-			DurationMs:  result.DurationMs,
-			Binary:      result.Binary,
-			SourceFiles: result.SourceFiles,
-			ObjectFiles: result.ObjectFiles,
-		}
-		_ = json.NewEncoder(os.Stdout).Encode(report)
-	} else if !flags.JSONOutput && result.Binary != "" {
-		helpers.WriteFmt(1, "Built: %s\n", result.Binary)
+		_ = stdio.WriteSuccessReport(result.DurationMs, result.Binary, result.SourceFiles, result.ObjectFiles)
+	} else if result.Binary != "" {
+		stdio.WriteFmt(1, "Built: %s\n", result.Binary)
 	}
 
 	if flags.Watch {
-		helpers.HandleWatch(flags, cfg, srcPath, buildCtx, timeoutSec)
+		app.HandleWatch(flags, cfg, srcPath, buildCtx, timeoutSec)
 	}
 }
