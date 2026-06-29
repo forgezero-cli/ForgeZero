@@ -74,6 +74,8 @@ func cmdBuild(state *BuildState) error {
 			return err
 		}
 	}
+	linker.LdScript = state.LdScript
+	linker.TextAddr = state.TextAddr
 	if assembler.IsBinFormat() && strings.HasSuffix(strings.ToLower(objName), ".o") {
 		objName = binName
 	}
