@@ -138,7 +138,8 @@ func TestFullCliFlowInitBuildSeal(t *testing.T) {
 	}
 
 	versionOutput := runFzArgs(t, []string{"fz", "version"})
-	if !strings.Contains(versionOutput, "Corp") {
+
+	if !strings.Contains(versionOutput, "ForgeZero v") {
 		t.Fatalf("unexpected version banner: %s", versionOutput)
 	}
 
