@@ -34,17 +34,17 @@ import (
 )
 
 var (
-	OutputFormat  = "elf64"
-	Target        = "x86_64-linux-gnu"
-	AsmFlags      []string
-	ForceFASM     bool
-	CcFlags       string
-	ZigRequested  bool
-	ZigEnabled    bool
-	CcFLagsParsed []string
+	OutputFormat     = "elf64"
+	Target           = "x86_64-linux-gnu"
+	AsmFlags         []string
+	ForceFASM        bool
+	CcFlags          string
+	ZigRequested     bool
+	ZigEnabled       bool
+	CcFLagsParsed    []string
 	ForceInternalAsm bool
-	CcFlagsOnce   sync.Once
-	runCommand    = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+	CcFlagsOnce      sync.Once
+	runCommand       = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
 		return utils.RunCommandSilent(ctx, verbose, name, args...)
 	}
 )
@@ -160,27 +160,27 @@ func getCompiler(src string) string {
 }
 
 func assembleWithNasm(ctx context.Context, src, obj string, debug, verbose bool) error {
-    nasmPath := "nasm"
-    if path, err := exec.LookPath("nasm"); err == nil {
-        nasmPath = path
-    } else {
-        return errors.New("nasm not found in PATH; install nasm or rename .asm to .S")
-    }
-    
-    args := []string{"-f", "elf64", "-o", obj}
-    if debug {
-        args = append(args, "-g", "-F", "dwarf")
-    }
-    if len(AsmFlags) > 0 {
-        args = append(args, AsmFlags...)
-    }
-    args = append(args, src)
-    
-    if verbose {
-        writeStderr("Running: " + nasmPath + " " + strings.Join(args, " ") + "\n")
-    }
-    _, err := runCommand(ctx, verbose, nasmPath, args...)
-    return err
+	nasmPath := "nasm"
+	if path, err := exec.LookPath("nasm"); err == nil {
+		nasmPath = path
+	} else {
+		return errors.New("nasm not found in PATH; install nasm or rename .asm to .S")
+	}
+
+	args := []string{"-f", "elf64", "-o", obj}
+	if debug {
+		args = append(args, "-g", "-F", "dwarf")
+	}
+	if len(AsmFlags) > 0 {
+		args = append(args, AsmFlags...)
+	}
+	args = append(args, src)
+
+	if verbose {
+		writeStderr("Running: " + nasmPath + " " + strings.Join(args, " ") + "\n")
+	}
+	_, err := runCommand(ctx, verbose, nasmPath, args...)
+	return err
 }
 
 func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode string) error {
