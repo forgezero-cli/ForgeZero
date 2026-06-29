@@ -15,8 +15,6 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// SPDX-License-Identifier: MIT
-
 package builder
 
 import (
@@ -27,12 +25,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	"github.com/forgezero-cli/ForgeZero/internal/assembler"
 	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/drivers/scheduler"
 	"github.com/forgezero-cli/ForgeZero/internal/linker"
 	"github.com/forgezero-cli/ForgeZero/internal/seal"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
@@ -72,10 +69,6 @@ func (p *pathBuffer) String() string {
 type pair struct {
 	src string
 	obj string
-}
-
-type resultError struct {
-	err error
 }
 
 func matchExclude(path string, excludes []string) bool {
@@ -301,35 +294,16 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 	if jobs <= 0 {
 		jobs = 1
 	}
-	var nextIndex uint32
-	var stopFlag uint32
-	var firstErr atomic.Pointer[resultError]
-	var wg sync.WaitGroup
 
-	recordError := func(err error) {
-		entry := &resultError{err: err}
-		if firstErr.CompareAndSwap(nil, entry) {
-			atomic.StoreUint32(&stopFlag, 1)
-		}
-	}
-
-	worker := func() {
-		defer wg.Done()
-		for {
-			if atomic.LoadUint32(&stopFlag) == 1 {
-				return
-			}
-			idx := int(atomic.AddUint32(&nextIndex, 1) - 1)
-			if idx >= len(pairs) {
-				return
-			}
-			p := pairs[idx]
+	sched := scheduler.NewScheduler(jobs, len(pairs)*2)
+	for i := range pairs {
+		p := pairs[i]
+		sched.SubmitBlocking(func(taskCtx context.Context) error {
 			needAssemble := true
 			if !noCache {
 				restored, err := restoreShadowCache(p.src, p.obj, debug, mode)
 				if err != nil {
-					recordError(errors.New("shadow cache " + p.src + ": " + err.Error()))
-					return
+					return errors.New("shadow cache " + p.src + ": " + err.Error())
 				}
 				if restored {
 					needAssemble = false
@@ -363,18 +337,15 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 				n := copy(mbuf[:], "assemble:")
 				n += copy(mbuf[n:], p.src)
 				seal.UpdateGlobalState(mbuf[:n])
-				if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
-					recordError(errors.New("assemble " + p.src + ": " + err.Error()))
-					return
+				if err := assembler.Assemble(taskCtx, p.src, p.obj, debug, verbose, mode); err != nil {
+					return errors.New("assemble " + p.src + ": " + err.Error())
 				}
 				if !noCache {
 					if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil {
-						recordError(errors.New("cache " + p.src + ": " + err.Error()))
-						return
+						return errors.New("cache " + p.src + ": " + err.Error())
 					}
 					if err := storeShadowCache(p.src, p.obj, debug, mode); err != nil {
-						recordError(errors.New("shadow cache " + p.src + ": " + err.Error()))
-						return
+						return errors.New("shadow cache " + p.src + ": " + err.Error())
 					}
 					var mbuf2 [512]byte
 					m := copy(mbuf2[:], "cache:store:")
@@ -382,20 +353,15 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 					seal.UpdateGlobalState(mbuf2[:m])
 				}
 			}
-		}
+			return nil
+		}, 0)
 	}
 
-	for w := 0; w < jobs; w++ {
-		wg.Add(1)
-		go worker()
-	}
-	wg.Wait()
-
-	if entry := firstErr.Load(); entry != nil {
+	if err := sched.Run(ctx); err != nil {
 		if cleanupObjDir {
 			os.RemoveAll(objDir)
 		}
-		return nil, entry.err
+		return nil, err
 	}
 
 	objFiles := make([]string, len(pairs))
