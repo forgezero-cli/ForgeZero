@@ -2,7 +2,6 @@
 .github/workflows/
 # Binary files (Output)
 internal/iso
-internal/drivers
 builds/
 .idea
 hello
