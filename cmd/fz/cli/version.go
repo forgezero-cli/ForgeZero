@@ -25,9 +25,10 @@ import (
 )
 
 const (
-	VersionCore     = "5.2.0"
 	VersionCodename = "Forge"
 )
+
+var VersionCore = "unknown"
 
 var BuildDate = "unknown"
 
