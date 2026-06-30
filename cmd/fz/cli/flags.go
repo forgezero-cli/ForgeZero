@@ -82,7 +82,7 @@ func SetupFlags() *Flags {
 	flag.BoolVar(&f.IsoHybrid, "iso-hybrid", false, "generate ISO hybrid image (experimental)")
 	
 	flag.Usage = func() {
-		PrintHelp()
+		os.Stderr.WriteString("Run " + os.Args[0] + " -help for full usage.\n")
 		os.Exit(2)
 	}
 
