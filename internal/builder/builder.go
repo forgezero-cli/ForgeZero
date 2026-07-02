@@ -23,9 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
-	"unsafe"
 
 	"github.com/forgezero-cli/ForgeZero/internal/assembler"
 	"github.com/forgezero-cli/ForgeZero/internal/config"
@@ -40,30 +38,6 @@ type BuildResult struct {
 	Binary      string
 	ObjDir      string
 	CacheDir    string
-}
-
-type pathBuffer struct {
-	buf [2048]byte
-	n   int
-}
-
-func (p *pathBuffer) appendString(s string) {
-	copy(p.buf[p.n:], s)
-	p.n += len(s)
-}
-
-func (p *pathBuffer) appendByte(b byte) {
-	p.buf[p.n] = b
-	p.n++
-}
-
-func (p *pathBuffer) appendBytes(b []byte) {
-	copy(p.buf[p.n:], b)
-	p.n += len(b)
-}
-
-func (p *pathBuffer) String() string {
-	return unsafe.String((*byte)(unsafe.Pointer(&p.buf[0])), p.n)
 }
 
 type pair struct {
@@ -83,43 +57,13 @@ func matchExclude(path string, excludes []string) bool {
 	return false
 }
 
-func joinPath(base, name string) string {
-	var pb pathBuffer
-	pb.appendString(base)
-	if len(base) > 0 && base[len(base)-1] != byte(os.PathSeparator) {
-		pb.appendByte(byte(os.PathSeparator))
-	}
-	pb.appendString(name)
-	return pb.String()
-}
-
-func buildCacheKey(hash string, debug bool, mode string) string {
-	var pb pathBuffer
-	pb.appendString(hash)
-	pb.appendByte('_')
-	if debug {
-		pb.appendByte('1')
-	} else {
-		pb.appendByte('0')
-	}
-	pb.appendByte('_')
-	pb.appendString(mode)
-	return pb.String()
-}
-
-func cacheEntryPath(dir, key string) string {
-	var pb pathBuffer
-	pb.appendString(dir)
-	if len(dir) > 0 && dir[len(dir)-1] != byte(os.PathSeparator) {
-		pb.appendByte(byte(os.PathSeparator))
-	}
-	pb.appendString(key)
-	return pb.String()
-}
-
 func RunHooks(ctx context.Context, hooks []config.Hook) error {
 	for _, h := range hooks {
-		_, err := utils.RunCommand(ctx, false, nil, nil, "sh", "-c", h.Cmd)
+		if h.Cmd == "" {
+			continue
+		}
+		name, args := utils.ShellCommand(h.Cmd)
+		_, err := utils.RunCommand(ctx, false, nil, nil, name, args...)
 		if err != nil {
 			if h.Critical {
 				return errors.New("hook failed (critical): " + err.Error())
@@ -142,15 +86,16 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 	if cfg != nil && cfg.Hooks.OnFailure != "" {
 		defer func() {
 			if err != nil {
-				_, _ = utils.RunCommand(context.Background(), false, nil, nil, "sh", "-c", cfg.Hooks.OnFailure)
+				name, args := utils.ShellCommand(cfg.Hooks.OnFailure)
+				_, _ = utils.RunCommand(context.Background(), false, nil, nil, name, args...)
 			}
 		}()
 	}
-	res, err = buildDirInner(ctx, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude, sourceFiles, ignoreMatcher, includes, libs, jobs, buildType)
+	res, err = buildDirInner(ctx, cfg, dirs, outBin, debug, verbose, mode, keepObj, noCache, noSymbolCheck, sanitize, strict, exclude, sourceFiles, ignoreMatcher, includes, libs, jobs, buildType)
 	return res, err
 }
 
-func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int, buildType string) (*BuildResult, error) {
+func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int, buildType string) (*BuildResult, error) {
 	if len(dirs) == 0 {
 		dirs = []string{"."}
 	}
@@ -229,13 +174,16 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 
 	objDir := joinPath(filepath.Dir(outBin), ".fz_objs")
 	cacheDir := joinPath(filepath.Dir(outBin), ".fz_cache")
+	effectiveCache := determineCacheMode(cfg, noCache)
 	if err := utils.SecureMkdirAll(joinPath(objDir, ".keep")); err != nil {
 		return nil, errors.New("cannot create object temp dir: " + err.Error())
 	}
-	if !noCache {
+	if effectiveCache == cacheDisk {
 		if err := utils.SecureMkdirAll(joinPath(cacheDir, ".keep")); err != nil {
 			return nil, errors.New("cannot create cache dir: " + err.Error())
 		}
+	} else {
+		cacheDir = ""
 	}
 	cleanupObjDir := !keepObj
 
@@ -300,31 +248,48 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 		p := pairs[i]
 		sched.SubmitBlocking(func(taskCtx context.Context) error {
 			needAssemble := true
-			if !noCache {
-				restored, err := restoreShadowCache(p.src, p.obj, debug, mode)
-				if err != nil {
-					return errors.New("shadow cache " + p.src + ": " + err.Error())
-				}
-				if restored {
-					needAssemble = false
-					var mbuf [512]byte
-					n := copy(mbuf[:], "shadow:restore:")
-					n += copy(mbuf[n:], p.src)
-					seal.UpdateGlobalState(mbuf[:n])
-				} else {
-					cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
-					if err == nil && cachedObj != "" {
+			if effectiveCache != cacheOff {
+				if effectiveCache == cacheRAM {
+					restored, err := restoreRAMCache(p.src, p.obj, debug, mode)
+					if err != nil {
+						return errors.New("ram cache " + p.src + ": " + err.Error())
+					}
+					if restored {
+						needAssemble = false
 						if verbose {
-							os.Stdout.WriteString("Cache hit for " + p.src + "\n")
+							os.Stdout.WriteString("RAM cache hit for " + p.src + "\n")
 						}
-						if err := utils.CopyFile(cachedObj, p.obj); err == nil {
-							cachedSyms := strings.TrimSuffix(cachedObj, ".o") + ".syms"
-							_ = utils.CopyFile(cachedSyms, p.obj+".syms")
-							needAssemble = false
-							var mbuf [512]byte
-							n := copy(mbuf[:], "cache:hit:")
-							n += copy(mbuf[n:], p.src)
-							seal.UpdateGlobalState(mbuf[:n])
+						var mbuf [512]byte
+						n := copy(mbuf[:], "cache:hit:")
+						n += copy(mbuf[n:], p.src)
+						seal.UpdateGlobalState(mbuf[:n])
+					}
+				} else {
+					restored, err := restoreShadowCache(p.src, p.obj, debug, mode)
+					if err != nil {
+						return errors.New("shadow cache " + p.src + ": " + err.Error())
+					}
+					if restored {
+						needAssemble = false
+						var mbuf [512]byte
+						n := copy(mbuf[:], "shadow:restore:")
+						n += copy(mbuf[n:], p.src)
+						seal.UpdateGlobalState(mbuf[:n])
+					} else {
+						cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
+						if err == nil && cachedObj != "" {
+							if verbose {
+								os.Stdout.WriteString("Cache hit for " + p.src + "\n")
+							}
+							if err := utils.CopyFile(cachedObj, p.obj); err == nil {
+								cachedSyms := strings.TrimSuffix(cachedObj, ".o") + ".syms"
+								_ = utils.CopyFile(cachedSyms, p.obj+".syms")
+								needAssemble = false
+								var mbuf [512]byte
+								n := copy(mbuf[:], "cache:hit:")
+								n += copy(mbuf[n:], p.src)
+								seal.UpdateGlobalState(mbuf[:n])
+							}
 						}
 					}
 				}
@@ -340,12 +305,18 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 				if err := assembler.Assemble(taskCtx, p.src, p.obj, debug, verbose, mode); err != nil {
 					return errors.New("assemble " + p.src + ": " + err.Error())
 				}
-				if !noCache {
-					if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil {
-						return errors.New("cache " + p.src + ": " + err.Error())
-					}
-					if err := storeShadowCache(p.src, p.obj, debug, mode); err != nil {
-						return errors.New("shadow cache " + p.src + ": " + err.Error())
+				if effectiveCache != cacheOff {
+					if effectiveCache == cacheRAM {
+						if err := storeRAMCache(p.src, p.obj, debug, mode); err != nil {
+							return errors.New("ram cache " + p.src + ": " + err.Error())
+						}
+					} else {
+						if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil {
+							return errors.New("cache " + p.src + ": " + err.Error())
+						}
+						if err := storeShadowCache(p.src, p.obj, debug, mode); err != nil {
+							return errors.New("shadow cache " + p.src + ": " + err.Error())
+						}
 					}
 					var mbuf2 [512]byte
 					m := copy(mbuf2[:], "cache:store:")
@@ -399,80 +370,6 @@ func buildDirInner(ctx context.Context, dirs []string, outBin string, debug, ver
 		ObjDir:      objDir,
 		CacheDir:    cacheDir,
 	}, nil
-}
-
-func checkCache(src, cacheDir string, debug, verbose bool, mode string) (string, error) {
-	h, err := utils.HashFile(src)
-	if err != nil {
-		return "", err
-	}
-	key := buildCacheKey(h, debug, mode)
-	cacheObj := cacheEntryPath(cacheDir, key+".o")
-	info, err := os.Stat(cacheObj)
-	if err != nil {
-		return "", err
-	}
-	if info.Size() == 0 {
-		return "", errors.New("cached file is empty")
-	}
-	return cacheObj, nil
-}
-
-func restoreShadowCache(src, obj string, debug bool, mode string) (bool, error) {
-	flags := []string{"debug=" + strconv.FormatBool(debug), "mode=" + mode}
-	key, err := utils.ShadowCacheKey(src, flags)
-	if err != nil {
-		return false, err
-	}
-	shadowObj := utils.ShadowCachePath(key)
-	if _, err := os.Stat(shadowObj); err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	if err := utils.EnsureDir(obj); err != nil {
-		return false, err
-	}
-	if err := utils.LinkOrClone(shadowObj, obj); err != nil {
-		return false, err
-	}
-	if err := os.Chmod(obj, utils.FilePerm); err != nil {
-		return false, err
-	}
-	if debug {
-		os.Stdout.WriteString("Shadow cache restored " + shadowObj + " -> " + obj + "\n")
-	}
-	return true, nil
-}
-
-func storeCache(src, obj, cacheDir string, debug, verbose bool, mode string) error {
-	h, err := utils.HashFile(src)
-	if err != nil {
-		return err
-	}
-	key := buildCacheKey(h, debug, mode)
-	cacheObj := cacheEntryPath(cacheDir, key+".o")
-	return utils.CopyFile(obj, cacheObj)
-}
-
-func storeShadowCache(src, obj string, debug bool, mode string) error {
-	flags := []string{"debug=" + strconv.FormatBool(debug), "mode=" + mode}
-	key, err := utils.ShadowCacheKey(src, flags)
-	if err != nil {
-		return err
-	}
-	shadowObj := utils.ShadowCachePath(key)
-	if err := os.MkdirAll(filepath.Dir(shadowObj), 0o755); err != nil {
-		return err
-	}
-	if err := utils.LinkOrClone(obj, shadowObj); err != nil {
-		if os.IsExist(err) {
-			return nil
-		}
-		return err
-	}
-	return nil
 }
 
 func createArchive(ctx context.Context, objFiles []string, outBin string, verbose bool) error {
