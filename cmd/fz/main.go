@@ -125,6 +125,10 @@ func main() {
 		return
 	}
 
+	if app.HandleRollback(flags) {
+		return
+	}
+
 	if flags.ShellMode {
 		shell.Run()
 		return
@@ -236,6 +240,16 @@ func main() {
 		if err := scriptsConfig.Run(ctx); err != nil {
 			stdio.WriteFmt(2, "script failed: %v\n", err)
 			os.Exit(1)
+		}
+	}
+
+	if result.Err == nil && app.ISORequested(flags, cfg) {
+		if err := app.HandleISO(flags, cfg); err != nil {
+			stdio.WriteFmt(2, "iso failed: %v\n", err)
+			os.Exit(1)
+		}
+		if !flags.JSONOutput {
+			stdio.WriteFmt(1, "ISO: %s\n", app.BuildISOOptions(flags, cfg).OutputPath)
 		}
 	}
 
