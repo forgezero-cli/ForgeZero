@@ -163,8 +163,6 @@ func assembleWithNasm(ctx context.Context, src, obj string, debug, verbose bool)
 	nasmPath := "nasm"
 	if path, err := exec.LookPath("nasm"); err == nil {
 		nasmPath = path
-	} else {
-		return errors.New("nasm not found in PATH; install nasm or rename .asm to .S")
 	}
 
 	args := []string{"-f", "elf64", "-o", obj}
