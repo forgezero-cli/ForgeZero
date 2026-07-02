@@ -20,7 +20,6 @@ package stdio
 import (
 	"errors"
 	"os"
-	"unsafe"
 )
 
 func WriteOut(fd int, s string) {
@@ -64,6 +63,20 @@ func AppendInt(dst []byte, v int64) []byte {
 	return append(dst, tmp[i:]...)
 }
 
+func AppendUint(dst []byte, v uint64) []byte {
+	if v == 0 {
+		return append(dst, '0')
+	}
+	var tmp [20]byte
+	i := len(tmp)
+	for v > 0 {
+		i--
+		tmp[i] = byte('0' + v%10)
+		v /= 10
+	}
+	return append(dst, tmp[i:]...)
+}
+
 func AppendAny(dst []byte, v any) []byte {
 	switch x := v.(type) {
 	case string:
@@ -74,8 +87,10 @@ func AppendAny(dst []byte, v any) []byte {
 		return AppendInt(dst, int64(x))
 	case int64:
 		return AppendInt(dst, x)
+	case uint:
+		return AppendUint(dst, uint64(x))
 	case uint64:
-		return AppendInt(dst, int64(x))
+		return AppendUint(dst, x)
 	case bool:
 		if x {
 			return append(dst, "true"...)
@@ -84,6 +99,27 @@ func AppendAny(dst []byte, v any) []byte {
 	default:
 		return append(dst, "<unsupported>"...)
 	}
+}
+
+func AppendHex(dst []byte, v uint64, upper bool) []byte {
+	if v == 0 {
+		return append(dst, '0')
+	}
+	var tmp [32]byte
+	i := len(tmp)
+	for v > 0 {
+		i--
+		d := byte(v & 0xf)
+		if d < 10 {
+			tmp[i] = '0' + d
+		} else if upper {
+			tmp[i] = 'A' + d - 10
+		} else {
+			tmp[i] = 'a' + d - 10
+		}
+		v >>= 4
+	}
+	return append(dst, tmp[i:]...)
 }
 
 func FormatAppend(dst []byte, format string, a ...any) []byte {
@@ -102,15 +138,33 @@ func FormatAppend(dst []byte, format string, a ...any) []byte {
 				dst = AppendAny(dst, a[argIndex])
 				argIndex++
 			}
-		case 'd', 'x', 'X':
+		case 'd':
 			if argIndex < len(a) {
 				switch x := a[argIndex].(type) {
 				case int:
 					dst = AppendInt(dst, int64(x))
 				case int64:
 					dst = AppendInt(dst, x)
+				case uint:
+					dst = AppendUint(dst, uint64(x))
 				case uint64:
-					dst = AppendInt(dst, int64(x))
+					dst = AppendUint(dst, x)
+				default:
+					dst = AppendAny(dst, a[argIndex])
+				}
+				argIndex++
+			}
+		case 'x', 'X':
+			if argIndex < len(a) {
+				switch x := a[argIndex].(type) {
+				case int:
+					dst = AppendHex(dst, uint64(x), format[i] == 'X')
+				case int64:
+					dst = AppendHex(dst, uint64(x), format[i] == 'X')
+				case uint:
+					dst = AppendHex(dst, uint64(x), format[i] == 'X')
+				case uint64:
+					dst = AppendHex(dst, x, format[i] == 'X')
 				default:
 					dst = AppendAny(dst, a[argIndex])
 				}
@@ -152,5 +206,5 @@ func WriteStderr(s string) {
 func Errorf(format string, a ...any) error {
 	var buf [4096]byte
 	b := FormatAppend(buf[:0], format, a...)
-	return errors.New(unsafe.String(unsafe.SliceData(b), len(b)))
+	return errors.New(string(b))
 }
