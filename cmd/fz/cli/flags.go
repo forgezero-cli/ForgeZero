@@ -79,7 +79,11 @@ func SetupFlags() *Flags {
 	flag.BoolVar(&f.AlexMode, "alex", false, "run full test scanner projects for contribution")
 	flag.BoolVar(&f.PyzeroFlag, "pyzero", false, "experimental: bump python format file to binaries")
 	flag.StringVar(&f.OldReverseFile, "old-reverse", "", "generate .fz.yaml from legacy build files")
-	flag.BoolVar(&f.IsoHybrid, "iso-hybrid", false, "generate ISO hybrid image (experimental)")
+	flag.Var(&f.ISO, "iso", "package the build into a bootable ISO (optional dir: -iso=./isoroot)")
+	flag.StringVar(&f.IsoOut, "iso-out", "", "output path for the generated ISO image")
+	flag.BoolVar(&f.IsoHybrid, "iso-hybrid", false, "make the generated ISO hybrid (BIOS+USB bootable)")
+	flag.BoolVar(&f.RollBackFlag, "rollback", false, "rollback version to old or stable(down to 1-2)")
+	flag.StringVar(&f.RollBackToFlag, "rollback-to", "", "rollback-to needs version(e.g fz --rollback-to 5.1.0)")
 	
 	flag.Usage = func() {
 		os.Stderr.WriteString("Run " + os.Args[0] + " -help for full usage.\n")
@@ -142,6 +146,12 @@ type Flags struct {
 	AlexMode            bool
 	PyzeroFlag          bool
 	OldReverseFile      string
+	ISO                 ISOFlag
+	IsoOut              string
 	IsoHybrid           bool
 	SourcePath          string
+
+	RollBackFlag 		  bool 	 // fz --rollback 
+	RollBackToFlag   string // fz --rollback-to <version>
 }
+
