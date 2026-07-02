@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/forgezero-cli/ForgeZero/internal/variables"
 
@@ -43,14 +44,43 @@ var supportedToolchains = map[string]struct{}{
 
 type IsolationMode string
 
+type CacheMode string
+
 const (
 	IsolationNone     IsolationMode = "none"
 	IsolationStandard IsolationMode = "standard"
 	IsolationStrict   IsolationMode = "strict"
+
+	CacheModeDisk CacheMode = "disk"
+	CacheModeRAM  CacheMode = "ram"
+	CacheModeOff  CacheMode = "off"
 )
 
 func (m IsolationMode) String() string {
 	return string(m)
+}
+
+func (m CacheMode) String() string {
+	return string(m)
+}
+
+func (m *CacheMode) UnmarshalYAML(node *yaml.Node) error {
+	var s string
+	if err := node.Decode(&s); err != nil {
+		return err
+	}
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "", "disk":
+		*m = CacheModeDisk
+	case "ram":
+		*m = CacheModeRAM
+	case "off":
+		*m = CacheModeOff
+	default:
+		return errors.New("invalid cache_mode: " + s)
+	}
+	return nil
 }
 
 func (m *IsolationMode) UnmarshalYAML(node *yaml.Node) error {
@@ -98,6 +128,22 @@ type Hooks struct {
 	OnFailure string `yaml:"on_failure"`
 }
 
+type ISOConfig struct {
+	Enabled       bool     `yaml:"enabled"`
+	SourceDir     string   `yaml:"source_dir"`
+	Output        string   `yaml:"output"`
+	VolumeID      string   `yaml:"volume_id"`
+	BootImage     string   `yaml:"boot_image"`
+	BootCatalog   string   `yaml:"boot_catalog"`
+	BootLoadSize  string   `yaml:"boot_load_size"`
+	NoEmulBoot    bool     `yaml:"no_emul_boot"`
+	BootInfoTable bool     `yaml:"boot_info_table"`
+	Joliet        bool     `yaml:"joliet"`
+	RockRidge     bool     `yaml:"rock_ridge"`
+	Hybrid        bool     `yaml:"hybrid"`
+	CustomArgs    []string `yaml:"custom_args"`
+}
+
 type Config struct {
 	Name    string `yaml:"name"`
 	Profile string `yaml:"profile"`
@@ -116,6 +162,7 @@ type Config struct {
 	Verbose            bool              `yaml:"verbose"`
 	KeepObj            bool              `yaml:"keep_obj"`
 	NoCache            bool              `yaml:"no_cache"`
+	CacheMode          CacheMode         `yaml:"cache_mode"`
 	OptimizationLevel  int               `yaml:"optimization_level"`
 	Exclude            []string          `yaml:"exclude"`
 	Include            []string          `yaml:"include"`
@@ -133,12 +180,29 @@ type Config struct {
 		EnvAllow       []string          `yaml:"env_allow"`
 		ToolPaths      map[string]string `yaml:"tool_paths"`
 	} `yaml:"toolchain_opts"`
-	Hooks Hooks `yaml:"hooks"`
+	Hooks Hooks     `yaml:"hooks"`
+	ISO   ISOConfig `yaml:"iso"`
 }
 
 func (c *Config) expand() {
-	if len(c.Variables) == 0 {
+	if c == nil {
 		return
+	}
+	if c.Variables == nil {
+		c.Variables = make(map[string]string, 4)
+	}
+	if _, ok := c.Variables["PWD"]; !ok {
+		if wd, err := os.Getwd(); err == nil && wd != "" {
+			c.Variables["PWD"] = wd
+		}
+	}
+	if _, ok := c.Variables["HOME"]; !ok {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			c.Variables["HOME"] = home
+		}
+	}
+	if _, ok := c.Variables["TARGET"]; !ok && c.Target != "" {
+		c.Variables["TARGET"] = c.Target
 	}
 	vars := c.Variables
 	c.Name = variables.ExpandString(c.Name, vars)
@@ -171,6 +235,79 @@ func (c *Config) expand() {
 	}
 	c.Hooks.OnFailure = variables.ExpandString(c.Hooks.OnFailure, vars)
 	c.Isolation = IsolationMode(variables.ExpandString(string(c.Isolation), vars))
+	c.ISO.SourceDir = variables.ExpandString(c.ISO.SourceDir, vars)
+	c.ISO.Output = variables.ExpandString(c.ISO.Output, vars)
+	c.ISO.VolumeID = variables.ExpandString(c.ISO.VolumeID, vars)
+	c.ISO.BootImage = variables.ExpandString(c.ISO.BootImage, vars)
+	c.ISO.BootCatalog = variables.ExpandString(c.ISO.BootCatalog, vars)
+	c.ISO.BootLoadSize = variables.ExpandString(c.ISO.BootLoadSize, vars)
+	variables.ExpandSlice(c.ISO.CustomArgs, vars)
+}
+
+func (c *Config) fillDefaults() {
+	if c == nil {
+		return
+	}
+	if c.Mode == "" {
+		c.Mode = "auto"
+	}
+	if c.Profile == "" {
+		c.Profile = "balanced"
+	}
+	if c.Toolchain == "" {
+		c.Toolchain = "auto"
+	}
+	if c.Isolation == "" {
+		c.Isolation = IsolationNone
+	}
+	if c.IgnoreFile == "" {
+		c.IgnoreFile = ".fzignore"
+	}
+	if c.CacheMode == "" {
+		c.CacheMode = CacheModeDisk
+	}
+}
+
+func mergeStrings(dst, src []string) []string {
+	if len(src) == 0 {
+		return dst
+	}
+	if len(dst) == 0 {
+		return append([]string(nil), src...)
+	}
+	seen := make(map[string]struct{}, len(dst)+len(src))
+	out := make([]string, 0, len(dst)+len(src))
+	for _, v := range dst {
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	for _, v := range src {
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
+func mergeStringMap(dst, src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return dst
+	}
+	if dst == nil {
+		dst = make(map[string]string, len(src))
+	}
+	for k, v := range src {
+		if v == "" {
+			continue
+		}
+		dst[k] = v
+	}
+	return dst
 }
 
 func Load(path string) (*Config, error) {
@@ -182,6 +319,7 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, errors.New("cannot parse YAML: " + err.Error())
 	}
+	cfg.expand()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -189,42 +327,40 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
-	if c.SourceDir == "" && len(c.SourceDirs) == 0 && c.SourceFile == "" && len(c.SourceFiles) == 0 {
+	if c == nil {
 		return nil
 	}
+	c.fillDefaults()
 	if c.SourceDir != "" && len(c.SourceDirs) > 0 {
 		return errors.New("cannot set both source_dir and source_dirs")
 	}
 	if c.SourceFile != "" && len(c.SourceFiles) > 0 {
 		return errors.New("cannot set both source_file and source_files")
 	}
-	if c.Mode == "" {
-		c.Mode = "auto"
-	}
 	if c.Mode != "auto" && c.Mode != "c" && c.Mode != "raw" {
 		return errors.New("invalid mode: " + c.Mode)
-	}
-	if c.Profile == "" {
-		c.Profile = "balanced"
 	}
 	c.Profile = strings.TrimSpace(strings.ToLower(c.Profile))
 	if c.Profile != "balanced" && c.Profile != "powered" && c.Profile != "performance" {
 		return errors.New("invalid profile: " + c.Profile)
 	}
-	if c.Toolchain == "" {
-		c.Toolchain = "auto"
-	}
 	c.Toolchain = strings.TrimSpace(strings.ToLower(c.Toolchain))
 	if _, ok := supportedToolchains[c.Toolchain]; !ok {
 		return errors.New("invalid toolchain: " + c.Toolchain)
 	}
-	if c.Isolation == "" {
-		c.Isolation = IsolationNone
-	}
+	c.Target = strings.TrimSpace(c.Target)
 	switch c.Isolation {
 	case IsolationNone, IsolationStandard, IsolationStrict:
 	default:
 		return errors.New("invalid isolation: " + string(c.Isolation))
+	}
+	switch c.CacheMode {
+	case CacheModeDisk, CacheModeRAM, CacheModeOff, "":
+	default:
+		return errors.New("invalid cache_mode: " + string(c.CacheMode))
+	}
+	if c.NoCache {
+		c.CacheMode = CacheModeOff
 	}
 	if c.IgnoreFile == "" {
 		c.IgnoreFile = ".fzignore"
@@ -294,7 +430,7 @@ func IsValidToolchain(name string) bool {
 }
 
 func (c *Config) Merge(other *Config) {
-	if other == nil {
+	if c == nil || other == nil {
 		return
 	}
 	if other.Name != "" {
@@ -306,24 +442,33 @@ func (c *Config) Merge(other *Config) {
 	if other.Sysroot != "" {
 		c.Sysroot = other.Sysroot
 	}
-	if other.SourceDir != "" {
-		c.SourceDir = other.SourceDir
-		c.SourceDirs = nil
-		c.SourceFiles = nil
-	}
-	if len(other.SourceDirs) > 0 {
-		c.SourceDirs = other.SourceDirs
-		c.SourceDir = ""
-	}
-	if len(other.SourceFiles) > 0 {
-		c.SourceFiles = other.SourceFiles
-		c.SourceFile = ""
-	}
 	if other.SourceFile != "" {
 		c.SourceFile = other.SourceFile
 		c.SourceDir = ""
 		c.SourceDirs = nil
 		c.SourceFiles = nil
+	}
+	if len(other.SourceFiles) > 0 {
+		if c.SourceFile != "" {
+			c.SourceFiles = mergeStrings(c.SourceFiles, []string{c.SourceFile})
+		}
+		c.SourceDir = ""
+		c.SourceFile = ""
+		c.SourceFiles = mergeStrings(c.SourceFiles, other.SourceFiles)
+	}
+	if other.SourceDir != "" {
+		c.SourceDir = other.SourceDir
+		c.SourceDirs = nil
+		c.SourceFiles = nil
+		c.SourceFile = ""
+	}
+	if len(other.SourceDirs) > 0 {
+		if c.SourceDir != "" {
+			c.SourceDirs = append([]string{c.SourceDir}, c.SourceDirs...)
+		}
+		c.SourceDir = ""
+		c.SourceFile = ""
+		c.SourceDirs = mergeStrings(c.SourceDirs, other.SourceDirs)
 	}
 	if other.Output != "" {
 		c.Output = other.Output
@@ -338,34 +483,38 @@ func (c *Config) Merge(other *Config) {
 		c.Profile = other.Profile
 	}
 	if other.Debug {
-		c.Debug = other.Debug
+		c.Debug = true
 	}
 	if other.Verbose {
-		c.Verbose = other.Verbose
+		c.Verbose = true
 	}
 	if other.KeepObj {
-		c.KeepObj = other.KeepObj
+		c.KeepObj = true
 	}
 	if other.NoCache {
-		c.NoCache = other.NoCache
+		c.NoCache = true
+		c.CacheMode = CacheModeOff
+	}
+	if other.CacheMode != "" {
+		c.CacheMode = other.CacheMode
 	}
 	if other.Isolation != "" {
 		c.Isolation = other.Isolation
 	}
 	if len(other.Exclude) > 0 {
-		c.Exclude = other.Exclude
+		c.Exclude = mergeStrings(c.Exclude, other.Exclude)
 	}
 	if len(other.Include) > 0 {
-		c.Include = other.Include
+		c.Include = mergeStrings(c.Include, other.Include)
 	}
 	if len(other.Libs) > 0 {
-		c.Libs = other.Libs
+		c.Libs = mergeStrings(c.Libs, other.Libs)
 	}
 	if other.IgnoreFile != "" {
 		c.IgnoreFile = other.IgnoreFile
 	}
 	if len(other.AuditIgnore) > 0 {
-		c.AuditIgnore = other.AuditIgnore
+		c.AuditIgnore = mergeStrings(c.AuditIgnore, other.AuditIgnore)
 	}
 	if len(other.ToolChecksums) > 0 {
 		if c.ToolChecksums == nil {
@@ -376,27 +525,91 @@ func (c *Config) Merge(other *Config) {
 		}
 	}
 	if len(other.Flags.Asm) > 0 {
-		c.Flags.Asm = other.Flags.Asm
+		c.Flags.Asm = mergeStrings(c.Flags.Asm, other.Flags.Asm)
 	}
 	if len(other.Flags.Cc) > 0 {
-		c.Flags.Cc = other.Flags.Cc
+		c.Flags.Cc = mergeStrings(c.Flags.Cc, other.Flags.Cc)
 	}
 	if len(other.Flags.Ld) > 0 {
-		c.Flags.Ld = other.Flags.Ld
+		c.Flags.Ld = mergeStrings(c.Flags.Ld, other.Flags.Ld)
 	}
 	if other.OptimizationLevel > 0 {
 		c.OptimizationLevel = other.OptimizationLevel
 	}
 	if len(other.Scripts) > 0 {
-		c.Scripts = other.Scripts
+		c.Scripts = mergeStrings(c.Scripts, other.Scripts)
 	}
 	if len(other.Variables) > 0 {
-		if c.Variables == nil {
-			c.Variables = make(map[string]string)
+		c.Variables = mergeStringMap(c.Variables, other.Variables)
+	}
+	if len(other.ToolchainSettings.SearchPriority) > 0 {
+		c.ToolchainSettings.SearchPriority = mergeStrings(c.ToolchainSettings.SearchPriority, other.ToolchainSettings.SearchPriority)
+	}
+	if len(other.ToolchainSettings.EnvAllow) > 0 {
+		c.ToolchainSettings.EnvAllow = mergeStrings(c.ToolchainSettings.EnvAllow, other.ToolchainSettings.EnvAllow)
+	}
+	if len(other.ToolchainSettings.ToolPaths) > 0 {
+		if c.ToolchainSettings.ToolPaths == nil {
+			c.ToolchainSettings.ToolPaths = make(map[string]string, len(other.ToolchainSettings.ToolPaths))
 		}
-		for k, v := range other.Variables {
-			c.Variables[k] = v
+		for k, v := range other.ToolchainSettings.ToolPaths {
+			if v == "" {
+				continue
+			}
+			c.ToolchainSettings.ToolPaths[k] = v
 		}
+	}
+	if len(other.Hooks.PreBuild) > 0 {
+		c.Hooks.PreBuild = append(c.Hooks.PreBuild, other.Hooks.PreBuild...)
+	}
+	if other.Hooks.OnFailure != "" {
+		c.Hooks.OnFailure = other.Hooks.OnFailure
+	}
+	if other.ISO.Enabled {
+		c.ISO.Enabled = true
+	}
+	c.mergeISO(&other.ISO)
+}
+
+func (c *Config) mergeISO(other *ISOConfig) {
+	if other.Enabled {
+		c.ISO.Enabled = true
+	}
+	if other.SourceDir != "" {
+		c.ISO.SourceDir = other.SourceDir
+	}
+	if other.Output != "" {
+		c.ISO.Output = other.Output
+	}
+	if other.VolumeID != "" {
+		c.ISO.VolumeID = other.VolumeID
+	}
+	if other.BootImage != "" {
+		c.ISO.BootImage = other.BootImage
+	}
+	if other.BootCatalog != "" {
+		c.ISO.BootCatalog = other.BootCatalog
+	}
+	if other.BootLoadSize != "" {
+		c.ISO.BootLoadSize = other.BootLoadSize
+	}
+	if other.NoEmulBoot {
+		c.ISO.NoEmulBoot = true
+	}
+	if other.BootInfoTable {
+		c.ISO.BootInfoTable = true
+	}
+	if other.Joliet {
+		c.ISO.Joliet = true
+	}
+	if other.RockRidge {
+		c.ISO.RockRidge = true
+	}
+	if other.Hybrid {
+		c.ISO.Hybrid = true
+	}
+	if len(other.CustomArgs) > 0 {
+		c.ISO.CustomArgs = mergeStrings(c.ISO.CustomArgs, other.CustomArgs)
 	}
 }
 
@@ -431,7 +644,26 @@ func FindConfigs() (system, user, local string) {
 	return
 }
 
+func loadConfigPath(path string, idx int, out chan<- loadResult, wg *sync.WaitGroup) {
+	defer wg.Done()
+	cfg, err := Load(path)
+	out <- loadResult{idx: idx, cfg: cfg, err: err}
+}
+
+type loadResult struct {
+	idx int
+	cfg *Config
+	err error
+}
+
 func LoadMerged(explicitPath string) (*Config, error) {
+	if explicitPath == "" {
+		if env := os.Getenv("FZ_CONFIG_PATH"); env != "" {
+			explicitPath = env
+		} else if env := os.Getenv("FZ_CONFIG"); env != "" {
+			explicitPath = env
+		}
+	}
 	var cfg Config
 	if explicitPath != "" {
 		explicitCfg, err := Load(explicitPath)
@@ -440,29 +672,67 @@ func LoadMerged(explicitPath string) (*Config, error) {
 		}
 		cfg.Merge(explicitCfg)
 		cfg.expand()
+		if err := cfg.Validate(); err != nil {
+			return nil, err
+		}
 		return &cfg, nil
 	}
 	systemPath, userPath, localPath := FindConfigs()
-	if systemPath != "" {
-		if sysCfg, err := Load(systemPath); err == nil {
-			cfg.Merge(sysCfg)
+	paths := make([]string, 0, 3)
+	for _, path := range []string{systemPath, userPath, localPath} {
+		if path != "" {
+			paths = append(paths, path)
 		}
 	}
-	if userPath != "" {
-		if userCfg, err := Load(userPath); err == nil {
-			cfg.Merge(userCfg)
+	if len(paths) == 0 {
+		cfg.expand()
+		if err := cfg.Validate(); err != nil {
+			return nil, err
 		}
+		return &cfg, nil
 	}
-	if localPath != "" {
-		if localCfg, err := Load(localPath); err == nil {
-			cfg.Merge(localCfg)
+
+	results := make([]*Config, len(paths))
+	out := make(chan loadResult, len(paths))
+	var wg sync.WaitGroup
+	wg.Add(len(paths))
+	for idx, path := range paths {
+		go loadConfigPath(path, idx, out, &wg)
+	}
+	wg.Wait()
+	close(out)
+
+	var loadErr error
+	for result := range out {
+		if result.err != nil {
+			loadErr = errors.Join(loadErr, result.err)
+			continue
+		}
+		results[result.idx] = result.cfg
+	}
+	if loadErr != nil {
+		return nil, loadErr
+	}
+
+	for _, loaded := range results {
+		if loaded != nil {
+			cfg.Merge(loaded)
 		}
 	}
 	cfg.expand()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
 }
 
 func DefaultConfigPath() string {
+	if env := os.Getenv("FZ_CONFIG_PATH"); env != "" {
+		return env
+	}
+	if env := os.Getenv("FZ_CONFIG"); env != "" {
+		return env
+	}
 	_, _, local := FindConfigs()
 	return local
 }
