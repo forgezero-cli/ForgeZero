@@ -28,7 +28,7 @@
   </table>
 </div>
 
-> **Version:** 5.2.0 &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** GPLv3 &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
+> **Version:** 5.3.0 &nbsp;·&nbsp; **Language:** Go &nbsp;·&nbsp; **License:** GPLv3 &nbsp;·&nbsp; **Platform:** Linux · Windows · macOS
 
 ForgeZero is a high-performance, zero-overhead build tool for assembly, C, C++, Objective-C, and Gloria developers. It wraps NASM, GAS, FASM, GCC, Clang, Zig, and LD into a single unified command-line interface — no Makefiles, no build scripts, no configuration required to get started.
 
@@ -330,6 +330,58 @@ ForgeZero removes the friction between writing assembly (or C, C++, Objective-C,
 - **Multi-level config merging** — system, user, and project YAML configs merged in priority order.
 
 ForgeZero is intentionally lightweight — a single statically compiled Go binary with no runtime dependencies beyond the standard assembler/compiler toolchain.
+
+**What's new in v5.2.0:**
+
+- **Config subsystem overhaul** — `internal/config` rewritten for deterministic, low-allocation merges: `LoadMerged` now respects `FZ_CONFIG_PATH`/`FZ_CONFIG` environment overrides, merges system→user→local config layers deterministically, and merges list/map fields while preserving user intent. `Config.Merge` was hardened to merge slices (deduped, ordered), maps (non-empty overrides), and ISO/custom-args properly.
+- **Concurrent config load** — multiple config files discovered by `FindConfigs()` are loaded concurrently and merged deterministically to reduce I/O latency on large projects.
+- **Inline Bash scripts** — configuration `scripts` entries may begin with `bash:` to include inline Bash code. `fz` prefers the system `bash`/`sh` when available; if not, a small internal runner executes common commands like `cd` and `export` and will fall back to executing binaries directly when available.
+- **NASM fallback** — when a system `nasm` binary is not present, `fz` now falls back to the built-in NASM-like emitter/parser so `.asm` sources still assemble without an external dependency.
+- **Improved validation & defaults** — `Validate()` and `fillDefaults()` now ensure safer defaults and clearer error messages for invalid modes, profiles, and isolation values.
+- **Expanded tests** — new and updated unit tests for `internal/config` covering merge semantics, ISO handling, and invalid YAML handling.
+- **Docs & examples** — README extended with configuration and testing quickstart guidance (you are reading it).
+
+**Configuration Loading & Merge Semantics**
+
+- Precedence: explicit path (CLI or `FZ_CONFIG_PATH`/`FZ_CONFIG`) → system config → user config → local project config. The effective configuration is the result of merging these layers in that order.
+- Merge behavior: string scalars are overridden by later layers when non-empty; slices are concatenated with deduplication preserving earlier order; maps are merged with non-empty values overriding earlier entries; `source_file` clears directory lists and vice-versa to avoid ambiguous scan behavior.
+- Useful environment variables:
+
+```bash
+export FZ_CONFIG_PATH=/etc/fz/project.yaml   # explicit config path takes precedence
+export FZ_CONFIG=~/.fz.yaml                  # alternative env var supported
+```
+
+- API notes: `Load(path)` parses a single YAML file and runs `expand()` + `Validate()`; `LoadMerged()` handles discovery and merging. Use `DefaultConfigPath()` to find the local config file name used by `fz`.
+
+**Testing & Contributing — Quickstart**
+
+- Run package tests quickly:
+
+```bash
+# package under test (example)
+go test ./internal/config
+
+# run full test suite (may take longer)
+go test ./...
+```
+
+- Run a specific test (example):
+
+```bash
+go test -run TestMerge ./internal/config
+```
+
+- Benchmarks and profiling:
+
+```bash
+go test -bench . -benchmem ./internal/...
+```
+
+- Contributing notes:
+  - Follow `golangci-lint` style and run the test suite before opening PRs.
+  - Use `fz contribute` to generate `CONTRIBUTING_USER.md` with environment diagnostics.
+
 
 ---
 
@@ -1621,6 +1673,14 @@ ForgeZero caches compiled object files in `.fz_cache/` to skip recompilation of 
 - `-target` value
 - active build profile
 
+ForgeZero now supports `cache_mode` in project config. Valid values:
+
+- `disk` — default on-disk caching in `.fz_cache/`
+- `ram` — keep compiled object cache in memory only; avoids disk writes for ephemeral or conditional cache builds
+- `off` — disable the cache entirely
+
+The `-no-cache` flag also forces cache mode to `off`.
+
 | File size | SHA256 (pre-2.0.0) | BLAKE3 (2.0.0+) |
 |-----------|--------------------|-----------------|
 | 10 MB     | ~58 ms             | ~8.7 ms         |
@@ -1784,6 +1844,7 @@ Full detail: [Section 35](#35-virtual-filesystem-layer-aegis).
 | `verbose` | bool | `false` | Print all invoked commands |
 | `keep_obj` | bool | `false` | Preserve object files after linking |
 | `no_cache` | bool | `false` | Disable build cache |
+| `cache_mode` | string | `disk` | Build cache mode: `disk`, `ram`, or `off`. `ram` stores object cache in memory only, `off` disables caching. |
 | `sanitize` | bool | `true` | Enable ASan + UBSan for C/C++ |
 | `strict` | bool | `false` | Strict sanitizer mode, prefers `clang`/`clang++` |
 | `ignore_file` | string | `.fzignore` | Path to a `.gitignore`-style exclusion file |
@@ -1913,6 +1974,7 @@ debug: true
 verbose: false
 keep_obj: true
 no_cache: false
+cache_mode: disk
 jobs: 0
 
 sanitize: true
