@@ -19,12 +19,19 @@ package scripts
 
 import (
 	"context"
+	"errors"
 	"os"
+	"strings"
 
+	"github.com/forgezero-cli/ForgeZero/internal/bashrun"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
-var runCommand = utils.RunCommand
+var (
+	runCommand   = utils.RunCommand
+	shellCommand = utils.ShellCommand
+	bashInline   = bashrun.RunInline
+)
 
 type ScriptsConfigure struct {
 	Commands []string
@@ -32,10 +39,23 @@ type ScriptsConfigure struct {
 }
 
 func (s *ScriptsConfigure) Run(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
 	for _, cmd := range s.Commands {
-		_, err := runCommand(ctx, false, os.Stdout, os.Stderr, "sh", "-c", cmd)
-		if err != nil {
-			return err
+		if cmd == "" {
+			continue
+		}
+		if strings.HasPrefix(cmd, "bash:") {
+			body := strings.TrimPrefix(cmd, "bash:")
+			if err := bashInline(ctx, body, s.Verbose); err != nil {
+				return errors.New("script failed (bash): " + err.Error())
+			}
+			continue
+		}
+		name, args := shellCommand(cmd)
+		if _, err := runCommand(ctx, s.Verbose, os.Stdout, os.Stderr, name, args...); err != nil {
+			return errors.New("script failed (" + cmd + "): " + err.Error())
 		}
 	}
 	return nil
