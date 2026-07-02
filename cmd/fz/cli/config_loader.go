@@ -61,6 +61,7 @@ func ApplyConfigToFlags(cfg *config.Config, flags *Flags) {
 	cfg.MergeFromFlags(flags.SourcePath, flags.DirPath, flags.OutBin, flags.OutObj,
 		flags.Debug, flags.Verbose, flags.KeepObj, flags.NoCache,
 		flags.Mode, flags.Toolchain, flags.Isolation)
+	
 
 	cfg.Profile = flags.ProfileFlag
 	p := profiles.ParseUserProfile(cfg.Profile)
