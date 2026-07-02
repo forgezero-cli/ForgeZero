@@ -73,11 +73,22 @@ func TestValidate(t *testing.T) {
 	if err == nil {
 		t.Error("expected invalid mode error")
 	}
+	cfg.Mode = "auto"
 	cfg.SourceDir = ""
 	cfg.SourceFile = ""
 	err = cfg.Validate()
 	if err != nil {
 		t.Error("empty config should be valid (partial)")
+	}
+	cfg.CacheMode = CacheModeRAM
+	err = cfg.Validate()
+	if err != nil {
+		t.Error(err)
+	}
+	cfg.CacheMode = "invalid"
+	err = cfg.Validate()
+	if err == nil {
+		t.Error("expected invalid cache_mode error")
 	}
 }
 
