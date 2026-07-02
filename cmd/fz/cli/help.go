@@ -62,6 +62,11 @@ Options:
   -shell               Run interactive shell
   -autoBuild           Auto build project with auto backend
   -update              Update fz to latest version
+  -rollback            Restore the previous binary saved by -update
+  -rollback-to <ver>   Download and install a specific release version
+  -iso[=<dir>]         Package the build into a bootable ISO image
+  -iso-out <file>      Output path for the generated ISO
+  -iso-hybrid          Make the generated ISO hybrid (BIOS+USB bootable)
   -profile <name>      Build profile: performance, balanced, power-saver
   -p <name>            Shorthand for -profile
   -contribute          Generate CONTRIBUTING_USER.md
@@ -103,6 +108,8 @@ Examples:
   fz verify --update
   fz bench -dir ./src -json
   fz pm add github.com/user/repo
+  fz -dir ./src -out kernel -iso=./isoroot -iso-hybrid
+  fz -rollback-to 5.1.0
 `
 
 func HelpText() string {
