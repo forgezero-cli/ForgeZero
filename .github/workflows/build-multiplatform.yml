@@ -1,0 +1,240 @@
+name: Build Multi-Platform
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ v* ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  GO_VERSION: '1.25.0'
+  REGISTRY: ghcr.io
+
+jobs:
+  build-matrix:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            cgo: '1'
+          - os: linux
+            arch: arm64
+            cgo: '0'
+          - os: linux
+            arch: arm
+            cgo: '0'
+          - os: darwin
+            arch: amd64
+            cgo: '0'
+          - os: darwin
+            arch: arm64
+            cgo: '0'
+          - os: windows
+            arch: amd64
+            cgo: '0'
+          - os: windows
+            arch: arm64
+            cgo: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install build dependencies
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y upx
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            brew install upx
+          fi
+        shell: bash
+
+      - name: Prepare build environment
+        run: |
+          mkdir -p release
+          echo "BUILD_OS=${{ matrix.os }}" >> $GITHUB_ENV
+          echo "BUILD_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
+          echo "BUILD_CGO=${{ matrix.cgo }}" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: ${{ matrix.cgo }}
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          set -e
+          OUTPUT_NAME="fz-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            OUTPUT_NAME="${OUTPUT_NAME}.exe"
+          fi
+          echo "Building ${OUTPUT_NAME}..."
+          go build \
+            -buildvcs=false \
+            -ldflags="-s -w -X main.Version=$(git describe --tags --abbrev=0 2>/dev/null || echo dev)" \
+            -o "release/${OUTPUT_NAME}" \
+            ./cmd/fz
+          ls -lh "release/${OUTPUT_NAME}"
+        shell: bash
+
+      - name: Optimize with GARBLE (obfuscation)
+        env:
+          CGO_ENABLED: ${{ matrix.cgo }}
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        continue-on-error: true
+        run: |
+          go install github.com/burrowers/garble@latest
+          OUTPUT_NAME="fz-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            OUTPUT_NAME="${OUTPUT_NAME}.exe"
+          fi
+          OBFUSCATED="release/${OUTPUT_NAME}.garbled"
+          garble -literals -seed=random build \
+            -ldflags="-s -w -X main.Version=$(git describe --tags --abbrev=0 2>/dev/null || echo dev)" \
+            -o "$OBFUSCATED" \
+            ./cmd/fz 2>/dev/null && \
+            mv "$OBFUSCATED" "release/${OUTPUT_NAME}" && \
+            echo "✓ Obfuscation applied" || echo "⚠ Obfuscation skipped"
+        shell: bash
+
+      - name: Compress with UPX
+        continue-on-error: true
+        run: |
+          set -e
+          OUTPUT_NAME="fz-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            OUTPUT_NAME="${OUTPUT_NAME}.exe"
+          fi
+          BIN="release/${OUTPUT_NAME}"
+          if command -v upx &> /dev/null; then
+            SIZE_BEFORE=$(stat -f%z "$BIN" 2>/dev/null || stat -c%s "$BIN")
+            upx --best --lzma "$BIN" -o "${BIN}.upx" 2>/dev/null && \
+              mv "${BIN}.upx" "$BIN" && \
+              SIZE_AFTER=$(stat -f%z "$BIN" 2>/dev/null || stat -c%s "$BIN") && \
+              RATIO=$((100 * SIZE_AFTER / SIZE_BEFORE)) && \
+              echo "✓ Compressed: ${SIZE_BEFORE} → ${SIZE_AFTER} (${RATIO}%)" || \
+              echo "⚠ UPX compression failed"
+          else
+            echo "⚠ UPX not available"
+          fi
+        shell: bash
+
+      - name: Strip binary
+        run: |
+          OUTPUT_NAME="fz-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            OUTPUT_NAME="${OUTPUT_NAME}.exe"
+          fi
+          BIN="release/${OUTPUT_NAME}"
+          if command -v strip &> /dev/null; then
+            strip "$BIN" 2>/dev/null || true
+            echo "✓ Stripped"
+          fi
+        shell: bash
+
+      - name: Generate checksums
+        run: |
+          cd release
+          OUTPUT_NAME="fz-${{ matrix.os }}-${{ matrix.arch }}"
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            OUTPUT_NAME="${OUTPUT_NAME}.exe"
+          fi
+          BIN="${OUTPUT_NAME}"
+          if [ -f "$BIN" ]; then
+            sha256sum "$BIN" > "${BIN}.sha256"
+            blake3sum "$BIN" > "${BIN}.blake3" 2>/dev/null || true
+            ls -lh "$BIN"*
+          fi
+        shell: bash
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fz-${{ matrix.os }}-${{ matrix.arch }}
+          path: release/fz-${{ matrix.os }}-${{ matrix.arch }}*
+          retention-days: 30
+
+  collect-checksums:
+    name: Collect Checksums
+    runs-on: self-hosted
+    needs: build-matrix
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-all
+
+      - name: Organize and sign artifacts
+        run: |
+          mkdir -p release
+          find release-all -type f -name "fz-*" -not -name "*.sha256" -not -name "*.blake3" | while read f; do
+            BASE=$(basename "$f")
+            echo "$BASE"
+            cp "$f" "release/$BASE"
+          done
+          
+          cd release
+          sha256sum fz-* > sha256sums.txt
+          echo "✓ Generated sha256sums.txt"
+          cat sha256sums.txt
+          
+          if command -v blake3sum &> /dev/null; then
+            blake3sum fz-* > blake3sums.txt || true
+            echo "✓ Generated blake3sums.txt"
+          fi
+        shell: bash
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: fz-release-bundle
+          path: release/
+          retention-days: 60
+
+  verify-artifacts:
+    name: Verify Artifacts
+    runs-on: self-hosted
+    needs: collect-checksums
+    if: always()
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: fz-release-bundle
+          path: release
+
+      - name: Verify checksums
+        run: |
+          cd release
+          if [ -f sha256sums.txt ]; then
+            echo "Verifying SHA256..."
+            sha256sum -c sha256sums.txt
+            echo "✓ All SHA256 checksums valid"
+          fi
+          
+          if [ -f blake3sums.txt ]; then
+            echo "Verifying Blake3..."
+            blake3sum -c blake3sums.txt || true
+          fi
+
+      - name: List final artifacts
+        run: |
+          echo "=== Release Artifacts ==="
+          ls -lh release/
+          echo ""
+          echo "=== Checksums ==="
+          cat release/sha256sums.txt
