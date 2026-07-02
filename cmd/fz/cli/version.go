@@ -35,9 +35,9 @@ var BuildDate = "unknown"
 func VersionText() string {
     var b strings.Builder
     b.Grow(180)
-    b.WriteString("ForgeZero ")
+    b.WriteString("ForgeZero 2.0 (core ")
     b.WriteString(VersionCore)
-    b.WriteString(" [")
+    b.WriteString(") [")
     b.WriteString(VersionCodename)
     b.WriteString("] built on ")
     b.WriteString(BuildDate)
