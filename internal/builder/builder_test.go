@@ -18,6 +18,7 @@
 package builder
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -273,5 +274,50 @@ func TestBuildDirNoSupportedFiles(t *testing.T) {
 	_, err := BuildDir(context.Background(), []string{dir}, outBin, false, false, "auto", false, true, false, false, false, nil, nil, nil, nil, nil, 1, "executable")
 	if err == nil || !strings.Contains(err.Error(), "no supported files found") {
 		t.Fatalf("expected no supported files error, got %v", err)
+	}
+}
+
+func TestRAMCacheStoreAndRestore(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.asm")
+	if err := os.WriteFile(src, []byte("section .text\nglobal _start\n_start:\n  mov eax, 60\n  xor edi, edi\n  syscall\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	obj := filepath.Join(dir, "src.o")
+	if err := os.WriteFile(obj, []byte{1, 2, 3, 4}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(obj+".syms", []byte("SYMS"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeRAMCache(src, obj, false, "auto"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(obj); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(obj + ".syms"); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := restoreRAMCache(src, obj, false, "auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored {
+		t.Fatal("expected RAM cache restore")
+	}
+	got, err := os.ReadFile(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, []byte{1, 2, 3, 4}) {
+		t.Fatalf("unexpected restored object: %v", got)
+	}
+	gotSyms, err := os.ReadFile(obj + ".syms")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotSyms) != "SYMS" {
+		t.Fatalf("unexpected restored syms: %q", string(gotSyms))
 	}
 }
