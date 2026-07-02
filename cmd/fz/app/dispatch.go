@@ -18,17 +18,17 @@
 package app
 
 import (
-	"github.com/forgezero-cli/ForgeZero/cmd/fz/subcmd"
-	"github.com/forgezero-cli/ForgeZero/cmd/fz/stdio"
-	"github.com/forgezero-cli/ForgeZero/cmd/fz/cli"
-	"github.com/forgezero-cli/ForgeZero/cmd/fz/buildcmd"
 	"context"
 	"encoding/json"
-	"flag"
 	"os"
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"github.com/forgezero-cli/ForgeZero/cmd/fz/buildcmd"
+	"github.com/forgezero-cli/ForgeZero/cmd/fz/cli"
+	"github.com/forgezero-cli/ForgeZero/cmd/fz/stdio"
+	"github.com/forgezero-cli/ForgeZero/cmd/fz/subcmd"
 
 	"github.com/forgezero-cli/ForgeZero/internal/assembler"
 	"github.com/forgezero-cli/ForgeZero/internal/builder"
@@ -41,6 +41,7 @@ import (
 	"github.com/forgezero-cli/ForgeZero/internal/reverse"
 	"github.com/forgezero-cli/ForgeZero/internal/seal"
 	"github.com/forgezero-cli/ForgeZero/internal/updater"
+	"github.com/forgezero-cli/ForgeZero/internal/updater/rollback"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 	"github.com/forgezero-cli/ForgeZero/internal/watcher"
 	"gopkg.in/yaml.v3"
@@ -155,21 +156,33 @@ func HandleUpdate(flags *cli.Flags) bool {
 	return true
 }
 
+func HandleRollback(flags *cli.Flags) bool {
+	if flags.RollBackToFlag != "" {
+		if err := rollback.To(flags.RollBackToFlag); err != nil {
+			stdio.WriteFmt(2, "rollback failed: %v\n", err)
+			os.Exit(1)
+		}
+		return true
+	}
+	if flags.RollBackFlag {
+		if err := rollback.Run(); err != nil {
+			stdio.WriteFmt(2, "rollback failed: %v\n", err)
+			os.Exit(1)
+		}
+		return true
+	}
+	return false
+}
+
 func HandleVersion(flags *cli.Flags) bool {
-	if !flags.ShowVersion {
+	if !flags.ShowVersion && !flags.ShortVersion {
 		return false
 	}
 	if flags.JSONOutput {
 		report := stdio.BuildReport{Status: "info", ExitCode: 0, DurationMs: 0, Binary: cli.VersionCore}
 		_ = json.NewEncoder(os.Stdout).Encode(report)
 	}
-	isShort := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "v" {
-			isShort = true
-		}
-	})
-	if isShort {
+	if flags.ShortVersion {
 		stdio.WriteStdout(cli.VersionCore + "\n")
 	} else {
 		cli.OutputVersion()
