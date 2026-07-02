@@ -879,27 +879,25 @@ func TestMMapPath(t *testing.T) {
 	if err := os.WriteFile(path, []byte("hello world"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	data, err := mmapPath(path)
+	data, _, err := mmapPath(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(data) != "hello world" {
 		t.Errorf("got %q", data)
 	}
-	// small file test
 	small := filepath.Join(dir, "small")
 	if err := os.WriteFile(small, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	data, err = mmapPath(small)
+	data, _, err = mmapPath(small)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(data) != "x" {
 		t.Errorf("got %q", data)
 	}
-	// none
-	_, err = mmapPath("nonexistent")
+	_, _, err = mmapPath("nonexistent")
 	if err == nil {
 		t.Error("expected error")
 	}
