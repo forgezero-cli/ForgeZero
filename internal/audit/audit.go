@@ -165,7 +165,7 @@ var secretRules = []secretRule{
 	{ID: "rubygems-token", Pattern: regexp.MustCompile(`(?i)[0-9a-fA-F]{32,}`), Summary: "RubyGems API key found."},
 	{ID: "azure-connection-string", Pattern: regexp.MustCompile(`(?i)DefaultEndpointsProtocol=[^;]+;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]+`), Summary: "Azure storage connection string with account key found."},
 	{ID: "azure-service-bus", Pattern: regexp.MustCompile(`(?i)Endpoint=sb://[^;]+;SharedAccessKeyName=[^;]+;SharedAccessKey=[^;]+`), Summary: "Azure Service Bus connection string with shared access key found."},
-	{ID: "twitter-bearer", Pattern: regexp.MustCompile(`(?i)AAAAAAAAAAAAAAAAAAAA[0-9A-Za-z%]{80,}`), Summary: "Twitter Bearer token found."},
+	{ID: "twitter-bearer", Pattern: regexp.MustCompile(`(?i)AAAAAAAAAAAAAAAAAAAA[0-9A-Za-z%]{80,}`), Summary: "Twitter Bearer token found."}, 
 	{ID: "discord-webhook", Pattern: regexp.MustCompile(`(?i)https://discord\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+`), Summary: "Discord webhook URL found."},
 	{ID: "slack-webhook", Pattern: regexp.MustCompile(`(?i)https://hooks\.slack\.com/services/[A-Z0-9]+/[A-Z0-9]+/[A-Za-z0-9]+`), Summary: "Slack webhook URL found."},
 }
