@@ -1,0 +1,23 @@
+# Fz Package
+
+This package provides an implementation - or, more precisely, the use of logical implementations from the `internal` package - in the CLI space.
+
+> If you're wondering why the logic is split up, the simple answer is: areas of responsibility
+
+Let's imagine a situation where you've encountered an error somewhere in the CLI... Somewhere in `main.go`—that's where all the implementation is—and by moving things just a little to the right or left, you've broken some other logic. That's exactly why we have separation of concerns.
+
+### GPLv3
+This package—and indeed any other package—is released under the GPLv3 open-source license, which we encourage you to review. 
+
+### How to build?
+
+To build the project locally on your machine, use the `build.sh` script, which will compile the fz source code for you. Afterward, move it to your directory:
+```bash
+chmod +x build.sh
+./build.sh
+# Or 
+bash build.sh
+# After
+sudo mv fz /usr/local/bin
+fz --version
+```
