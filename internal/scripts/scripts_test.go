@@ -124,3 +124,48 @@ func TestScriptsConfigureRunMultipleCommandsFailureStops(t *testing.T) {
 		t.Fatalf("expected 2 calls, got %d", calls)
 	}
 }
+
+func TestScriptsConfigureRunBashInline(t *testing.T) {
+	oldInline := bashInline
+	defer func() { bashInline = oldInline }()
+
+	var gotScript string
+	bashInline = func(ctx context.Context, script string, verbose bool) error {
+		gotScript = script
+		if !verbose {
+			t.Fatal("expected verbose true")
+		}
+		return nil
+	}
+
+	s := &ScriptsConfigure{
+		Commands: []string{"bash:echo hello"},
+		Verbose:  true,
+	}
+
+	if err := s.Run(context.Background()); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if gotScript != "echo hello" {
+		t.Fatalf("expected bash script body passed through, got %q", gotScript)
+	}
+}
+
+func TestScriptsConfigureRunBashInlineError(t *testing.T) {
+	oldInline := bashInline
+	defer func() { bashInline = oldInline }()
+
+	bashInline = func(ctx context.Context, script string, verbose bool) error {
+		return errors.New("bash failure")
+	}
+
+	s := &ScriptsConfigure{
+		Commands: []string{"bash:echo hello"},
+		Verbose:  false,
+	}
+
+	err := s.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
