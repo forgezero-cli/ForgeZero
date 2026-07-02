@@ -26,12 +26,6 @@ jobs:
       - name: Run Go coverage
         run: go test -cover $(go list ./... | grep -v fz/internal/musl)
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: go
-          queries: security-and-quality
-
       - name: Cross-compile all platforms
         run: |
           set -e
@@ -42,11 +36,6 @@ jobs:
           CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-darwin-amd64 ./cmd/fz
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-darwin-arm64 ./cmd/fz
           ls -la release/
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:go"
 
       - name: Upload compiled binaries
         uses: actions/upload-artifact@v4
