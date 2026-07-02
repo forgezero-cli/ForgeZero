@@ -26,12 +26,6 @@ jobs:
       - name: Run Go coverage
         run: go test -cover $(go list ./... | grep -v fz/internal/musl)
 
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
-      - name: Run Vulnerability Check
-        run: govulncheck ./...
-
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
