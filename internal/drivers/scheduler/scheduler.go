@@ -20,12 +20,8 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"runtime"
 	"sync"
 	"sync/atomic"
-
-	"github.com/forgezero-cli/ForgeZero/internal/drivers/concurrency"
-	"github.com/forgezero-cli/ForgeZero/internal/drivers/workerpool"
 )
 
 var (
@@ -39,7 +35,7 @@ type Scheduler struct {
 	queues    *priorityQueues
 	pending   atomic.Int64
 	running   atomic.Bool
-	errMu     concurrency.Mutex
+	errMu     sync.Mutex
 	errs      []error
 }
 
@@ -102,61 +98,54 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		return nil
 	}
 
-	pool := workerpool.NewWorkerPool(s.poolSize)
-	done := make(chan struct{})
-	var doneOnce sync.Once
+	errCh := make(chan error, total)
+	var wg sync.WaitGroup
 
-	for i := int64(0); i < total; i++ {
+	for i := 0; i < s.poolSize; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				task, ok := s.queues.dequeue()
+				if !ok {
+					return
+				}
+				err := task(ctx)
+				if err != nil {
+					errCh <- err
+				}
+				if s.pending.Add(-1) == 0 {
+				}
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(errCh)
+	}()
+
+	var errs []error
+	for {
 		select {
+		case err, ok := <-errCh:
+			if !ok {
+				if len(errs) == 0 {
+					return nil
+				}
+				if len(errs) == 1 {
+					return errs[0]
+				}
+				return errAggregated
+			}
+			errs = append(errs, err)
 		case <-ctx.Done():
-			pool.Stop()
 			return ctx.Err()
-		default:
 		}
-		var t Task 
-		var ok bool 
-		for {
-			t, ok = s.queues.dequeue()
-			if ok {
-				break
-			}
-			select {
-			case <-ctx.Done():
-				pool.Stop()
-				return ctx.Err()
-			default:
-			}
-			runtime.Gosched()
-		}
-		task := t 
-		pool.Submit(func(c context.Context) error {
-			err := task(c)
-			if err != nil {
-				s.recordError(err)
-			}
-			if s.pending.Add(-1) == 0 {
-				doneOnce.Do(func() { close(done) })
-			}
-			return nil
-		})
 	}
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-		pool.Stop()
-		return ctx.Err()
-	}
-
-	pool.Stop()
-
-	s.errMu.Lock()
-	defer s.errMu.Unlock()
-	if len(s.errs) == 0 {
-		return nil
-	}
-	if len(s.errs) == 1 {
-		return s.errs[0]
-	}
-	return errAggregated
 }
