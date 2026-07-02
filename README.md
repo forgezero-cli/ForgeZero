@@ -15,7 +15,7 @@
         <img src="pictures/fz.jpg" alt="ForgeZero Logo" width="180" />
       </td>
       <td style="vertical-align:middle; border:none;">
-        <h3 style="margin:0 0 8px 0;">ForgeZero — zero-overhead build tool for assembly, C, and Gloria</h3>
+        <h3 style="margin:0 0 8px 0;">ForgeZero 2.0 — zero-overhead build tool for assembly, C, and Gloria</h3>
         <p style="margin:0; color:#555;">One command. Any assembler. Any platform. Zero allocations.</p>
         <br/>
         <img src="https://img.shields.io/github/go-mod/go-version/forgezero-cli/ForgeZero" alt="Go Version"/>
