@@ -94,6 +94,18 @@ func UpdateSelf(currentVersion string) error {
 		return nil
 	}
 	os.Stdout.WriteString("New version available: " + latest + " (current: " + currentVersion + ")\n")
+	return installAsset(latest)
+}
+
+func InstallVersion(version string) error {
+	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	if version == "" {
+		return errors.New("version required")
+	}
+	return installAsset(version)
+}
+
+func installAsset(latest string) error {
 	asset := assetName()
 	dl := "https://github.com/forgezero-cli/ForgeZero/releases/download/v" + latest + "/" + asset
 	u, err := url.Parse(dl)
@@ -121,16 +133,9 @@ func UpdateSelf(currentVersion string) error {
 	if resp.ContentLength > 0 && resp.ContentLength > maxSize {
 		return errors.New("asset too large: " + strconv.FormatInt(resp.ContentLength, 10) + " bytes")
 	}
-	exePath, err := executablePathFunc()
+	exePath, err := resolveExecutable()
 	if err != nil {
-		return errors.New("locate executable: " + err.Error())
-	}
-	exePath = filepath.Clean(exePath)
-	if !filepath.IsAbs(exePath) {
-		exePath, err = filepath.Abs(exePath)
-		if err != nil {
-			return errors.New("executable path abs: " + err.Error())
-		}
+		return err
 	}
 	dir := filepath.Dir(exePath)
 	tmp, err := os.CreateTemp(dir, "fz_update_*")
@@ -180,5 +185,44 @@ func UpdateSelf(currentVersion string) error {
 		return errors.New("set executable mode: " + err.Error())
 	}
 	os.Stdout.WriteString("Update successful: " + exePath + "\n")
+	return nil
+}
+
+func resolveExecutable() (string, error) {
+	exePath, err := executablePathFunc()
+	if err != nil {
+		return "", errors.New("locate executable: " + err.Error())
+	}
+	exePath = filepath.Clean(exePath)
+	if !filepath.IsAbs(exePath) {
+		exePath, err = filepath.Abs(exePath)
+		if err != nil {
+			return "", errors.New("executable path abs: " + err.Error())
+		}
+	}
+	return exePath, nil
+}
+
+func RestoreBackup() error {
+	exePath, err := resolveExecutable()
+	if err != nil {
+		return err
+	}
+	backupPath := exePath + ".old"
+	if _, err := os.Stat(backupPath); err != nil {
+		return errors.New("no backup available to roll back to")
+	}
+	swap := exePath + ".swap"
+	if err := os.Rename(exePath, swap); err != nil {
+		return errors.New("stage current binary: " + err.Error())
+	}
+	if err := os.Rename(backupPath, exePath); err != nil {
+		_ = os.Rename(swap, exePath)
+		return errors.New("restore backup: " + err.Error())
+	}
+	if err := os.Rename(swap, backupPath); err != nil {
+		return errors.New("rotate backup: " + err.Error())
+	}
+	os.Stdout.WriteString("Rolled back: " + exePath + "\n")
 	return nil
 }
