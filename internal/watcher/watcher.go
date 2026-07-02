@@ -14,7 +14,6 @@
  *   You should have received a copy of the GNU General Public License
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package watcher
 
 import (
@@ -64,6 +63,9 @@ func (w *Watcher) AddRecursive(root string) error {
 			return err
 		}
 		if info.IsDir() {
+			if shouldIgnore(path) {
+				return filepath.SkipDir
+			}
 			return w.watcher.Add(path)
 		}
 		return nil
@@ -93,26 +95,46 @@ func (w *Watcher) Watch(debounceDelay time.Duration, handler EventHandler) {
 	}()
 
 	timer := time.NewTimer(debounceDelay)
-	timer.Stop()
+	if !timer.Stop() {
+		<-timer.C
+	}
+
+	resetTimer := func() {
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(debounceDelay)
+	}
+
 	for {
 		select {
 		case <-w.events:
-			timer.Reset(debounceDelay)
+			resetTimer()
 		case <-timer.C:
 			if err := handler("change"); err != nil {
 				os.Stderr.WriteString("rebuild error: " + err.Error() + "\n")
 			}
-			timer.Stop()
 		case <-w.done:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
 			return
 		}
 	}
 }
 
 func shouldIgnore(name string) bool {
-	base := filepath.Base(name)
-	if strings.HasPrefix(base, ".fz_objs") || strings.HasPrefix(base, ".fz_cache") {
-		return true
+	parts := strings.Split(filepath.ToSlash(name), "/")
+	for _, p := range parts {
+		if strings.HasPrefix(p, ".fz_objs") || strings.HasPrefix(p, ".fz_cache") {
+			return true
+		}
 	}
 	ext := strings.ToLower(filepath.Ext(name))
 	if ext == ".o" || ext == ".out" || ext == ".exe" {
