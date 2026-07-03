@@ -4,7 +4,7 @@
   <table style="border:none; background:transparent;">
     <tr>
       <td style="vertical-align:middle; padding-right:32px; border:none;">
-        <img src="../pictures/fz.jpg" alt="ForgeZero Logo" width="180" />
+        <img src="pictures/fz.jpg" alt="ForgeZero Logo" width="180" />
       </td>
       <td style="vertical-align:middle; border:none;">
         <h3 style="margin:0 0 8px 0;">ForgeZero 2.0 — zero-overhead build tool for assembly, C, and Gloria</h3>
