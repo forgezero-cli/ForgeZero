@@ -406,7 +406,7 @@ Reports that cannot be reproduced from the information provided may be closed wi
 
 ## License
 
-By submitting a contribution, you agree that your work will be licensed under the [MIT License](./LICENSE) that covers this project.
+By submitting a contribution, you agree that your work will be licensed under the [GPLv3](./LICENSE) that covers this project.
 
 ---
 
