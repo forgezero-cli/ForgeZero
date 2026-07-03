@@ -1,5 +1,6 @@
 # After delete
 CHANGELOG
+FULL_DOCS.md
 # Binary files (Output)
 builds/
 .idea
@@ -48,9 +49,9 @@ test.sh
 bench/*
 TODO.md
 cmake_bench/
+super.sh
 .venv
 // After remove
-docs/*
 CONTRIBUTING_USER.md
 blake3.manifest
 .fzignore
