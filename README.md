@@ -133,7 +133,10 @@ When we scale up to huge, multi-module codebases, the architectural gap widens e
 # Clone and build ForgeZero
 git clone https://github.com/forgezero-cli/ForgeZero
 cd ForgeZero
-go build -o fz ./cmd/fz
+chmod +x build.sh
+./build.sh
+# Or
+bash build.sh 
 
 # Run the benchmark script (generates N test modules and runs hyperfine)
 ./bench.sh  # Edit NUM_MODULES in script for different module counts
