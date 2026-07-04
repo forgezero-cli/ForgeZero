@@ -1,0 +1,143 @@
+ForgeZero
+=========
+
+ForgeZero is a zero-overhead build tool for assembly, C, C++, Objective-C,
+and Gloria. It wraps NASM, GAS, FASM, GCC, Clang, Zig, and LD behind a
+single command-line interface, and provides fast, allocation-free builds
+without Makefiles or configuration.
+
+Quick Start
+-----------
+
+* Report a bug: https://github.com/forgezero-cli/ForgeZero/issues
+* Get the latest release: https://github.com/forgezero-cli/ForgeZero
+* Build ForgeZero: See docs/02-installation.md
+* Build your project with fz: See docs/03-quickstart-usage.md
+
+Essential Documentation
+------------------------
+
+All users should be familiar with:
+
+* Build modes & languages: docs/04-modes-languages.md
+* CLI reference: docs/05-cli-build-reference.md
+* Configuration file: docs/09-config-file-reference.md
+* License: See LICENSE
+
+Full documentation index: docs/99-contents.md
+
+
+Who Are You?
+============
+
+Find your role below:
+
+* New User - Building a project with fz for the first time
+* Assembly Developer - Writing NASM, GAS, or FASM sources
+* C / C++ / Objective-C Developer - Building with GCC, Clang, or Zig
+* Gloria Developer - Writing and compiling Gloria sources
+* Security Auditor - SBOM generation and SAST review
+* Release Engineer - Reproducible and verifiable builds
+* Cross-Compilation / Embedded Engineer - Targeting non-host platforms
+* WebAssembly Developer - Building WASM targets
+* Contributor - Extending or fixing ForgeZero itself
+
+
+For Specific Users
+===================
+
+New User
+--------
+
+Start here:
+
+* Installation: docs/02-installation.md
+* Quick Start & Usage: docs/03-quickstart-usage.md
+* Exit Codes & Troubleshooting: docs/15-exit-codes-troubleshooting.md
+
+Assembly Developer
+-------------------
+
+* Build Modes & Extensions: docs/04-modes-languages.md
+* Assembler Backends: docs/10-backends-asm-linker-zig.md
+* CLI Build Reference: docs/05-cli-build-reference.md
+
+C / C++ / Objective-C Developer
+---------------------------------
+
+* Language Guide: docs/06-c-cpp-objc.md
+* Build Modes & Extensions: docs/04-modes-languages.md
+* CLI Build Reference, Profiles & Linking: docs/05-cli-build-reference.md
+* Zig Backend: docs/10-backends-asm-linker-zig.md
+
+Gloria Developer
+------------------
+
+* Gloria Language: docs/07-gloria-language.md
+* Build Modes & Extensions: docs/04-modes-languages.md
+
+Security Auditor
+------------------
+
+* Supply Chain Security (SBOM + SAST): docs/11-supply-chain-security.md
+* Aegis Security Core: docs/91-internals-security-core.md
+* Virtual Filesystem Layer (Aegis): docs/90-internals-aegis.md
+
+Release Engineer
+------------------
+
+* Reproducible Builds, Verify, Bench: docs/12-reproducible-integrity-bench.md
+* Supply Chain Security: docs/11-supply-chain-security.md
+
+Cross-Compilation / Embedded Engineer
+----------------------------------------
+
+* Cross-Compilation Targets: docs/08-cross-compilation-targets.md
+* Configuration File Reference: docs/09-config-file-reference.md
+
+WebAssembly Developer
+------------------------
+
+* WASM & Web Targets: docs/13-wasm-web-targets.md
+
+Contributor
+-------------
+
+* Project Tools (init, contribute, LSP, update): docs/14-project-tools.md
+* Doctor, Platform Readiness, Testing Standards: docs/92-internals-doctor-platform-testing.md
+* HADES Engine, Contributing, License: docs/93-internals-hades-contributing-license.md
+* Roadmap: docs/16-roadmap.md
+
+
+Performance
+===========
+
+Measured against `nasm -f elf64 && ld` and `make -j4`, via hyperfine
+(warmup 3, >= 10 runs). Test system: Intel Core i5-10310U (4C/8T,
+1.7 GHz base), Arch Linux, NVMe SSD.
+
+    modules     fz              make -j4          speedup
+    -------     --------------  ----------------  -------
+    20          19.3 +- 1.2 ms  45.4  +- 2.3  ms   2.35x
+    50          31.1 +- 1.3 ms  85.0  +- 2.1  ms   2.73x
+    100         57.0 +- 5.3 ms  185.5 +- 7.7  ms   3.25x
+    150         73.1 +- 4.3 ms  229.3 +- 3.6  ms   3.14x
+    200         82.2 +- 4.2 ms  291.1 +- 11.2 ms   3.54x
+    400         223.1 +- 9.8 ms 1105.0 +- 24.1 ms  4.95x
+
+Stress test, 5000 C files, AMD Ryzen 7 PRO 4750U (16 threads):
+
+    ninja -j16    ~28.9 s
+    fz            ~597 ms   (47.3x; 98% utilization across
+                              16 threads; ~47 MB resident)
+
+Full benchmark methodology and reproduction steps: docs/01-overview-perf.md
+
+
+Communication and Support
+==========================
+
+* Issues: https://github.com/forgezero-cli/ForgeZero/issues
+* Source: https://github.com/forgezero-cli/ForgeZero
+* Author: alexvoste <https://github.com/alexvoste>
+* License: GPLv3 - see LICENSE
