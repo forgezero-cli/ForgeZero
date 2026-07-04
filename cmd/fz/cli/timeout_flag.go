@@ -16,11 +16,3 @@
  */
 
 package cli
-
-// TODO: Timeout prefix, example: -timeout <arg> -> -timeout 120 -> 120seconds(2 min)
-// To internal/timeout i made impelemt to timeout
-import (
-	"github.com/forgezero-cli/forgezero/internal/timeout/"
-)
-
-timeout 
