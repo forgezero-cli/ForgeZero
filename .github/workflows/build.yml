@@ -10,14 +10,6 @@ jobs:
   test-and-build:
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
-      - name: Inject SSH Key (Self-hosted only)
-        if: github.event_name != 'pull_request'
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          echo "${{ secrets.MY_SSH_KEY }}" >> ~/.ssh/authorized_keys
-          chmod 600 ~/.ssh/authorized_keys
-
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
