@@ -1,0 +1,173 @@
+FORGEZERO INSTALL
+==============================================================================
+
+REQUIRED TOOLS PER SOURCE TYPE
+------------------------------------------------------------------------------
+
+  .asm                nasm              x86/x86-64 Intel syntax
+  .s  / .S            gcc (drives as)   AT&T syntax; .S is C-preprocessed
+  .fasm               fasm              Not bundled; get from
+                                         flatassembler.net
+  .c                  gcc or clang      Strict flags + sanitizers by default
+  .cpp .cc .cxx       g++ or clang++    Same strict flags as C
+  .m                  clang or zig cc   Objective-C; auto framework linking
+  .glo                built-in (HADES)  No external tool required
+
+REQUIRED LINKER TOOLS
+------------------------------------------------------------------------------
+
+  gcc     Default linking, C runtime support
+  ld      Raw linking (-mode raw), linker scripts, direct -ld invocation
+  clang   Strict sanitizer mode (-strict), Objective-C compilation
+  ar      Static library mode (-type static)
+
+CROSS-COMPILATION TOOLS (OPTIONAL)
+------------------------------------------------------------------------------
+
+  When using -target <triple>, fz looks for prefixed toolchain binaries
+  on PATH:
+
+    arm-linux-gnueabihf    arm-linux-gnueabihf-gcc
+    aarch64-linux-gnu      aarch64-linux-gnu-gcc
+    riscv64-linux-gnu      riscv64-linux-gnu-gcc
+    riscv64-linux-musl     riscv64-linux-musl-gcc, or -zig
+    x86_64-linux-gnu       x86_64-linux-gnu-gcc
+
+  When using -zig, no prefixed toolchain is required; Zig resolves the
+  target internally.
+
+OPTIONAL TOOLS (USED INTERNALLY)
+------------------------------------------------------------------------------
+
+  nm          Pre-link duplicate symbol check, primary
+  objdump     Fallback for symbol check
+  readelf     Second fallback for symbol check
+  git         Required for fz pm add
+  zig         Required for -zig backend
+  emcc        Required for wasm32-emscripten target
+  hyperfine   Benchmarking (fz bench and bench.sh), optional
+
+  Go 1.21 or later is required only to build fz from source.
+
+------------------------------------------------------------------------------
+DEBIAN / UBUNTU
+------------------------------------------------------------------------------
+
+  sudo apt update
+  sudo apt install -y nasm gcc binutils git
+  sudo apt install -y clang
+  sudo apt install -y gcc-arm-linux-gnueabihf
+  sudo apt install -y gcc-aarch64-linux-gnu
+  sudo apt install -y gcc-riscv64-linux-gnu
+
+  Zig, optional:
+    wget https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+    tar -xf zig-linux-x86_64-0.13.0.tar.xz
+    sudo mv zig-linux-x86_64-0.13.0 /opt/zig
+    echo export PATH="$PATH:/opt/zig" >> ~/.bashrc
+
+  FASM, optional:
+    wget https://flatassembler.net/fasm-1.73.32.tgz
+    tar -xzf fasm-1.73.32.tgz
+    sudo cp fasm/fasm /usr/local/bin/
+    chmod +x /usr/local/bin/fasm
+
+  Install fz:
+    go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
+    echo export PATH="$PATH:$(go env GOPATH)/bin" >> ~/.bashrc
+    fz -v
+
+------------------------------------------------------------------------------
+FEDORA / RHEL / CENTOS
+------------------------------------------------------------------------------
+
+  Fedora:
+    sudo dnf install -y nasm gcc binutils clang git
+
+  RHEL / CentOS, nasm requires EPEL:
+    sudo dnf install -y epel-release
+    sudo dnf install -y nasm gcc binutils clang git
+
+  go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
+
+------------------------------------------------------------------------------
+ARCH LINUX / MANJARO
+------------------------------------------------------------------------------
+
+  sudo pacman -S --noconfirm nasm gcc binutils clang git zig
+  yay -S fasm     (AUR)
+  go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
+
+------------------------------------------------------------------------------
+OPENSUSE
+------------------------------------------------------------------------------
+
+  sudo zypper install -y nasm gcc binutils clang git
+  go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
+
+------------------------------------------------------------------------------
+MACOS
+------------------------------------------------------------------------------
+
+  Support is in progress per source. The following setup covers most
+  current use cases.
+
+    /bin/bash -c "$(curl -fsSL
+      https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    brew install nasm gcc go git zig
+    go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
+    echo export PATH="$PATH:$(go env GOPATH)/bin" >> ~/.zshrc
+    fz -v
+
+  Note: the Darwin syscall layer is stubbed. Builds succeed; runtime
+  behavior is stated as untested. Objective-C on macOS requires Xcode
+  Command Line Tools (xcode-select --install).
+
+------------------------------------------------------------------------------
+WINDOWS
+------------------------------------------------------------------------------
+
+  Option A, WSL2, recommended:
+    wsl --install
+    (restart, open Ubuntu, follow the Debian/Ubuntu section above)
+
+  Option B, native Windows, experimental, via MSYS2:
+    1. Install MSYS2 from msys2.org. In the MSYS2 MinGW 64-bit shell:
+         pacman -Syu
+         pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils
+         pacman -S mingw-w64-x86_64-clang git
+    2. Install NASM for Windows from nasm.us.
+    3. Add to PATH: msys64 mingw64 bin, the NASM install directory,
+       and the go bin directory.
+    4. Install Go from go.dev/dl.
+    5. go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
+
+  Known limitation: -sanitize and -strict require a Windows Clang
+  build with AddressSanitizer support; not covered by plain MSYS2.
+
+  Run fz doctor immediately after install to confirm PATH and
+  directory permissions.
+
+------------------------------------------------------------------------------
+BUILD FROM SOURCE, ALL PLATFORMS
+------------------------------------------------------------------------------
+
+  git clone https://github.com/forgezero-cli/ForgeZero.git
+  cd ForgeZero
+  go build -o fz ./cmd/fz/main.go        (Linux / macOS)
+  go build -o fz.exe ./cmd/fz/main.go    (Windows)
+
+  go test ./...
+  go test ./internal/... -cover
+
+  sudo mv fz /usr/local/bin/                         (Linux / macOS)
+  Move-Item fz.exe C:\Windows\System32\fz.exe         (Windows, Admin)
+
+------------------------------------------------------------------------------
+GO INSTALL, SHORTEST PATH
+------------------------------------------------------------------------------
+
+  go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
+
+  fz -v         short version string
+  fz --version  full platform / build metadata block

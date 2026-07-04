@@ -1,0 +1,242 @@
+FORGEZERO INTERNALS
+==============================================================================
+
+VIRTUAL FILESYSTEM LAYER, AEGIS
+------------------------------------------------------------------------------
+
+  Package internal/fs. Consumers: internal/utils, internal/doctor,
+  internal/verify, internal/sbom, internal/pkgman. All durable and
+  security-sensitive I/O routes through a FileSystem interface rather
+  than direct os.Open / os.WriteFile / os.Rename calls, to enable
+  deterministic fault-injection tests and to centralize symlink and
+  path-substitution defenses in one audited path.
+
+  Interface surface: MkdirAll, WriteFile, ReadFile, Open, OpenVerified,
+  CreateTemp, Remove, RemoveAll, Rename, Stat, Lstat, ReadDir, Chmod,
+  Readlink, EvalSymlinks, SameFile. fs.Default is bound to Unix{} or
+  Windows{} at compile time via build tags.
+
+  OpenVerified on Unix, TOCTOU mitigation:
+    1. Lstat the path, metadata without following a final symlink.
+    2. If the path is itself a symlink, reject outright
+       (ErrSymlink); Lstat inspects the link node itself rather than
+       following it, which is why Lstat is used instead of Stat.
+    3. Open the path, then Stat the opened file descriptor.
+    4. Compare identity (os.SameFile) between the pre-open Lstat
+       result and the post-open Stat result; a mismatch means the
+       path changed between check and use (ErrPathChanged), closing
+       the classic check-then-use race window.
+
+  Windows implementation is a separate compilation unit selected by
+  build tags (unix.go / default_unix.go / rename_unix.go for
+  !windows; windows.go / default_windows.go / rename_windows.go for
+  windows), not a runtime branch. pathnorm.go (CleanPath,
+  HasDrivePrefix, IsUNC, NormalizeAbs) is shared across platforms.
+  OpenVerified on Windows follows the same logical steps as Unix.
+
+  fs.Mock is a test double that injects per-operation errors
+  (ErrDiskFull, ErrPermission, ErrTimeout, ErrInterrupted, ErrSymlink,
+  ErrPathChanged) via SetFailOp / SetFail, swapped in at runtime with
+  utils.SetFileSystem for tests only.
+
+  Consumer integration: SecureWriteFile uses MkdirAll, CreateTemp,
+  Chmod, write, close, Rename, Chmod. ReadFileSecure uses
+  ResolveSecurePath then OpenVerified then read. CopyFile uses
+  OpenVerified on the source, a temp file, then Rename. StatResolved
+  and ReadDirResolved use Stat/ReadDir on already-resolved paths.
+
+AEGIS SECURITY CORE
+------------------------------------------------------------------------------
+
+  Packages: internal/utils, internal/fs, internal/pkgman,
+  internal/assembler, internal/linker, internal/zig.
+
+  Command hardening, the RunCommand pipeline. Every external process
+  fz spawns (git, ar, zig, fasm, gcc, g++, clang, ld, nasm, objdump,
+  nm, readelf) passes through utils.RunCommand:
+    stage 1  argument validation: ValidateCLIArg rejects shell
+             metacharacters, backticks, pipes, redirection symbols,
+             embedded NUL/newline bytes
+    stage 2  absolute executable resolution via exec.LookPath; no
+             bare-name invocations
+    stage 3  per-argument sanitization, preventing injection via
+             malicious config flags or crafted filenames
+    stage 4  fixed environment: LC_ALL=C, LANG=C (stable locale
+             sorting/diagnostics), TZ=UTC (reproducible timestamps),
+             SOURCE_DATE_EPOCH=1600000000 (aligns with reproducible
+             build expectations)
+    stage 5  cmd.Dir set to the project execution root, so relative
+             paths in tool invocations resolve inside the project tree
+
+  Atomic writes, SecureWriteFile. atomicWrite algorithm: CreateTemp in
+  the destination directory (same volume, for atomic rename), Chmod
+  the temp file to 0600, write the full payload, Close (flush to
+  kernel), rename the temp file over the resolved destination, Chmod
+  the destination to 0600. Files written this way: .fz.yaml updates
+  from fz pm, .fz.manifest, compile_commands.json, SBOM output,
+  CONTRIBUTING_USER.md, and fz -init templates.
+
+  Constant-time toolchain checksum verification. .fz.yaml may specify
+  expected BLAKE3 digests per tool binary under tool_checksums (e.g.
+  gcc, nasm). Comparison uses crypto/subtle.ConstantTimeCompare to
+  remove timing side channels; a mismatch fails the build before any
+  compilation with a "tool checksum mismatch" error.
+
+  Execution root and path confinement: EnsureInsideRoot,
+  HashDirWithRoot, and doctor's scanTree use ResolveSecurePath to
+  ensure scanned paths do not escape the root via symlinks or ".."
+  segments after evaluation; described as an invariant, not a
+  configurable option.
+
+SYSTEM SELF-AUDIT, fz doctor
+------------------------------------------------------------------------------
+
+  Package internal/doctor. A pre-flight diagnostic; it does not
+  compile code. It answers whether the current machine satisfies fz's
+  minimum operational requirements.
+
+    fz doctor
+    fz doctor -root /path/to/project
+    fz doctor -json
+    fz doctor -root ./myapp -json
+
+  Four-stage audit pipeline:
+    stage A  toolchain reachability: probes zig (required), fasm
+             (required on non-Windows), wasm-ld (optional)
+    stage B  recursive permission audit: writes .fz_doctor_probe via
+             SecureWriteFile, walks the entire tree with
+             OpenVerifiedRead on every regular file, counts
+             DirsScanned and FilesSeen
+    stage C  platform integrity: goos, goarch, filesystem
+             implementation name (unix/windows), execution root, CPU
+             count
+    stage D  health aggregation: healthy is false if any required
+             tool is missing, or if readable/writable is false
+
+  CI gate usage: fz doctor -json | jq -e ".healthy"
+
+CROSS-PLATFORM READINESS
+------------------------------------------------------------------------------
+
+  Backend selection is compile-time via GOOS build tags, not a
+  runtime if runtime.GOOS branch inside OpenVerified:
+    GOOS=linux    compiles unix.go, default_unix.go, rename_unix.go
+    GOOS=windows  compiles windows.go, default_windows.go,
+                  rename_windows.go
+    GOOS=darwin   compiles unix.go with a stubbed syscall layer;
+                  builds succeed, runtime behavior is stated as
+                  untested
+
+  Platform-specific syscall drivers: Linux uses golang.org/x/sys/unix
+  with direct SYS_OPENAT/SYS_UNLINKAT; Windows uses
+  golang.org/x/sys/windows with CreateFile/ReadFile/WriteFile; Darwin
+  uses a stubbed syscall layer (builds succeed, runtime untested).
+  openHot and unlinkHot use fixed-size stack buffers for UTF-8 path
+  conversion on all platforms, described as achieving zero heap
+  allocation in the hot path.
+
+  Atomic rename on Windows uses bounded retry (up to 8 attempts,
+  10ms/20ms/30ms.../80ms backoff) to tolerate sharing violations from
+  antivirus or indexing software holding a handle.
+
+  Cross-architecture validation: builds verified for amd64 and arm64
+  across Linux, Windows, and Darwin, with no CGO dependencies (pure Go
+  plus static C linkage where required); binary digests are described
+  as stable across rebuilds with identical inputs on validated
+  platforms.
+
+TESTING STANDARDS
+------------------------------------------------------------------------------
+
+  Coverage targets by package: internal/pkgman, internal/fs,
+  internal/doctor, internal/config, internal/zig, and internal/gloria
+  at 90 percent or higher; internal/man at 100 percent;
+  internal/assembler in the high 80s to 90s percent; internal/linker
+  in the high 70s to 80s percent.
+
+  Zero-allocation enforcement: allocation-tracking benchmarks for
+  Linux and Windows targets enforce zero-allocation guarantees in
+  critical paths (BenchmarkCopyFileHot, BenchmarkResolveSymbols,
+  BenchmarkEmitRelocations all expected at 0 allocs/op, 0 B/op).
+  Failure on any allocs/op above 0 in hot-path benchmarks blocks
+  merge.
+
+  Fault injection via fs.Mock, e.g. forcing CreateTemp to fail with
+  ErrDiskFull and asserting SecureWriteFile returns an error with no
+  partial final file written.
+
+  Race and integration: go test ./... -race; go test
+  ./internal/... -coverprofile=coverage.out; go tool cover
+  -func=coverage.out.
+
+  Static analysis: 100 percent compliance with golangci-lint under
+  strict configuration (gofmt, govet, staticcheck, unused enabled),
+  zero lint warnings in the main branch, required on all PRs.
+
+  Gloria test infrastructure: patchVGA() replaces the compile-time
+  0xB8000 constant with a heap-allocated fake VGA buffer for the
+  duration of a test, undone via t.Cleanup; dumpVGA() renders that
+  buffer to stdout via syscall.Write with zero heap allocations, used
+  in golden-file tests to verify expected screen output.
+
+  Contributor requirements for PRs touching internal/fs,
+  internal/utils I/O or RunCommand, internal/doctor, or
+  internal/gloria: table-driven tests for new branches, fs.Mock or
+  existing seams for failure paths, no regression below the 90
+  percent coverage bar, go test ./... passing locally, golangci-lint
+  strict mode passing, and benchmark assertions for new hot-path code
+  at 0 allocs/op.
+
+HADES ENGINE, CODEGEN AND ELF EMISSION
+------------------------------------------------------------------------------
+
+  The HADES engine is fz's integrated codegen and ELF emission layer,
+  transforming parsed AST nodes into deterministic ELF64 object files
+  without external assembler binaries for supported instruction sets.
+  It is the exclusive backend for Gloria (.glo) source and is also
+  used internally for hot-path object emission in the linker.
+
+  ELF emitter refactor:
+    - symbol table ordering: local symbols are unconditionally
+      emitted before global symbols in .symtab, satisfying strict
+      linker compliance; earlier versions emitted symbols in parse
+      order, which could produce technically-linkable but
+      non-compliant objects
+    - absolute relocation offsets: call/jmp target resolution is
+      recalculated to correctly compute absolute relocation offsets,
+      validated via a factorial execution test producing exit code
+      120 (factorial of 5)
+    - instruction/label disambiguation: the lexer/parser boundary
+      strictly separates CPU instruction mnemonics from user-defined
+      labels, eliminating prior ambiguity where certain two-character
+      mnemonics at column zero could be misidentified as label
+      prefixes
+
+  Parser integrity guards: malformed input that previously produced
+  incomplete or silently incorrect AST nodes now triggers an explicit
+  malformed-AST error before codegen begins; silent fallback
+  degradation into a broken-but-structurally-valid ELF is described as
+  no longer possible.
+
+  Codegen zero-allocation path: resolveSymbols, emitRelocations, and
+  copyFileHot are refactored to eliminate all heap allocations from
+  the hot path, using fixed-capacity stack-allocated intermediate
+  buffers; the pipeline is stated to run at hardware memory bandwidth
+  limits, about 1.18 GB/s on the Intel i5-10310U test machine, with
+  zero GC interference.
+
+  Extended instruction emission: emitMovMemToReg64 and
+  emitMovRegToMem64 for arbitrary 64-bit memory reads/writes;
+  emitPushReg / emitPopReg extended to registers R8 through R15;
+  emitBareMetalPrint writes directly to the VGA framebuffer at
+  0xB8000; emitLowLevelPrint dispatches to sys_write in userspace or
+  the VGA path in kernel mode. parseStringLiteral resolves \n and \t
+  escapes at compile time, so no runtime string scanning occurs.
+
+  Direct linker bypass, -ld: exposes the HADES linker invocation
+  directly, bypassing the gcc/clang wrapper used in -mode auto and
+  -mode c. Distinct from -mode raw, which selects ld over gcc at the
+  linking stage; -ld removes the compiler driver from the picture
+  entirely at the build orchestration level. Overhead reduction is
+  about 3 to 5 percent on small projects; on large builds dominated by
+  codegen, the difference is described as negligible.
