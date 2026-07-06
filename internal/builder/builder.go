@@ -96,6 +96,9 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 }
 
 func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int, buildType string) (*BuildResult, error) {
+	ApplyHostDetection(cfg)
+	jobs = AdjustJobs(jobs)
+
 	if len(dirs) == 0 {
 		dirs = []string{"."}
 	}
@@ -174,7 +177,33 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 
 	objDir := joinPath(filepath.Dir(outBin), ".fz_objs")
 	cacheDir := joinPath(filepath.Dir(outBin), ".fz_cache")
+	
+
 	effectiveCache := determineCacheMode(cfg, noCache)
+	var hashCache map[string][32]byte
+
+	if cacheDir != "" {
+	
+		assembler.SetPCHCacheDir(filepath.Join(cacheDir, "pch"))
+	
+	}
+
+	if effectiveCache != cacheOff {
+		var err error
+		hashCache, err = loadHashCache(cacheDir)
+		if err != nil {
+			if verbose {
+				os.Stdout.WriteString("Warning: failed to load hash cache: " + err.Error() + "\n")
+			}
+			hashCache = nil
+		}
+	}
+	
+
+	if err := refreshSourceHashes(dirs); err != nil {
+		return nil, errors.New("failed to refresh source hashes: " + err.Error())
+	}
+
 	if err := utils.SecureMkdirAll(joinPath(objDir, ".keep")); err != nil {
 		return nil, errors.New("cannot create object temp dir: " + err.Error())
 	}
@@ -239,16 +268,20 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 
 	sort.Slice(pairs, func(i, j int) bool { return pairs[i].obj < pairs[j].obj })
 
+	depGraph, err := buildDependencyGraph(pairs)
+	if err != nil && verbose {
+		os.Stdout.WriteString("Warning: could not build dependency graph: " + err.Error() + "; falling back to flat build\n")
+	}
+	useDAG := (err == nil && depGraph != nil && len(depGraph) == len(pairs))
+
 	if jobs <= 0 {
 		jobs = 1
 	}
 
-	sched := scheduler.NewScheduler(jobs, len(pairs)*2)
-	for i := range pairs {
-		p := pairs[i]
-		sched.SubmitBlocking(func(taskCtx context.Context) error {
-			needAssemble := true
-			if effectiveCache != cacheOff {
+	buildOne := func(p pair) error {
+		needAssemble := true
+		if effectiveCache != cacheOff && hashCache != nil {
+			if oldHash, ok := hashCache[p.src]; ok && oldHash == sourceHashes[p.src] {
 				if effectiveCache == cacheRAM {
 					restored, err := restoreRAMCache(p.src, p.obj, debug, mode)
 					if err != nil {
@@ -294,45 +327,74 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 					}
 				}
 			}
-			if needAssemble {
-				if verbose {
-					os.Stdout.WriteString("Assembling " + p.src + " -> " + p.obj + "\n")
-				}
-				var mbuf [512]byte
-				n := copy(mbuf[:], "assemble:")
-				n += copy(mbuf[n:], p.src)
-				seal.UpdateGlobalState(mbuf[:n])
-				if err := assembler.Assemble(taskCtx, p.src, p.obj, debug, verbose, mode); err != nil {
-					return errors.New("assemble " + p.src + ": " + err.Error())
-				}
-				if effectiveCache != cacheOff {
-					if effectiveCache == cacheRAM {
-						if err := storeRAMCache(p.src, p.obj, debug, mode); err != nil {
-							return errors.New("ram cache " + p.src + ": " + err.Error())
-						}
-					} else {
-						if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil {
-							return errors.New("cache " + p.src + ": " + err.Error())
-						}
-						if err := storeShadowCache(p.src, p.obj, debug, mode); err != nil {
-							return errors.New("shadow cache " + p.src + ": " + err.Error())
-						}
-					}
-					var mbuf2 [512]byte
-					m := copy(mbuf2[:], "cache:store:")
-					m += copy(mbuf2[m:], p.src)
-					seal.UpdateGlobalState(mbuf2[:m])
-				}
+		}
+		if needAssemble {
+			if verbose {
+				os.Stdout.WriteString("Assembling " + p.src + " -> " + p.obj + "\n")
 			}
-			return nil
-		}, 0)
+			var mbuf [512]byte
+			n := copy(mbuf[:], "assemble:")
+			n += copy(mbuf[n:], p.src)
+			seal.UpdateGlobalState(mbuf[:n])
+			if err := assembler.Assemble(ctx, p.src, p.obj, debug, verbose, mode); err != nil {
+				return errors.New("assemble " + p.src + ": " + err.Error())
+			}
+			if effectiveCache != cacheOff {
+				if effectiveCache == cacheRAM {
+					if err := storeRAMCache(p.src, p.obj, debug, mode); err != nil {
+						return errors.New("ram cache " + p.src + ": " + err.Error())
+					}
+				} else {
+					if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil {
+						return errors.New("cache " + p.src + ": " + err.Error())
+					}
+					if err := storeShadowCache(p.src, p.obj, debug, mode); err != nil {
+						return errors.New("shadow cache " + p.src + ": " + err.Error())
+					}
+				}
+				var mbuf2 [512]byte
+				m := copy(mbuf2[:], "cache:store:")
+				m += copy(mbuf2[m:], p.src)
+				seal.UpdateGlobalState(mbuf2[:m])
+			}
+		}
+		return nil
 	}
 
-	if err := sched.Run(ctx); err != nil {
-		if cleanupObjDir {
-			os.RemoveAll(objDir)
+	if useDAG {
+		dag := scheduler.NewDAGScheduler(jobs, len(pairs))
+		for i, p := range pairs {
+			idx := i
+			_, err := dag.Submit(func(ctx context.Context) error {
+				return buildOne(p)
+			}, depGraph[idx])
+			if err != nil {
+				if cleanupObjDir {
+					os.RemoveAll(objDir)
+				}
+				return nil, errors.New("failed to submit task: " + err.Error())
+			}
 		}
-		return nil, err
+		if err := dag.Run(ctx); err != nil {
+			if cleanupObjDir {
+				os.RemoveAll(objDir)
+			}
+			return nil, err
+		}
+	} else {
+		sched := scheduler.NewScheduler(jobs, len(pairs)*2)
+		for i := range pairs {
+			p := pairs[i]
+			sched.SubmitBlocking(func(taskCtx context.Context) error {
+				return buildOne(p)
+			}, 0)
+		}
+		if err := sched.Run(ctx); err != nil {
+			if cleanupObjDir {
+				os.RemoveAll(objDir)
+			}
+			return nil, err
+		}
 	}
 
 	objFiles := make([]string, len(pairs))
@@ -340,8 +402,15 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		objFiles[i] = p.obj
 	}
 
+	if effectiveCache != cacheOff {
+		if err := saveHashCache(cacheDir, sourceHashes); err != nil {
+			if verbose {
+				os.Stdout.WriteString("Warning: failed to save hash cache: " + err.Error() + "\n")
+			}
+		}
+	}
+
 	if buildType == "obj" {
-		// no action
 	} else if buildType == "static" {
 		if verbose {
 			os.Stdout.WriteString("Creating static library " + outBin + "\n")
