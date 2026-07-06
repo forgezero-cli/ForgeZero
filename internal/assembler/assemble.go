@@ -307,6 +307,30 @@ func compileC(ctx context.Context, src, obj string, verbose bool, compiler strin
 		args = append(args, CcFLagsParsed...)
 	}
 
+	if len(PCHIncludeArgs) > 0 {
+		var headerPath string
+		var newArgs []string
+		for i := 0; i < len(PCHIncludeArgs); i++ {
+			if PCHIncludeArgs[i] == "-include" && i+1 < len(PCHIncludeArgs) {
+				headerPath = PCHIncludeArgs[i+1]
+				i++
+				continue
+			}
+			newArgs = append(newArgs, PCHIncludeArgs[i])
+		}
+		if headerPath != "" {
+			pchPath, err := EnsurePCH(ctx, headerPath, compilerBin, args, Target, verbose)
+			if err == nil && pchPath != "" {
+				args = append(args, "-include-pch", pchPath)
+			} else {
+				args = append(args, "-include", headerPath)
+			}
+		}
+		if len(newArgs) > 0 {
+			args = append(args, newArgs...)
+		}
+	}
+
 	_, err := runCommand(ctx, verbose, compilerBin, args...)
 	return err
 }
