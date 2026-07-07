@@ -36,11 +36,9 @@ import (
 
 var sealed bool
 var combinedSeal [32]byte
-var allowed map[string]struct{}
-var allowedMu sync.RWMutex
+var allowed sync.Map // map[string]struct{}
 var journalBuf []byte
 var journalPos uint32
-var journalMu sync.Mutex
 var stateMu sync.RWMutex
 var globalState [32]byte
 var decoy atomic.Bool
@@ -163,20 +161,16 @@ func triggerDecoy() {
 }
 
 func resetSealState() {
-	journalMu.Lock()
 	atomic.StoreUint32(&journalPos, 0)
 	if len(journalBuf) > 0 {
 		zeroizeRegion(journalBuf)
 	}
-	journalMu.Unlock()
 	stateMu.Lock()
 	sealed = false
 	zeroizeRegion(globalState[:])
 	zeroizeRegion(combinedSeal[:])
 	stateMu.Unlock()
-	allowedMu.Lock()
-	allowed = nil
-	allowedMu.Unlock()
+	allowed = sync.Map{}
 	decoy.Store(false)
 }
 
@@ -194,18 +188,23 @@ func JournalEvent(data []byte) {
 	if len(journalBuf) == 0 {
 		return
 	}
-	journalMu.Lock()
-	pos := int(atomic.LoadUint32(&journalPos))
-	if pos+len(data) <= len(journalBuf) {
-		copy(journalBuf[pos:], data)
-		pos += len(data)
-	} else {
-		n := copy(journalBuf[pos:], data)
-		copy(journalBuf, data[n:])
-		pos = len(data) - n
+	n := uint32(len(data))
+	if n == 0 {
+		return
 	}
-	atomic.StoreUint32(&journalPos, uint32(pos))
-	journalMu.Unlock()
+	bufLen := uint32(len(journalBuf))
+	start := atomic.AddUint32(&journalPos, n) - n
+	if bufLen == 0 {
+		return
+	}
+	idx := start % bufLen
+	first := int(bufLen - idx)
+	if first >= int(n) {
+		copy(journalBuf[idx:int(idx)+int(n)], data)
+	} else {
+		copy(journalBuf[idx:], data[:first])
+		copy(journalBuf[0:], data[first:])
+	}
 	UpdateGlobalState(data)
 }
 
@@ -336,8 +335,7 @@ func Verify() (bool, error) {
 	copy(combinedSeal[:], local[:])
 	sealed = true
 	stateMu.Unlock()
-	allowedMu.Lock()
-	allowed = make(map[string]struct{})
+	allowed = sync.Map{}
 	for i := 1; i < len(lines); i++ {
 		ln := strings.TrimSpace(lines[i])
 		if ln == "" {
@@ -345,10 +343,9 @@ func Verify() (bool, error) {
 		}
 		parts := strings.SplitN(ln, "\t", 2)
 		if len(parts) >= 1 {
-			allowed[parts[0]] = struct{}{}
+			allowed.Store(parts[0], struct{}{})
 		}
 	}
-	allowedMu.Unlock()
 	sealed = true
 	return true, nil
 }
