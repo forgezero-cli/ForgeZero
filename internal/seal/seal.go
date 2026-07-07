@@ -1,3 +1,5 @@
+//go:build linux
+// +build linux
 
 /*
  *   Copyright (c) 2026 ForgeZero-cli
