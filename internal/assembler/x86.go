@@ -29,104 +29,110 @@ type registerInfo struct {
 }
 
 func parseRegister(tok []byte) (registerInfo, bool) {
-	s := string(tok)
-	switch s {
-	case "rax":
-		return registerInfo{code: 0, width: 64}, true
-	case "rcx":
-		return registerInfo{code: 1, width: 64}, true
-	case "rdx":
-		return registerInfo{code: 2, width: 64}, true
-	case "rbx":
-		return registerInfo{code: 3, width: 64}, true
-	case "rsp":
-		return registerInfo{code: 4, width: 64}, true
-	case "rbp":
-		return registerInfo{code: 5, width: 64}, true
-	case "rsi":
-		return registerInfo{code: 6, width: 64}, true
-	case "rdi":
-		return registerInfo{code: 7, width: 64}, true
-	case "r8":
-		return registerInfo{code: 8, width: 64}, true
-	case "r9":
-		return registerInfo{code: 9, width: 64}, true
-	case "r10":
-		return registerInfo{code: 10, width: 64}, true
-	case "r11":
-		return registerInfo{code: 11, width: 64}, true
-	case "r12":
-		return registerInfo{code: 12, width: 64}, true
-	case "r13":
-		return registerInfo{code: 13, width: 64}, true
-	case "r14":
-		return registerInfo{code: 14, width: 64}, true
-	case "r15":
-		return registerInfo{code: 15, width: 64}, true
-	case "eax":
-		return registerInfo{code: 0, width: 32}, true
-	case "ecx":
-		return registerInfo{code: 1, width: 32}, true
-	case "edx":
-		return registerInfo{code: 2, width: 32}, true
-	case "ebx":
-		return registerInfo{code: 3, width: 32}, true
-	case "esp":
-		return registerInfo{code: 4, width: 32}, true
-	case "ebp":
-		return registerInfo{code: 5, width: 32}, true
-	case "esi":
-		return registerInfo{code: 6, width: 32}, true
-	case "edi":
-		return registerInfo{code: 7, width: 32}, true
-	case "r8d":
-		return registerInfo{code: 8, width: 32}, true
-	case "r9d":
-		return registerInfo{code: 9, width: 32}, true
-	case "r10d":
-		return registerInfo{code: 10, width: 32}, true
-	case "r11d":
-		return registerInfo{code: 11, width: 32}, true
-	case "r12d":
-		return registerInfo{code: 12, width: 32}, true
-	case "r13d":
-		return registerInfo{code: 13, width: 32}, true
-	case "r14d":
-		return registerInfo{code: 14, width: 32}, true
-	case "r15d":
-		return registerInfo{code: 15, width: 32}, true
-	case "ax":
-		return registerInfo{code: 0, width: 16}, true
-	case "cx":
-		return registerInfo{code: 1, width: 16}, true
-	case "dx":
-		return registerInfo{code: 2, width: 16}, true
-	case "bx":
-		return registerInfo{code: 3, width: 16}, true
-	case "sp":
-		return registerInfo{code: 4, width: 16}, true
-	case "bp":
-		return registerInfo{code: 5, width: 16}, true
-	case "si":
-		return registerInfo{code: 6, width: 16}, true
-	case "di":
-		return registerInfo{code: 7, width: 16}, true
-	case "al":
+	if len(tok) == 0 || len(tok) > 4 {
+		return registerInfo{}, false
+	}
+	var key uint32
+	for i, b := range tok {
+		key |= uint32(b) << (8 * i)
+	}
+	switch key {
+	case uint32('a') | uint32('l')<<8:
 		return registerInfo{code: 0, width: 8}, true
-	case "cl":
+	case uint32('c') | uint32('l')<<8:
 		return registerInfo{code: 1, width: 8}, true
-	case "dl":
+	case uint32('d') | uint32('l')<<8:
 		return registerInfo{code: 2, width: 8}, true
-	case "bl":
+	case uint32('b') | uint32('l')<<8:
 		return registerInfo{code: 3, width: 8}, true
-	case "ah":
+	case uint32('a') | uint32('h')<<8:
 		return registerInfo{code: 4, width: 8}, true
-	case "ch":
+	case uint32('c') | uint32('h')<<8:
 		return registerInfo{code: 5, width: 8}, true
-	case "dh":
+	case uint32('d') | uint32('h')<<8:
 		return registerInfo{code: 6, width: 8}, true
-	case "bh":
+	case uint32('b') | uint32('h')<<8:
 		return registerInfo{code: 7, width: 8}, true
+	case uint32('a') | uint32('x')<<8:
+		return registerInfo{code: 0, width: 16}, true
+	case uint32('c') | uint32('x')<<8:
+		return registerInfo{code: 1, width: 16}, true
+	case uint32('d') | uint32('x')<<8:
+		return registerInfo{code: 2, width: 16}, true
+	case uint32('b') | uint32('x')<<8:
+		return registerInfo{code: 3, width: 16}, true
+	case uint32('s') | uint32('p')<<8:
+		return registerInfo{code: 4, width: 16}, true
+	case uint32('b') | uint32('p')<<8:
+		return registerInfo{code: 5, width: 16}, true
+	case uint32('s') | uint32('i')<<8:
+		return registerInfo{code: 6, width: 16}, true
+	case uint32('d') | uint32('i')<<8:
+		return registerInfo{code: 7, width: 16}, true
+	case uint32('r') | uint32('8')<<8:
+		return registerInfo{code: 8, width: 64}, true
+	case uint32('r') | uint32('9')<<8:
+		return registerInfo{code: 9, width: 64}, true
+	case uint32('r') | uint32('1')<<8 | uint32('0')<<16:
+		return registerInfo{code: 10, width: 64}, true
+	case uint32('r') | uint32('1')<<8 | uint32('1')<<16:
+		return registerInfo{code: 11, width: 64}, true
+	case uint32('r') | uint32('1')<<8 | uint32('2')<<16:
+		return registerInfo{code: 12, width: 64}, true
+	case uint32('r') | uint32('1')<<8 | uint32('3')<<16:
+		return registerInfo{code: 13, width: 64}, true
+	case uint32('r') | uint32('1')<<8 | uint32('4')<<16:
+		return registerInfo{code: 14, width: 64}, true
+	case uint32('r') | uint32('1')<<8 | uint32('5')<<16:
+		return registerInfo{code: 15, width: 64}, true
+	case uint32('r') | uint32('a')<<8 | uint32('x')<<16:
+		return registerInfo{code: 0, width: 64}, true
+	case uint32('r') | uint32('c')<<8 | uint32('x')<<16:
+		return registerInfo{code: 1, width: 64}, true
+	case uint32('r') | uint32('d')<<8 | uint32('x')<<16:
+		return registerInfo{code: 2, width: 64}, true
+	case uint32('r') | uint32('b')<<8 | uint32('x')<<16:
+		return registerInfo{code: 3, width: 64}, true
+	case uint32('r') | uint32('s')<<8 | uint32('p')<<16:
+		return registerInfo{code: 4, width: 64}, true
+	case uint32('r') | uint32('b')<<8 | uint32('p')<<16:
+		return registerInfo{code: 5, width: 64}, true
+	case uint32('r') | uint32('s')<<8 | uint32('i')<<16:
+		return registerInfo{code: 6, width: 64}, true
+	case uint32('r') | uint32('d')<<8 | uint32('i')<<16:
+		return registerInfo{code: 7, width: 64}, true
+	case uint32('e') | uint32('a')<<8 | uint32('x')<<16:
+		return registerInfo{code: 0, width: 32}, true
+	case uint32('e') | uint32('c')<<8 | uint32('x')<<16:
+		return registerInfo{code: 1, width: 32}, true
+	case uint32('e') | uint32('d')<<8 | uint32('x')<<16:
+		return registerInfo{code: 2, width: 32}, true
+	case uint32('e') | uint32('b')<<8 | uint32('x')<<16:
+		return registerInfo{code: 3, width: 32}, true
+	case uint32('e') | uint32('s')<<8 | uint32('p')<<16:
+		return registerInfo{code: 4, width: 32}, true
+	case uint32('e') | uint32('b')<<8 | uint32('p')<<16:
+		return registerInfo{code: 5, width: 32}, true
+	case uint32('e') | uint32('s')<<8 | uint32('i')<<16:
+		return registerInfo{code: 6, width: 32}, true
+	case uint32('e') | uint32('d')<<8 | uint32('i')<<16:
+		return registerInfo{code: 7, width: 32}, true
+	case uint32('r') | uint32('8')<<8 | uint32('d')<<16:
+		return registerInfo{code: 8, width: 32}, true
+	case uint32('r') | uint32('9')<<8 | uint32('d')<<16:
+		return registerInfo{code: 9, width: 32}, true
+	case uint32('r') | uint32('1')<<8 | uint32('0')<<16 | uint32('d')<<24:
+		return registerInfo{code: 10, width: 32}, true
+	case uint32('r') | uint32('1')<<8 | uint32('1')<<16 | uint32('d')<<24:
+		return registerInfo{code: 11, width: 32}, true
+	case uint32('r') | uint32('1')<<8 | uint32('2')<<16 | uint32('d')<<24:
+		return registerInfo{code: 12, width: 32}, true
+	case uint32('r') | uint32('1')<<8 | uint32('3')<<16 | uint32('d')<<24:
+		return registerInfo{code: 13, width: 32}, true
+	case uint32('r') | uint32('1')<<8 | uint32('4')<<16 | uint32('d')<<24:
+		return registerInfo{code: 14, width: 32}, true
+	case uint32('r') | uint32('1')<<8 | uint32('5')<<16 | uint32('d')<<24:
+		return registerInfo{code: 15, width: 32}, true
 	}
 	return registerInfo{}, false
 }
@@ -169,22 +175,34 @@ func parseOperand(tok []byte) (operand, error) {
 		var scale byte = 1
 		var disp int64 = 0
 
-		parts := splitByPlus(inner)
-		for _, part := range parts {
-			part = trimSpace(part)
-			if len(part) == 0 {
-				continue
+		i := 0
+		for i < len(inner) {
+			for i < len(inner) && (inner[i] == ' ' || inner[i] == '\t') {
+				i++
+			}
+			if i >= len(inner) {
+				break
 			}
 			sign := int64(1)
-			if part[0] == '+' || part[0] == '-' {
-				if part[0] == '-' {
+			if inner[i] == '+' || inner[i] == '-' {
+				if inner[i] == '-' {
 					sign = -1
 				}
-				part = part[1:]
-				part = trimSpace(part)
-				if len(part) == 0 {
+				i++
+				for i < len(inner) && (inner[i] == ' ' || inner[i] == '\t') {
+					i++
+				}
+				if i >= len(inner) {
 					return operand{}, errors.New("expected number after sign")
 				}
+			}
+			start := i
+			for i < len(inner) && inner[i] != '+' && inner[i] != '-' {
+				i++
+			}
+			part := trimSpace(inner[start:i])
+			if len(part) == 0 {
+				continue
 			}
 			if num, err := parseNumber(part); err == nil {
 				disp += sign * int64(num)
@@ -208,11 +226,8 @@ func parseOperand(tok []byte) (operand, error) {
 					return operand{}, errors.New("invalid index register")
 				}
 				scaleVal, err := parseNumber(scalePart)
-				if err != nil {
+				if err != nil || (scaleVal != 1 && scaleVal != 2 && scaleVal != 4 && scaleVal != 8) {
 					return operand{}, errors.New("invalid scale")
-				}
-				if scaleVal != 1 && scaleVal != 2 && scaleVal != 4 && scaleVal != 8 {
-					return operand{}, errors.New("scale must be 1,2,4,8")
 				}
 				if index != 255 {
 					return operand{}, errors.New("index already set")
@@ -237,23 +252,6 @@ func parseOperand(tok []byte) (operand, error) {
 	return operand{typ: opLabel, label: tok}, nil
 }
 
-func splitByPlus(b []byte) [][]byte {
-	var parts [][]byte
-	start := 0
-	for i := 0; i < len(b); i++ {
-		if b[i] == '+' || b[i] == '-' {
-			if i > start {
-				parts = append(parts, b[start:i])
-			}
-			start = i
-		}
-	}
-	if start < len(b) {
-		parts = append(parts, b[start:])
-	}
-	return parts
-}
-
 func encodeModRM(mod byte, reg byte, rm byte) byte {
 	return (mod << 6) | ((reg & 7) << 3) | (rm & 7)
 }
@@ -262,7 +260,7 @@ func encodeSIB(scale byte, index byte, base byte) byte {
 	return ((scale & 3) << 6) | ((index & 7) << 3) | (base & 7)
 }
 
-func encodeMemOperand(mem operand, reg byte, isLea bool) (modrm byte, sib byte, disp []byte) {
+func (p *parser) writeMemOperand(mem operand, reg byte, isLea bool) {
 	base := mem.base
 	index := mem.index
 	scale := mem.scale
@@ -270,43 +268,38 @@ func encodeMemOperand(mem operand, reg byte, isLea bool) (modrm byte, sib byte, 
 
 	if index != 255 {
 		if dispVal == 0 {
-			modrm = encodeModRM(0, reg, 4)
-			sib = encodeSIB(scale, index, base)
-			return modrm, sib, nil
+			p.current.data = append(p.current.data, encodeModRM(0, reg, 4), encodeSIB(scale, index, base))
+			return
 		}
 		if dispVal >= -128 && dispVal <= 127 {
-			modrm = encodeModRM(1, reg, 4)
-			sib = encodeSIB(scale, index, base)
-			var b [1]byte
-			b[0] = byte(dispVal)
-			return modrm, sib, b[:]
+			p.current.data = append(p.current.data, encodeModRM(1, reg, 4), encodeSIB(scale, index, base), byte(dispVal))
+			return
 		}
-		modrm = encodeModRM(2, reg, 4)
-		sib = encodeSIB(scale, index, base)
-		var b [4]byte
-		binary.LittleEndian.PutUint32(b[:], uint32(dispVal))
-		return modrm, sib, b[:]
+		var buf [4]byte
+		binary.LittleEndian.PutUint32(buf[:], uint32(dispVal))
+		p.current.data = append(p.current.data, encodeModRM(2, reg, 4), encodeSIB(scale, index, base))
+		p.current.data = append(p.current.data, buf[:]...)
+		return
 	}
 	if base == 255 {
-		modrm = encodeModRM(0, reg, 5)
-		var b [4]byte
-		binary.LittleEndian.PutUint32(b[:], uint32(dispVal))
-		return modrm, 0, b[:]
+		var buf [4]byte
+		binary.LittleEndian.PutUint32(buf[:], uint32(dispVal))
+		p.current.data = append(p.current.data, encodeModRM(0, reg, 5))
+		p.current.data = append(p.current.data, buf[:]...)
+		return
 	}
 	if dispVal == 0 {
-		modrm = encodeModRM(0, reg, base)
-		return modrm, 0, nil
+		p.current.data = append(p.current.data, encodeModRM(0, reg, base))
+		return
 	}
 	if dispVal >= -128 && dispVal <= 127 {
-		modrm = encodeModRM(1, reg, base)
-		var b [1]byte
-		b[0] = byte(dispVal)
-		return modrm, 0, b[:]
+		p.current.data = append(p.current.data, encodeModRM(1, reg, base), byte(dispVal))
+		return
 	}
-	modrm = encodeModRM(2, reg, base)
-	var b [4]byte
-	binary.LittleEndian.PutUint32(b[:], uint32(dispVal))
-	return modrm, 0, b[:]
+	var buf [4]byte
+	binary.LittleEndian.PutUint32(buf[:], uint32(dispVal))
+	p.current.data = append(p.current.data, encodeModRM(2, reg, base))
+	p.current.data = append(p.current.data, buf[:]...)
 }
 
 func (p *parser) emitArith(opRegReg byte, opRegImm byte, rest []byte) error {
@@ -323,13 +316,11 @@ func (p *parser) emitArith(opRegReg byte, opRegImm byte, rest []byte) error {
 		return err
 	}
 	if dst.typ == opReg && src.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, opRegReg)
-		p.current.data = append(p.current.data, encodeModRM(3, src.reg, dst.reg))
+		p.current.data = append(p.current.data, 0x48, opRegReg, encodeModRM(3, src.reg, dst.reg))
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opImm {
-		p.current.data = append(p.current.data, 0x48, opRegImm)
-		p.current.data = append(p.current.data, encodeModRM(3, 0, dst.reg))
+		p.current.data = append(p.current.data, 0x48, opRegImm, encodeModRM(3, 0, dst.reg))
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(src.imm))
 		p.current.data = append(p.current.data, buf[:]...)
@@ -337,38 +328,17 @@ func (p *parser) emitArith(opRegReg byte, opRegImm byte, rest []byte) error {
 	}
 	if dst.typ == opMem && src.typ == opReg {
 		p.current.data = append(p.current.data, 0x48, opRegReg)
-		modrm, sib, disp := encodeMemOperand(dst, src.reg, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(dst, src.reg, false)
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opMem {
 		p.current.data = append(p.current.data, 0x48, opRegReg)
-		modrm, sib, disp := encodeMemOperand(src, dst.reg, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(src, dst.reg, false)
 		return nil
 	}
 	if dst.typ == opMem && src.typ == opImm {
 		p.current.data = append(p.current.data, 0x48, opRegImm)
-		modrm, sib, disp := encodeMemOperand(dst, 0, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(dst, 0, false)
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(src.imm))
 		p.current.data = append(p.current.data, buf[:]...)
@@ -384,20 +354,12 @@ func (p *parser) emitInc(rest []byte) error {
 		return err
 	}
 	if op.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, 0xFF)
-		p.current.data = append(p.current.data, encodeModRM(3, 0, op.reg))
+		p.current.data = append(p.current.data, 0x48, 0xFF, encodeModRM(3, 0, op.reg))
 		return nil
 	}
 	if op.typ == opMem {
 		p.current.data = append(p.current.data, 0x48, 0xFF)
-		modrm, sib, disp := encodeMemOperand(op, 0, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(op, 0, false)
 		return nil
 	}
 	return errors.New("invalid inc operand")
@@ -410,20 +372,12 @@ func (p *parser) emitDec(rest []byte) error {
 		return err
 	}
 	if op.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, 0xFF)
-		p.current.data = append(p.current.data, encodeModRM(3, 1, op.reg))
+		p.current.data = append(p.current.data, 0x48, 0xFF, encodeModRM(3, 1, op.reg))
 		return nil
 	}
 	if op.typ == opMem {
 		p.current.data = append(p.current.data, 0x48, 0xFF)
-		modrm, sib, disp := encodeMemOperand(op, 1, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(op, 1, false)
 		return nil
 	}
 	return errors.New("invalid dec operand")
@@ -436,20 +390,12 @@ func (p *parser) emitUnary(opcode byte, ext byte, rest []byte) error {
 		return err
 	}
 	if op.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, opcode)
-		p.current.data = append(p.current.data, encodeModRM(3, ext, op.reg))
+		p.current.data = append(p.current.data, 0x48, opcode, encodeModRM(3, ext, op.reg))
 		return nil
 	}
 	if op.typ == opMem {
 		p.current.data = append(p.current.data, 0x48, opcode)
-		modrm, sib, disp := encodeMemOperand(op, ext, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(op, ext, false)
 		return nil
 	}
 	return errors.New("invalid unary operand")
@@ -474,14 +420,7 @@ func (p *parser) emitPush(rest []byte) error {
 	}
 	if op.typ == opMem {
 		p.current.data = append(p.current.data, 0xFF)
-		modrm, sib, disp := encodeMemOperand(op, 6, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(op, 6, false)
 		return nil
 	}
 	return errors.New("invalid push operand")
@@ -499,14 +438,7 @@ func (p *parser) emitPop(rest []byte) error {
 	}
 	if op.typ == opMem {
 		p.current.data = append(p.current.data, 0x8F)
-		modrm, sib, disp := encodeMemOperand(op, 0, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(op, 0, false)
 		return nil
 	}
 	return errors.New("invalid pop operand")
@@ -529,14 +461,7 @@ func (p *parser) emitLea(rest []byte) error {
 		return errors.New("lea requires register destination and memory source")
 	}
 	p.current.data = append(p.current.data, 0x48, 0x8D)
-	modrm, sib, disp := encodeMemOperand(src, dst.reg, true)
-	p.current.data = append(p.current.data, modrm)
-	if sib != 0 {
-		p.current.data = append(p.current.data, sib)
-	}
-	if disp != nil {
-		p.current.data = append(p.current.data, disp...)
-	}
+	p.writeMemOperand(src, dst.reg, true)
 	return nil
 }
 
@@ -567,14 +492,7 @@ func (p *parser) emitJmp(rest []byte) error {
 	}
 	if op.typ == opMem {
 		p.current.data = append(p.current.data, 0xFF)
-		modrm, sib, disp := encodeMemOperand(op, 4, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(op, 4, false)
 		return nil
 	}
 	return errors.New("invalid jmp operand")
@@ -618,13 +536,11 @@ func (p *parser) emitTest(rest []byte) error {
 		return err
 	}
 	if dst.typ == opReg && src.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, 0x85)
-		p.current.data = append(p.current.data, encodeModRM(3, src.reg, dst.reg))
+		p.current.data = append(p.current.data, 0x48, 0x85, encodeModRM(3, src.reg, dst.reg))
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opImm {
-		p.current.data = append(p.current.data, 0x48, 0xF7)
-		p.current.data = append(p.current.data, encodeModRM(3, 0, dst.reg))
+		p.current.data = append(p.current.data, 0x48, 0xF7, encodeModRM(3, 0, dst.reg))
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(src.imm))
 		p.current.data = append(p.current.data, buf[:]...)
@@ -632,14 +548,7 @@ func (p *parser) emitTest(rest []byte) error {
 	}
 	if dst.typ == opMem && src.typ == opReg {
 		p.current.data = append(p.current.data, 0x48, 0x85)
-		modrm, sib, disp := encodeMemOperand(dst, src.reg, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(dst, src.reg, false)
 		return nil
 	}
 	return errors.New("unsupported test operands")
@@ -659,33 +568,20 @@ func (p *parser) emitShift(opcode byte, ext byte, rest []byte) error {
 		return err
 	}
 	if dst.typ == opReg && src.typ == opImm {
-		p.current.data = append(p.current.data, 0x48, opcode)
-		p.current.data = append(p.current.data, encodeModRM(3, ext, dst.reg))
-		var cnt byte
-		if src.imm == 1 {
-			cnt = 1
-		} else {
+		cnt := byte(1)
+		if src.imm != 1 {
 			cnt = byte(src.imm & 0xFF)
 		}
-		p.current.data = append(p.current.data, cnt)
+		p.current.data = append(p.current.data, 0x48, opcode, encodeModRM(3, ext, dst.reg), cnt)
 		return nil
 	}
 	if dst.typ == opMem && src.typ == opImm {
-		p.current.data = append(p.current.data, 0x48, opcode)
-		modrm, sib, disp := encodeMemOperand(dst, ext, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
-		var cnt byte
-		if src.imm == 1 {
-			cnt = 1
-		} else {
+		cnt := byte(1)
+		if src.imm != 1 {
 			cnt = byte(src.imm & 0xFF)
 		}
+		p.current.data = append(p.current.data, 0x48, opcode)
+		p.writeMemOperand(dst, ext, false)
 		p.current.data = append(p.current.data, cnt)
 		return nil
 	}
@@ -699,20 +595,12 @@ func (p *parser) emitMulDiv(opcode byte, ext byte, rest []byte) error {
 		return err
 	}
 	if op.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, opcode)
-		p.current.data = append(p.current.data, encodeModRM(3, ext, op.reg))
+		p.current.data = append(p.current.data, 0x48, opcode, encodeModRM(3, ext, op.reg))
 		return nil
 	}
 	if op.typ == opMem {
 		p.current.data = append(p.current.data, 0x48, opcode)
-		modrm, sib, disp := encodeMemOperand(op, ext, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(op, ext, false)
 		return nil
 	}
 	return errors.New("invalid mul/div operand")
@@ -732,8 +620,7 @@ func (p *parser) emitMov(rest []byte) error {
 		return err
 	}
 	if dst.typ == opReg && src.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, 0x89)
-		p.current.data = append(p.current.data, encodeModRM(3, src.reg, dst.reg))
+		p.current.data = append(p.current.data, 0x48, 0x89, encodeModRM(3, src.reg, dst.reg))
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opImm {
@@ -753,26 +640,12 @@ func (p *parser) emitMov(rest []byte) error {
 	}
 	if dst.typ == opMem && src.typ == opReg {
 		p.current.data = append(p.current.data, 0x48, 0x89)
-		modrm, sib, disp := encodeMemOperand(dst, src.reg, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(dst, src.reg, false)
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opMem {
 		p.current.data = append(p.current.data, 0x48, 0x8B)
-		modrm, sib, disp := encodeMemOperand(src, dst.reg, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(src, dst.reg, false)
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opLabel {
@@ -812,14 +685,7 @@ func (p *parser) emitMovzx(rest []byte) error {
 		return errors.New("movzx requires register destination and memory source")
 	}
 	p.current.data = append(p.current.data, 0x0F, 0xB6)
-	modrm, sib, disp := encodeMemOperand(src, dst.reg, false)
-	p.current.data = append(p.current.data, modrm)
-	if sib != 0 {
-		p.current.data = append(p.current.data, sib)
-	}
-	if disp != nil {
-		p.current.data = append(p.current.data, disp...)
-	}
+	p.writeMemOperand(src, dst.reg, false)
 	return nil
 }
 
@@ -840,14 +706,7 @@ func (p *parser) emitMovsx(rest []byte) error {
 		return errors.New("movsx requires register destination and memory source")
 	}
 	p.current.data = append(p.current.data, 0x0F, 0xBE)
-	modrm, sib, disp := encodeMemOperand(src, dst.reg, false)
-	p.current.data = append(p.current.data, modrm)
-	if sib != 0 {
-		p.current.data = append(p.current.data, sib)
-	}
-	if disp != nil {
-		p.current.data = append(p.current.data, disp...)
-	}
+	p.writeMemOperand(src, dst.reg, false)
 	return nil
 }
 
@@ -865,32 +724,17 @@ func (p *parser) emitXchg(rest []byte) error {
 		return err
 	}
 	if dst.typ == opReg && src.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, 0x87)
-		p.current.data = append(p.current.data, encodeModRM(3, src.reg, dst.reg))
+		p.current.data = append(p.current.data, 0x48, 0x87, encodeModRM(3, src.reg, dst.reg))
 		return nil
 	}
 	if dst.typ == opMem && src.typ == opReg {
 		p.current.data = append(p.current.data, 0x48, 0x87)
-		modrm, sib, disp := encodeMemOperand(dst, src.reg, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(dst, src.reg, false)
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opMem {
 		p.current.data = append(p.current.data, 0x48, 0x87)
-		modrm, sib, disp := encodeMemOperand(src, dst.reg, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(src, dst.reg, false)
 		return nil
 	}
 	return errors.New("unsupported xchg operands")
@@ -929,20 +773,12 @@ func (p *parser) emitImul(rest []byte) error {
 		return err
 	}
 	if dst.typ == opReg && src.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, 0x0F, 0xAF)
-		p.current.data = append(p.current.data, encodeModRM(3, src.reg, dst.reg))
+		p.current.data = append(p.current.data, 0x48, 0x0F, 0xAF, encodeModRM(3, src.reg, dst.reg))
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opMem {
 		p.current.data = append(p.current.data, 0x48, 0x0F, 0xAF)
-		modrm, sib, disp := encodeMemOperand(src, dst.reg, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(src, dst.reg, false)
 		return nil
 	}
 	return errors.New("unsupported imul operands")
@@ -962,13 +798,11 @@ func (p *parser) emitCmp(rest []byte) error {
 		return err
 	}
 	if dst.typ == opReg && src.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, 0x39)
-		p.current.data = append(p.current.data, encodeModRM(3, src.reg, dst.reg))
+		p.current.data = append(p.current.data, 0x48, 0x39, encodeModRM(3, src.reg, dst.reg))
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opImm {
-		p.current.data = append(p.current.data, 0x48, 0x81)
-		p.current.data = append(p.current.data, encodeModRM(3, 7, dst.reg))
+		p.current.data = append(p.current.data, 0x48, 0x81, encodeModRM(3, 7, dst.reg))
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(src.imm))
 		p.current.data = append(p.current.data, buf[:]...)
@@ -976,26 +810,12 @@ func (p *parser) emitCmp(rest []byte) error {
 	}
 	if dst.typ == opMem && src.typ == opReg {
 		p.current.data = append(p.current.data, 0x48, 0x39)
-		modrm, sib, disp := encodeMemOperand(dst, src.reg, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(dst, src.reg, false)
 		return nil
 	}
 	if dst.typ == opMem && src.typ == opImm {
 		p.current.data = append(p.current.data, 0x48, 0x81)
-		modrm, sib, disp := encodeMemOperand(dst, 7, false)
-		p.current.data = append(p.current.data, modrm)
-		if sib != 0 {
-			p.current.data = append(p.current.data, sib)
-		}
-		if disp != nil {
-			p.current.data = append(p.current.data, disp...)
-		}
+		p.writeMemOperand(dst, 7, false)
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(src.imm))
 		p.current.data = append(p.current.data, buf[:]...)
