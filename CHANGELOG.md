@@ -25,6 +25,8 @@
   ([0c210c9](…))
 - **Optimized internal x86 assembler** – removed string conversions, eliminated slice allocations in memory operand parsing, and reduced `append` calls, resulting in faster assembly generation without any API changes.  
 ([976f09c](…))
+- **Optimized linker symbol parsing** – replaced string‑based parsing with byte‑level operations to reduce allocations and improve performance for large object files.  
+  ([f8ed04b](…))
 
 ### Fixed
 - **Comprehensive test coverage** for dependency parsing, graph building, DAGScheduler, and PCH integration hooks.  
@@ -58,3 +60,4 @@ b3c0694 utils: add unit tests for dependency parsing and graph building
 df563f5 builder: implement source file hashing and refresh logic using BLAKE3
 1100f19 assembler: add --use-asm flag to select NASM over internal assembler and add units tests for NASM selection logic 
 976f09c assembler: optimize x86 backend without API changes
+f8ed04b linker: optimize symbol parsing with byte-level operations
