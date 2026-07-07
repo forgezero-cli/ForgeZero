@@ -23,10 +23,16 @@ import (
 )
 
 type ringQueue struct {
-	slots []atomic.Pointer[taskSlot]
+	slots []slot
 	cap   uint64
+	mask  uint64
 	head  atomic.Uint64
 	tail  atomic.Uint64
+}
+
+type slot struct {
+	seq  atomic.Uint64
+	task Task
 }
 
 func newRingQueue(capacity int) *ringQueue {
@@ -35,8 +41,12 @@ func newRingQueue(capacity int) *ringQueue {
 	}
 	capacity = nextPowerOfTwo(capacity)
 	q := &ringQueue{
-		slots: make([]atomic.Pointer[taskSlot], capacity),
+		slots: make([]slot, capacity),
 		cap:   uint64(capacity),
+		mask:  uint64(capacity - 1),
+	}
+	for i := 0; i < capacity; i++ {
+		q.slots[i].seq.Store(uint64(i))
 	}
 	return q
 }
@@ -54,48 +64,49 @@ func nextPowerOfTwo(n int) int {
 	return n + 1
 }
 
-func (q *ringQueue) tryEnqueue(slot *taskSlot) bool {
+func (q *ringQueue) tryEnqueue(task Task) bool {
 	for {
 		tail := q.tail.Load()
-		head := q.head.Load()
-		if tail-head >= q.cap {
-			return false
-		}
-		idx := tail & (q.cap - 1)
-		if !q.slots[idx].CompareAndSwap(nil, slot) {
-			runtime.Gosched()
+		slot := &q.slots[tail&q.mask]
+		seq := slot.seq.Load()
+		if seq == tail {
+			if q.tail.CompareAndSwap(tail, tail+1) {
+				slot.task = task
+				slot.seq.Store(tail + 1)
+				return true
+			}
 			continue
 		}
-		if q.tail.CompareAndSwap(tail, tail+1) {
-			return true
+		if seq < tail {
+			return false
 		}
-		q.slots[idx].Store(nil)
-	}
-}
-
-func (q *ringQueue) spinEnqueue(slot *taskSlot) {
-	for !q.tryEnqueue(slot) {
 		runtime.Gosched()
 	}
 }
 
-func (q *ringQueue) tryDequeue() (*taskSlot, bool) {
+func (q *ringQueue) spinEnqueue(task Task) {
+	for !q.tryEnqueue(task) {
+		runtime.Gosched()
+	}
+}
+
+func (q *ringQueue) tryDequeue() (Task, bool) {
 	for {
 		head := q.head.Load()
-		tail := q.tail.Load()
-		if head >= tail {
-			return nil, false
-		}
-		idx := head & (q.cap - 1)
-		slot := q.slots[idx].Load()
-		if slot == nil {
-			runtime.Gosched()
+		slot := &q.slots[head&q.mask]
+		seq := slot.seq.Load()
+		if seq == head+1 {
+			if q.head.CompareAndSwap(head, head+1) {
+				task := slot.task
+				slot.seq.Store(head + q.cap)
+				return task, true
+			}
 			continue
 		}
-		if q.head.CompareAndSwap(head, head+1) {
-			q.slots[idx].Store(nil)
-			return slot, true
+		if seq <= head {
+			return nil, false
 		}
+		runtime.Gosched()
 	}
 }
 
