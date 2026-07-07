@@ -20,8 +20,8 @@ package scheduler
 import "errors"
 
 func (d *DAGScheduler) SubmitGenerator(task Task, deps []int) (int, error) {
-    if task == nil {
-        return -1, errors.New("task required")
-    }
-    return d.Submit(task, deps)
+	if task == nil {
+		return -1, errors.New("task required")
+	}
+	return d.Submit(task, deps)
 }
