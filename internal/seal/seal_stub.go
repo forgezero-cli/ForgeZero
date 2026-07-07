@@ -32,6 +32,14 @@ import (
 	"sync/atomic"
 )
 
+func MachineID() (string, error) {
+	return "", nil
+}
+
+func Seal() error {
+	return errors.New("seal not supported on this platform. Will be implemented in future releases")
+}
+
 var (
 	sealed       bool
 	combinedSeal [32]byte
