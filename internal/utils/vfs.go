@@ -18,32 +18,25 @@
 package utils
 
 import (
-	"sync"
+	"sync/atomic"
 
 	fzvfs "github.com/forgezero-cli/ForgeZero/internal/fs"
 )
 
-var (
-	vfsMu sync.RWMutex
-	vfs   fzvfs.FileSystem = fzvfs.Default
-)
+type vfsHolder struct{ fs fzvfs.FileSystem }
+
+var vfs atomic.Value
+
+func init() { vfs.Store(vfsHolder{fs: fzvfs.Default}) }
 
 func SetFileSystem(f fzvfs.FileSystem) {
-	vfsMu.Lock()
-	defer vfsMu.Unlock()
 	if f == nil {
-		vfs = fzvfs.Default
+		vfs.Store(vfsHolder{fs: fzvfs.Default})
 		return
 	}
-	vfs = f
+	vfs.Store(vfsHolder{fs: f})
 }
 
-func fileSystem() fzvfs.FileSystem {
-	vfsMu.RLock()
-	defer vfsMu.RUnlock()
-	return vfs
-}
+func fileSystem() fzvfs.FileSystem { return vfs.Load().(vfsHolder).fs }
 
-func ResetFileSystem() {
-	SetFileSystem(nil)
-}
+func ResetFileSystem() { SetFileSystem(nil) }
