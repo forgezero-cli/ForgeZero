@@ -15,6 +15,8 @@
   ([3d78363](https://github.com/forgezero-cli/ForgeZero/commit/3d78363), [b3c0694](https://github.com/forgezero-cli/ForgeZero/commit/b3c0694))
 - **NASM selection** – added `--use-nasm` flag to force using NASM instead of the internal assembler for `.asm` files, improving compatibility with existing NASM‑based projects and providing more flexibility. 
 [1100f19](https://github.com/forgezero-cli/ForgeZero/commit/1100f19))
+- **Plan9 cache support** – added cache implementation for Plan9 operating system.  
+  ([8a94769](https://github.com/forgezero-cli/ForgeZero/commit/8a94769))
 
 ### Changed
 - **Overhauled core build engine** – now uses DAG scheduling and the new hash cache for a more reliable and faster build.  
@@ -27,6 +29,8 @@
 ([976f09c](https://github.com/forgezero-cli/ForgeZero/commit/976f09c))
 - **Optimized linker symbol parsing** – replaced string‑based parsing with byte‑level operations to reduce allocations and improve performance for large object files.  
   ([f8ed04b](https://github.com/forgezero-cli/ForgeZero/commit/f8ed04b))
+- **Code style cleanup** – removed extra blank lines in `cache.go` and `symbols.go`.  
+  ([5c1cea5](https://github.com/forgezero-cli/ForgeZero/commit/5c1cea5), [f293ec0](https://github.com/forgezero-cli/ForgeZero/commit/f293ec0))
 
 ### Fixed
 - **Comprehensive test coverage** for dependency parsing, graph building, DAGScheduler, and PCH integration hooks.  
@@ -61,3 +65,6 @@ df563f5 builder: implement source file hashing and refresh logic using BLAKE3
 1100f19 assembler: add --use-asm flag to select NASM over internal assembler and add units tests for NASM selection logic 
 976f09c assembler: optimize x86 backend without API changes
 f8ed04b linker: optimize symbol parsing with byte-level operations
+5c1cea5 style: remove extra blank lines in cache.go
+f293ec0 style: remove extra blank lines in symbols.go
+8a94769 builder: add Plan9 cache implementation
