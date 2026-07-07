@@ -24,7 +24,6 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
-	"syscall"
 
 	"github.com/forgezero-cli/ForgeZero/internal/config"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
@@ -43,7 +42,7 @@ type cachedObject struct {
 	syms   []byte
 }
 
-type objectCache struct{
+type objectCache struct {
 	entries sync.Map
 }
 
@@ -63,7 +62,7 @@ func (c *objectCache) delete(key string) {
 			data := ent.object
 			c.entries.Delete(key)
 			if len(data) > 0 {
-				_ = syscall.Munmap(data)
+				_ = munmapFile(data)
 				ent.object = nil
 				runtime.KeepAlive(data)
 			}
@@ -81,13 +80,13 @@ var ramObjectStore = newObjectCache()
 var ramCacheHits *utils.NumaCounters
 var ramCacheMisses *utils.NumaCounters
 
-type cacheTask struct{
-	src string
-	obj string
-	cacheDir string
-	debug bool
-	verbose bool
-	mode string
+type cacheTask struct {
+	src       string
+	obj       string
+	cacheDir  string
+	debug     bool
+	verbose   bool
+	mode      string
 }
 
 var cacheWriteCh chan cacheTask
@@ -110,13 +109,20 @@ func init() {
 }
 
 func AsyncStoreCache(src, obj, cacheDir string, debug, verbose bool, mode string) error {
-	t := cacheTask{src:src, obj:obj, cacheDir:cacheDir, debug:debug, verbose:verbose, mode:mode}
+	t := cacheTask{src: src, obj: obj, cacheDir: cacheDir, debug: debug, verbose: verbose, mode: mode}
 	cacheWriteCh <- t
 	return nil
 }
 
-type shadowTask struct{ src, obj string; debug bool; mode string }
+type shadowTask struct {
+	src   string
+	obj   string
+	debug bool
+	mode  string
+}
+
 var shadowWriteCh = make(chan shadowTask, 256)
+
 func init() {
 	go func() {
 		for t := range shadowWriteCh {
@@ -126,7 +132,7 @@ func init() {
 }
 
 func AsyncStoreShadowCache(src, obj string, debug bool, mode string) error {
-	t := shadowTask{src:src, obj:obj, debug:debug, mode:mode}
+	t := shadowTask{src: src, obj: obj, debug: debug, mode: mode}
 	shadowWriteCh <- t
 	return nil
 }
@@ -220,8 +226,6 @@ func cacheEntryPath(dir, key string) string {
 	return pb.String()
 }
 
-
-
 func determineCacheMode(cfg *config.Config, noCache bool) cacheMode {
 	if noCache {
 		return cacheOff
@@ -294,7 +298,7 @@ func storeRAMCache(src, obj string, debug bool, mode string) error {
 		return errors.New("refusing to cache empty object: " + obj)
 	}
 	fd := int(f.Fd())
-	data, err := syscall.Mmap(fd, 0, int(info.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+	data, err := mmapFile(fd, int(info.Size()))
 	if err != nil {
 		object, err2 := os.ReadFile(obj)
 		if err2 != nil {
@@ -317,12 +321,12 @@ func storeRAMCache(src, obj string, debug bool, mode string) error {
 	}
 	syms, err := os.ReadFile(obj + ".syms")
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		_ = syscall.Munmap(data)
+		_ = munmapFile(data)
 		return err
 	}
 	h, err := utils.HashFile(src)
 	if err != nil {
-		_ = syscall.Munmap(data)
+		_ = munmapFile(data)
 		return err
 	}
 	key := buildCacheKey(h, debug, mode)
