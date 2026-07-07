@@ -15,8 +15,6 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// AUTHOR: @alexvoste
-
 package config
 
 import (
@@ -128,6 +126,14 @@ type Hooks struct {
 	OnFailure string `yaml:"on_failure"`
 }
 
+type BuildRule struct {
+	Name    string   `yaml:"name"`
+	Action  string   `yaml:"action"`
+	Inputs  []string `yaml:"inputs"`
+	Outputs []string `yaml:"outputs"`
+	Depfile string   `yaml:"depfile"`
+}
+
 type ISOConfig struct {
 	Enabled       bool     `yaml:"enabled"`
 	SourceDir     string   `yaml:"source_dir"`
@@ -180,8 +186,9 @@ type Config struct {
 		EnvAllow       []string          `yaml:"env_allow"`
 		ToolPaths      map[string]string `yaml:"tool_paths"`
 	} `yaml:"toolchain_opts"`
-	Hooks Hooks     `yaml:"hooks"`
-	ISO   ISOConfig `yaml:"iso"`
+	Hooks      Hooks      `yaml:"hooks"`
+	BuildRules []BuildRule `yaml:"build_rules"`
+	ISO        ISOConfig  `yaml:"iso"`
 }
 
 func (c *Config) expand() {
@@ -234,6 +241,12 @@ func (c *Config) expand() {
 		c.Hooks.PreBuild[i].Cmd = variables.ExpandString(c.Hooks.PreBuild[i].Cmd, vars)
 	}
 	c.Hooks.OnFailure = variables.ExpandString(c.Hooks.OnFailure, vars)
+	for i := range c.BuildRules {
+		c.BuildRules[i].Action = variables.ExpandString(c.BuildRules[i].Action, vars)
+		variables.ExpandSlice(c.BuildRules[i].Inputs, vars)
+		variables.ExpandSlice(c.BuildRules[i].Outputs, vars)
+		c.BuildRules[i].Depfile = variables.ExpandString(c.BuildRules[i].Depfile, vars)
+	}
 	c.Isolation = IsolationMode(variables.ExpandString(string(c.Isolation), vars))
 	c.ISO.SourceDir = variables.ExpandString(c.ISO.SourceDir, vars)
 	c.ISO.Output = variables.ExpandString(c.ISO.Output, vars)
@@ -364,6 +377,24 @@ func (c *Config) Validate() error {
 	}
 	if c.IgnoreFile == "" {
 		c.IgnoreFile = ".fzignore"
+	}
+	if len(c.BuildRules) > 0 {
+		outputs := make(map[string]struct{}, len(c.BuildRules)*2)
+		for _, rule := range c.BuildRules {
+			if rule.Action == "" {
+				return errors.New("build rule action is required")
+			}
+			if len(rule.Outputs) == 0 {
+				return errors.New("build rule outputs are required")
+			}
+			for _, out := range rule.Outputs {
+				key := filepath.Clean(out)
+				if _, ok := outputs[key]; ok {
+					return errors.New("duplicate build rule output: " + out)
+				}
+				outputs[key] = struct{}{}
+			}
+		}
 	}
 	return nil
 }
@@ -561,6 +592,9 @@ func (c *Config) Merge(other *Config) {
 	}
 	if len(other.Hooks.PreBuild) > 0 {
 		c.Hooks.PreBuild = append(c.Hooks.PreBuild, other.Hooks.PreBuild...)
+	}
+	if len(other.BuildRules) > 0 {
+		c.BuildRules = append(c.BuildRules, other.BuildRules...)
 	}
 	if other.Hooks.OnFailure != "" {
 		c.Hooks.OnFailure = other.Hooks.OnFailure
