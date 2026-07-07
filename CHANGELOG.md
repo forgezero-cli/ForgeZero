@@ -23,6 +23,8 @@
   ([e6a4211](…), [06a0af3](…))
 - **PCH integration** – assembly step now fully delegates to the new PCH module.  
   ([0c210c9](…))
+- **Optimized internal x86 assembler** – removed string conversions, eliminated slice allocations in memory operand parsing, and reduced `append` calls, resulting in faster assembly generation without any API changes.  
+([976f09c](…))
 
 ### Fixed
 - **Comprehensive test coverage** for dependency parsing, graph building, DAGScheduler, and PCH integration hooks.  
@@ -55,3 +57,4 @@ e6a4211 linker: extract response‑file creation logic to dedicated module
 b3c0694 utils: add unit tests for dependency parsing and graph building
 df563f5 builder: implement source file hashing and refresh logic using BLAKE3
 1100f19 assembler: add --use-asm flag to select NASM over internal assembler and add units tests for NASM selection logic 
+976f09c assembler: optimize x86 backend without API changes
