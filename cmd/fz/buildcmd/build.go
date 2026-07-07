@@ -18,11 +18,12 @@
 package buildcmd
 
 import (
-	"github.com/forgezero-cli/ForgeZero/cmd/fz/stdio"
 	"context"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/forgezero-cli/ForgeZero/cmd/fz/stdio"
 
 	"github.com/forgezero-cli/ForgeZero/internal/assembler"
 	"github.com/forgezero-cli/ForgeZero/internal/builder"
