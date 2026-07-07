@@ -1,5 +1,5 @@
-//go:build !linux
-// +build !linux
+//go:build !linux && !windows
+// +build !linux,!windows
 
 /*
  *   Copyright (c) 2026 ForgeZero-cli
@@ -33,11 +33,11 @@ import (
 )
 
 func MachineID() (string, error) {
-	return "", nil
+	return "", errors.New("machine ID not supported on this platform")
 }
 
 func Seal() error {
-	return errors.New("seal not supported on this platform. Will be implemented in future releases")
+	return errors.New("seal not supported on this platform")
 }
 
 var (
