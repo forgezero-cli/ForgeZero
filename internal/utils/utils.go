@@ -100,18 +100,6 @@ func GetExecutionRoot() string {
 	return s
 }
 
-type mutexBufferWriter struct {
-	mu  sync.Mutex
-	buf *bytes.Buffer
-}
-
-func (w *mutexBufferWriter) Write(p []byte) (int, error) {
-	w.mu.Lock()
-	n, err := w.buf.Write(p)
-	w.mu.Unlock()
-	return n, err
-}
-
 func constantTimeEqual(a, b string) bool {
 	if len(a) != len(b) {
 		return false
@@ -554,14 +542,34 @@ func RunCommand(ctx context.Context, verbose bool, stdout, stderr io.Writer, nam
 	}
 	buf := bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
-	mbw := &mutexBufferWriter{buf: buf}
-	if stdout == nil {
-		stdout = mbw
-	}
-	if stderr == nil {
-		stderr = mbw
+	if stdout == nil && stderr == nil {
+		pr, pw := io.Pipe()
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			writer := io.Writer(buf)
+			if verbose {
+				writer = io.MultiWriter(os.Stdout, os.Stderr, buf)
+			}
+			_, _ = io.Copy(writer, pr)
+		}()
+		cmd.Stdout = pw
+		cmd.Stderr = pw
+		runErr := cmd.Run()
+		_ = pw.Close()
+		wg.Wait()
+		out := buf.String()
+		bufferPool.Put(buf)
+		return out, runErr
 	}
 	if verbose {
+		if stdout == nil {
+			stdout = io.Discard
+		}
+		if stderr == nil {
+			stderr = io.Discard
+		}
 		cmd.Stdout = io.MultiWriter(os.Stdout, stdout)
 		cmd.Stderr = io.MultiWriter(os.Stderr, stderr)
 	} else {
@@ -569,12 +577,8 @@ func RunCommand(ctx context.Context, verbose bool, stdout, stderr io.Writer, nam
 		cmd.Stderr = stderr
 	}
 	runErr := cmd.Run()
-	out := ""
-	if stdout == mbw {
-		out = buf.String()
-	}
 	bufferPool.Put(buf)
-	return out, runErr
+	return "", runErr
 }
 
 func RunCommandSilent(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
