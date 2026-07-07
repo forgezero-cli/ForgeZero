@@ -29,6 +29,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/forgezero-cli/ForgeZero/internal/config"
@@ -62,11 +63,7 @@ var (
 		".asm": true, ".nasm": true,
 		".fasm": true,
 	}
-	targetInfoMu sync.RWMutex
-	cachedTarget string
-	cachedIsWasm bool
-	cachedIsArm  bool
-	cachedIsRisc bool
+	targetInfo atomic.Value // stores *targetInfoState
 	flagInitOnce sync.Once
 	toolchainVal string
 	muslVal      string
@@ -74,23 +71,30 @@ var (
 
 var ErrSkip = errors.New("skip this linker attempt")
 
+type targetInfoState struct{
+	target string
+	isWasm bool
+	isArm  bool
+	isRisc bool
+}
+
 func getTargetInfo() (isWasm, isArm, isRisc bool) {
-	targetInfoMu.RLock()
-	if cachedTarget == Target {
-		defer targetInfoMu.RUnlock()
-		return cachedIsWasm, cachedIsArm, cachedIsRisc
+	v := targetInfo.Load()
+	if v != nil {
+		if st, ok := v.(*targetInfoState); ok {
+			if st.target == Target {
+				return st.isWasm, st.isArm, st.isRisc
+			}
+		}
 	}
-	targetInfoMu.RUnlock()
-	targetInfoMu.Lock()
-	defer targetInfoMu.Unlock()
-	if cachedTarget == Target {
-		return cachedIsWasm, cachedIsArm, cachedIsRisc
+	st := &targetInfoState{
+		target: Target,
+		isWasm: strings.Contains(Target, "wasm") || strings.Contains(Target, "wasm32"),
+		isArm:  strings.Contains(Target, "arm"),
+		isRisc: strings.Contains(Target, "riscv"),
 	}
-	cachedTarget = Target
-	cachedIsWasm = strings.Contains(Target, "wasm") || strings.Contains(Target, "wasm32")
-	cachedIsArm = strings.Contains(Target, "arm")
-	cachedIsRisc = strings.Contains(Target, "riscv")
-	return cachedIsWasm, cachedIsArm, cachedIsRisc
+	targetInfo.Store(st)
+	return st.isWasm, st.isArm, st.isRisc
 }
 
 func cachedLookPath(name string) (string, error) {
