@@ -42,6 +42,7 @@ type SymbolInfo struct {
 }
 
 
+
 var (
 	detectedTool     string
 	detectedToolOnce sync.Once
@@ -260,6 +261,7 @@ func readSymbolsWithNm(ctx context.Context, objPath string, verbose bool) ([]Sym
 	}
 	return parseNmOutputBytes(objPath, out), nil
 }
+
 
 func readSymbolsWithObjdump(ctx context.Context, objPath string, verbose bool) ([]SymbolInfo, error) {
 	out, err := utils.RunCommandOutput(ctx, "objdump", "-t", objPath)
