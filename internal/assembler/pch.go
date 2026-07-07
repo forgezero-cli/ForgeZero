@@ -29,7 +29,7 @@ import (
 
 var PCHIncludeArgs []string
 var PCHCacheDir string
-var pchMutex sync.Mutex
+var pchCache sync.Map // map[string][32]byte
 
 func ResetPCH() {
 	PCHIncludeArgs = nil
@@ -122,9 +122,15 @@ func EnsurePCH(ctx context.Context, headerPath string, compiler string, flags []
 	if err != nil {
 		return "", err
 	}
-	pchMutex.Lock()
-	defer pchMutex.Unlock()
+	if v, ok := pchCache.Load(pchPath); ok {
+		if storedHash, ok2 := v.([32]byte); ok2 {
+			if storedHash == currentHash {
+				return pchPath, nil
+			}
+		}
+	}
 	storedHash, _ := loadPCHHash(pchPath)
+	pchCache.Store(pchPath, storedHash)
 	if storedHash != currentHash {
 		if err := BuildPCH(ctx, headerPath, pchPath, compiler, flags, verbose); err != nil {
 			return "", err
@@ -132,6 +138,7 @@ func EnsurePCH(ctx context.Context, headerPath string, compiler string, flags []
 		if err := savePCHHash(pchPath, currentHash); err != nil {
 			return "", err
 		}
+		pchCache.Store(pchPath, currentHash)
 	}
 	return pchPath, nil
 }
