@@ -17,25 +17,25 @@
 
 package scheduler
 
+import (
+	"sync/atomic"
+)
+
 const numPriorities = 8
 
 type priorityQueues struct {
 	levels [numPriorities]*ringQueue
+	mask   atomic.Uint64
+	counts [numPriorities]atomic.Int64
 }
 
-func newPriorityQueues(queueSize int) *priorityQueues {
-	if queueSize <= 0 {
-		queueSize = 8 
-	}
-	
-	pq := &priorityQueues{}
+func newPriorityQueues(queueSize int) priorityQueues {
+	pq := priorityQueues{}
 	for i := 0; i < numPriorities; i++ {
 		pq.levels[i] = newRingQueue(queueSize)
 	}
 	return pq
-
 }
-
 
 func clampPriority(priority int) int {
 	if priority < 0 {
@@ -48,31 +48,57 @@ func clampPriority(priority int) int {
 }
 
 func (pq *priorityQueues) enqueue(task Task, priority int) bool {
-	slot := acquireTaskSlot()
-	slot.task = task
 	level := clampPriority(priority)
-	if pq.levels[level].tryEnqueue(slot) {
-		return true
+	if !pq.levels[level].tryEnqueue(task) {
+		return false
 	}
-	releaseTaskSlot(slot)
-	return false
+	pq.counts[level].Add(1)
+	bit := uint64(1) << uint(level)
+	for {
+		old := pq.mask.Load()
+		if old&bit != 0 {
+			break
+		}
+		if pq.mask.CompareAndSwap(old, old|bit) {
+			break
+		}
+	}
+	return true
 }
 
 func (pq *priorityQueues) spinEnqueue(task Task, priority int) {
-	slot := acquireTaskSlot()
-	slot.task = task
 	level := clampPriority(priority)
-	pq.levels[level].spinEnqueue(slot)
+	pq.levels[level].spinEnqueue(task)
 }
 
 func (pq *priorityQueues) dequeue() (Task, bool) {
+	m := pq.mask.Load()
+	if m == 0 {
+		return nil, false
+	}
 	for i := numPriorities - 1; i >= 0; i-- {
-		slot, ok := pq.levels[i].tryDequeue()
-		if ok && slot != nil {
-			task := slot.task
-			releaseTaskSlot(slot)
-			return task, true
+		bit := uint64(1) << uint(i)
+		if m&bit == 0 {
+			continue
 		}
+		task, ok := pq.levels[i].tryDequeue()
+		if !ok {
+			m = pq.mask.Load()
+			continue
+		}
+		newCount := pq.counts[i].Add(-1)
+		if newCount == 0 {
+			for {
+				old := pq.mask.Load()
+				if old&bit == 0 {
+					break
+				}
+				if pq.mask.CompareAndSwap(old, old&^bit) {
+					break
+				}
+			}
+		}
+		return task, true
 	}
 	return nil, false
 }
@@ -80,7 +106,7 @@ func (pq *priorityQueues) dequeue() (Task, bool) {
 func (pq *priorityQueues) pending() uint64 {
 	var total uint64
 	for i := 0; i < numPriorities; i++ {
-		total += pq.levels[i].len()
+		total += uint64(pq.counts[i].Load())
 	}
 	return total
 }
