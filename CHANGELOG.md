@@ -1,4 +1,8 @@
+# CHANGELOG
+
 ## [5.3.1] – 2026-07-07
+
+## [Unreleased]
 
 ### Added
 - **DAG‑based parallel task scheduler** (`scheduler`) – enables efficient, dependency‑aware parallel execution of build tasks.  
