@@ -21,6 +21,30 @@
 [1100f19](https://github.com/forgezero-cli/ForgeZero/commit/1100f19))
 - **Plan9 cache support** – added cache implementation for Plan9 operating system.  
   ([8a94769](https://github.com/forgezero-cli/ForgeZero/commit/8a94769))
+#### [NEW]
+- **Multi‑level action cache (L1/L2/L3)** – stores build rule outputs in a zero‑copy memory‑mapped cache with BLAKE3 keys, dramatically reducing rebuild times for expensive actions like `./configure`.  
+  ([29ae2c8](https://github.com/forgezero-cli/ForgeZero/commit/29ae2c8))
+
+- **Build rule execution system** – supports custom `build_rules` in config with `action`, `inputs`, `outputs`, `depfile`; DAG‑based ordering; variable expansion (`$in`, `$out`, `$depfile`); and `restat` behaviour.  
+  ([ef46b6f](https://github.com/forgezero-cli/ForgeZero/commit/ef46b6f), [96c5109](https://github.com/forgezero-cli/ForgeZero/commit/96c5109))
+
+- **Internal logging package** – zero‑allocation buffered logger with `Debug`, `Info`, `Error` methods for high‑performance build logs.  
+  ([f8d9ae](https://github.com/forgezero-cli/ForgeZero/commit/f8d9ae))
+
+- **x86‑64 assembly reference** – comprehensive NASM syntax guide covering registers, instructions, syscalls, SIMD, and calling conventions.  
+  ([85b5f58](https://github.com/forgezero-cli/ForgeZero/commit/85b5f58))
+
+- **FZASM specification files** – detailed documentation for the internal assembler architecture, opcodes, and encoder design.  
+  ([e87c7f8](https://github.com/forgezero-cli/ForgeZero/commit/e87c7f8))
+
+- **NUMA‑aware atomic counters** – sharded counters by NUMA node for cache‑hit/miss tracking with reduced contention.  
+  ([cf2655a](https://github.com/forgezero-cli/ForgeZero/commit/cf2655a))
+
+- **Lock‑free queue implementation** – Michael‑Scott style queue with sequence‑based ring buffer for the scheduler.  
+  ([7fe6a1d](https://github.com/forgezero-cli/ForgeZero/commit/7fe6a1d))
+
+- **Zero‑alloc encoder foundation** – opcode constants and encoder framework for future instruction expansion.  
+  ([6747f47](https://github.com/forgezero-cli/ForgeZero/commit/6747f47), [ed6a528](https://github.com/forgezero-cli/ForgeZero/commit/ed6a528))
 
 ### Changed
 - **Overhauled core build engine** – now uses DAG scheduling and the new hash cache for a more reliable and faster build.  
@@ -35,10 +59,33 @@
   ([f8ed04b](https://github.com/forgezero-cli/ForgeZero/commit/f8ed04b))
 - **Code style cleanup** – removed extra blank lines in `cache.go` and `symbols.go`.  
   ([5c1cea5](https://github.com/forgezero-cli/ForgeZero/commit/5c1cea5), [f293ec0](https://github.com/forgezero-cli/ForgeZero/commit/f293ec0))
+### [NEW]
+- **Scheduler overhaul** – replaced lock‑based queues with lock‑free ring queues, added worker‑local priority queues (8 levels), work‑stealing, and persistent worker goroutines; benchmarks show **0 allocs/op** in hot path.  
+  ([bbdc2a2](https://github.com/forgezero-cli/ForgeZero/commit/bbdc2a2), [606913e](https://github.com/forgezero-cli/ForgeZero/commit/606913e), [8875114](https://github.com/forgezero-cli/ForgeZero/commit/8875114), [102a1d0](https://github.com/forgezero-cli/ForgeZero/commit/102a1d0), [e8905fb](https://github.com/forgezero-cli/ForgeZero/commit/e8905fb))
+
+- **RAM cache rework** – switched from mutex‑protected map to `sync.Map`, added `syscall.Mmap` for zero‑copy object storage with safe `Munmap` on eviction.  
+  ([1813d6e](https://github.com/forgezero-cli/ForgeZero/commit/1813d6e), [a293d58](https://github.com/forgezero-cli/ForgeZero/commit/a293d58))
+
+- **Assembler optimisations** – register parser rewritten to return primitives instead of allocating structs; `fmt.Errorf` replaced with pooled buffer builder; PCH mutex replaced with `sync.Map`.  
+  ([ad1a260](https://github.com/forgezero-cli/ForgeZero/commit/ad1a260), [2539dbc](https://github.com/forgezero-cli/ForgeZero/commit/2539dbc), [43dfc3e](https://github.com/forgezero-cli/ForgeZero/commit/43dfc3e))
+
+- **Utils/VFS refactor** – replaced `RWMutex` with `atomic.Value` in `vfs.go`; `RunCommand` now uses pipe + single reader goroutine instead of mutex‑protected buffer writer.  
+  ([ded5a6c](https://github.com/forgezero-cli/ForgeZero/commit/ded5a6c), [8c9ec50](https://github.com/forgezero-cli/ForgeZero/commit/8c9ec50))
+
+- **Seal package** – replaced `allowed` map with `sync.Map`, removed `journalMu`, and used atomic circular buffer writes.  
+  ([fab854c](https://github.com/forgezero-cli/ForgeZero/commit/fab854c), [aa35066](https://github.com/forgezero-cli/ForgeZero/commit/aa35066))
+
+- **Linker target info** – replaced `RWMutex` with `atomic.Value` for lock‑free target feature detection.  
+  ([b6e7442](https://github.com/forgezero-cli/ForgeZero/commit/b6e7442))
 
 ### Fixed
 - **Comprehensive test coverage** for dependency parsing, graph building, DAGScheduler, and PCH integration hooks.  
   ([b3c0694](https://github.com/forgezero-cli/ForgeZero/commit/b3c0694), [98ab763](https://github.com/forgezero-cli/ForgeZero/commit/98ab763), [51840fd](https://github.com/forgezero-cli/ForgeZero/commit/51840fd))
+- **Shell command validation** – allowed `-c` (Unix) and `/C` (Windows) arguments in `RunCommand` without strict validation, enabling complex shell payloads.  
+  ([0ffe97e](https://github.com/forgezero-cli/ForgeZero/commit/0ffe97e))
+
+- **Build rule depfile/restat tests** – added comprehensive test coverage for dependency file parsing and incremental rebuild decisions.  
+  ([96c5109](https://github.com/forgezero-cli/ForgeZero/commit/96c5109))
 
 ### Build
 - Bumped core version from **v5.3.0** to **v5.3.1**.  
@@ -72,3 +119,14 @@ f8ed04b linker: optimize symbol parsing with byte-level operations
 5c1cea5 style: remove extra blank lines in cache.go
 f293ec0 style: remove extra blank lines in symbols.go
 8a94769 builder: add Plan9 cache implementation
+7fe6a1d feat(scheduler): add lock-free queue implementation
+f69f1ee test(scheduler): add stress test for 1000 tasks
+cf2655a feat(utils): add NUMA-aware atomic counters
+73456ad feat(config): add BuildRule struct and integrate into config validation and expansion
+0ffe97e fix(utils): allow shell -c and /C arguments in RunCommand validation
+e87c7f8 docs: add specification files for FZASM and scheduler
+85b5f58 docs: add x86-64 assembly reference (NASM syntax) for developers
+29ae2c8 feat(builder): add multi-level action cache (L1/L2/L3) for build rules
+ef46b6f feat(builder): implement build rule execution with DAG and depfile support
+96c5109 test(builder): add tests for build rules graph and depfile/restat behavior
+f8d9ae feat(logger): add internal logging package with buffered output
