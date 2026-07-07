@@ -112,6 +112,9 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 			return nil, err
 		}
 	}
+	if outBin == "" && cfg != nil && cfg.Output != "" {
+		outBin = cfg.Output
+	}
 	if outBin == "" {
 		if len(dirs) == 1 {
 			base := filepath.Base(dirs[0])
@@ -132,6 +135,10 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 	}
 	if err := utils.EnsureDir(outBin); err != nil {
 		return nil, errors.New("cannot create output directory: " + err.Error())
+	}
+
+	if cfg != nil && len(cfg.BuildRules) > 0 {
+		return runBuildRules(ctx, cfg, verbose, jobs)
 	}
 
 	var srcFiles []string
@@ -345,10 +352,10 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 						return errors.New("ram cache " + p.src + ": " + err.Error())
 					}
 				} else {
-					if err := storeCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil {
+					if err := AsyncStoreCache(p.src, p.obj, cacheDir, debug, verbose, mode); err != nil {
 						return errors.New("cache " + p.src + ": " + err.Error())
 					}
-					if err := storeShadowCache(p.src, p.obj, debug, mode); err != nil {
+					if err := AsyncStoreShadowCache(p.src, p.obj, debug, mode); err != nil {
 						return errors.New("shadow cache " + p.src + ": " + err.Error())
 					}
 				}
