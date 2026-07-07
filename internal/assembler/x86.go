@@ -23,119 +23,206 @@ import (
 	"errors"
 )
 
+
+
 type registerInfo struct {
-	code  byte
-	width int
+	code     byte
+	rexIndex byte
+	width    int
 }
 
-func parseRegister(tok []byte) (registerInfo, bool) {
-	if len(tok) == 0 || len(tok) > 4 {
-		return registerInfo{}, false
-	}
-	var key uint32
-	for i, b := range tok {
-		key |= uint32(b) << (8 * i)
-	}
-	switch key {
-	case uint32('a') | uint32('l')<<8:
-		return registerInfo{code: 0, width: 8}, true
-	case uint32('c') | uint32('l')<<8:
-		return registerInfo{code: 1, width: 8}, true
-	case uint32('d') | uint32('l')<<8:
-		return registerInfo{code: 2, width: 8}, true
-	case uint32('b') | uint32('l')<<8:
-		return registerInfo{code: 3, width: 8}, true
-	case uint32('a') | uint32('h')<<8:
-		return registerInfo{code: 4, width: 8}, true
-	case uint32('c') | uint32('h')<<8:
-		return registerInfo{code: 5, width: 8}, true
-	case uint32('d') | uint32('h')<<8:
-		return registerInfo{code: 6, width: 8}, true
-	case uint32('b') | uint32('h')<<8:
-		return registerInfo{code: 7, width: 8}, true
-	case uint32('a') | uint32('x')<<8:
-		return registerInfo{code: 0, width: 16}, true
-	case uint32('c') | uint32('x')<<8:
-		return registerInfo{code: 1, width: 16}, true
-	case uint32('d') | uint32('x')<<8:
-		return registerInfo{code: 2, width: 16}, true
-	case uint32('b') | uint32('x')<<8:
-		return registerInfo{code: 3, width: 16}, true
-	case uint32('s') | uint32('p')<<8:
-		return registerInfo{code: 4, width: 16}, true
-	case uint32('b') | uint32('p')<<8:
-		return registerInfo{code: 5, width: 16}, true
-	case uint32('s') | uint32('i')<<8:
-		return registerInfo{code: 6, width: 16}, true
-	case uint32('d') | uint32('i')<<8:
-		return registerInfo{code: 7, width: 16}, true
-	case uint32('r') | uint32('8')<<8:
-		return registerInfo{code: 8, width: 64}, true
-	case uint32('r') | uint32('9')<<8:
-		return registerInfo{code: 9, width: 64}, true
-	case uint32('r') | uint32('1')<<8 | uint32('0')<<16:
-		return registerInfo{code: 10, width: 64}, true
-	case uint32('r') | uint32('1')<<8 | uint32('1')<<16:
-		return registerInfo{code: 11, width: 64}, true
-	case uint32('r') | uint32('1')<<8 | uint32('2')<<16:
-		return registerInfo{code: 12, width: 64}, true
-	case uint32('r') | uint32('1')<<8 | uint32('3')<<16:
-		return registerInfo{code: 13, width: 64}, true
-	case uint32('r') | uint32('1')<<8 | uint32('4')<<16:
-		return registerInfo{code: 14, width: 64}, true
-	case uint32('r') | uint32('1')<<8 | uint32('5')<<16:
-		return registerInfo{code: 15, width: 64}, true
-	case uint32('r') | uint32('a')<<8 | uint32('x')<<16:
-		return registerInfo{code: 0, width: 64}, true
-	case uint32('r') | uint32('c')<<8 | uint32('x')<<16:
-		return registerInfo{code: 1, width: 64}, true
-	case uint32('r') | uint32('d')<<8 | uint32('x')<<16:
-		return registerInfo{code: 2, width: 64}, true
-	case uint32('r') | uint32('b')<<8 | uint32('x')<<16:
-		return registerInfo{code: 3, width: 64}, true
-	case uint32('r') | uint32('s')<<8 | uint32('p')<<16:
-		return registerInfo{code: 4, width: 64}, true
-	case uint32('r') | uint32('b')<<8 | uint32('p')<<16:
-		return registerInfo{code: 5, width: 64}, true
-	case uint32('r') | uint32('s')<<8 | uint32('i')<<16:
-		return registerInfo{code: 6, width: 64}, true
-	case uint32('r') | uint32('d')<<8 | uint32('i')<<16:
-		return registerInfo{code: 7, width: 64}, true
-	case uint32('e') | uint32('a')<<8 | uint32('x')<<16:
-		return registerInfo{code: 0, width: 32}, true
-	case uint32('e') | uint32('c')<<8 | uint32('x')<<16:
-		return registerInfo{code: 1, width: 32}, true
-	case uint32('e') | uint32('d')<<8 | uint32('x')<<16:
-		return registerInfo{code: 2, width: 32}, true
-	case uint32('e') | uint32('b')<<8 | uint32('x')<<16:
-		return registerInfo{code: 3, width: 32}, true
-	case uint32('e') | uint32('s')<<8 | uint32('p')<<16:
-		return registerInfo{code: 4, width: 32}, true
-	case uint32('e') | uint32('b')<<8 | uint32('p')<<16:
-		return registerInfo{code: 5, width: 32}, true
-	case uint32('e') | uint32('s')<<8 | uint32('i')<<16:
-		return registerInfo{code: 6, width: 32}, true
-	case uint32('e') | uint32('d')<<8 | uint32('i')<<16:
-		return registerInfo{code: 7, width: 32}, true
-	case uint32('r') | uint32('8')<<8 | uint32('d')<<16:
-		return registerInfo{code: 8, width: 32}, true
-	case uint32('r') | uint32('9')<<8 | uint32('d')<<16:
-		return registerInfo{code: 9, width: 32}, true
-	case uint32('r') | uint32('1')<<8 | uint32('0')<<16 | uint32('d')<<24:
-		return registerInfo{code: 10, width: 32}, true
-	case uint32('r') | uint32('1')<<8 | uint32('1')<<16 | uint32('d')<<24:
-		return registerInfo{code: 11, width: 32}, true
-	case uint32('r') | uint32('1')<<8 | uint32('2')<<16 | uint32('d')<<24:
-		return registerInfo{code: 12, width: 32}, true
-	case uint32('r') | uint32('1')<<8 | uint32('3')<<16 | uint32('d')<<24:
-		return registerInfo{code: 13, width: 32}, true
-	case uint32('r') | uint32('1')<<8 | uint32('4')<<16 | uint32('d')<<24:
-		return registerInfo{code: 14, width: 32}, true
-	case uint32('r') | uint32('1')<<8 | uint32('5')<<16 | uint32('d')<<24:
-		return registerInfo{code: 15, width: 32}, true
-	}
-	return registerInfo{}, false
+type modRMRegRM struct {
+	modRM byte
+	reg   byte
+	rm    byte
+	rex   byte
 }
+
+
+func parseRegister(tok []byte) (byte, int, bool) {
+	if len(tok) == 0 {
+		return 0, 0, false
+	}
+	if tok[0] == 'R' || tok[0] == 'r' {
+	}
+	var s [16]byte
+	copy(s[:], tok)
+	for i := 0; i < len(tok) && i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			s[i] = c + ('a' - 'A')
+		}
+	}
+	name := s[:len(tok)]
+
+	codeFromBase := func(code byte, width int) (byte, int, bool) {
+		return code & 7, width, true
+	}
+
+	switch {
+	case bytesEqual(name, []byte("al")):
+		return 0, 8, true
+	case bytesEqual(name, []byte("cl")):
+		return 1, 8, true
+	case bytesEqual(name, []byte("dl")):
+		return 2, 8, true
+	case bytesEqual(name, []byte("bl")):
+		return 3, 8, true
+	case bytesEqual(name, []byte("ah")):
+		return 4, 8, true
+	case bytesEqual(name, []byte("ch")):
+		return 5, 8, true
+	case bytesEqual(name, []byte("dh")):
+		return 6, 8, true
+	case bytesEqual(name, []byte("bh")):
+		return 7, 8, true
+	case bytesEqual(name, []byte("ax")):
+		return 0, 16, true
+	case bytesEqual(name, []byte("cx")):
+		return 1, 16, true
+	case bytesEqual(name, []byte("dx")):
+		return 2, 16, true
+	case bytesEqual(name, []byte("bx")):
+		return 3, 16, true
+	case bytesEqual(name, []byte("sp")):
+		return 4, 16, true
+	case bytesEqual(name, []byte("bp")):
+		return 5, 16, true
+	case bytesEqual(name, []byte("si")):
+		return 6, 16, true
+	case bytesEqual(name, []byte("di")):
+		return 7, 16, true
+	case bytesEqual(name, []byte("eax")):
+		return codeFromBase(0, 32)
+	case bytesEqual(name, []byte("ecx")):
+		return codeFromBase(1, 32)
+	case bytesEqual(name, []byte("edx")):
+		return codeFromBase(2, 32)
+	case bytesEqual(name, []byte("ebx")):
+		return codeFromBase(3, 32)
+	case bytesEqual(name, []byte("esp")):
+		return codeFromBase(4, 32)
+	case bytesEqual(name, []byte("ebp")):
+		return codeFromBase(5, 32)
+	case bytesEqual(name, []byte("esi")):
+		return codeFromBase(6, 32)
+	case bytesEqual(name, []byte("edi")):
+		return codeFromBase(7, 32)
+	case bytesEqual(name, []byte("rax")):
+		return codeFromBase(0, 64)
+	case bytesEqual(name, []byte("rcx")):
+		return codeFromBase(1, 64)
+	case bytesEqual(name, []byte("rdx")):
+		return codeFromBase(2, 64)
+	case bytesEqual(name, []byte("rbx")):
+		return codeFromBase(3, 64)
+	case bytesEqual(name, []byte("rsp")):
+		return codeFromBase(4, 64)
+	case bytesEqual(name, []byte("rbp")):
+		return codeFromBase(5, 64)
+	case bytesEqual(name, []byte("rsi")):
+		return codeFromBase(6, 64)
+	case bytesEqual(name, []byte("rdi")):
+		return codeFromBase(7, 64)
+	}
+
+	n := len(name)
+	if n >= 2 && name[0] == 'r' {
+		if name[1] >= '0' && name[1] <= '9' {
+			idx := int(name[1]-'0')
+			pos := 2
+			if idx >= 10 {
+				return 0, 0, false
+			}
+			width := 64
+			if pos < n {
+				suf := name[pos:]
+				_ = suf
+			}
+			if n == 2 {
+				width = 64
+				if idx < 8 {
+					return 0, 0, false
+				}
+				return codeFromBase(byte(idx), width)
+			}
+			if n == 3 {
+				suf := name[2]
+				if idx < 8 {
+					return 0, 0, false
+				}
+				switch suf {
+				case 'b':
+					width = 8
+				case 'w':
+					width = 16
+				case 'd':
+					width = 32
+				default:
+					return 0, 0, false
+				}
+				return codeFromBase(byte(idx), width)
+			}
+			if n == 4 {
+				if idx != 1 {
+				}
+			}
+		}
+	}
+
+	if len(name) == 3 && name[0] == 'r' && name[1] == '1' && name[2] >= '0' && name[2] <= '5' {
+	}
+	if (len(name) == 2 || len(name) == 3 || len(name) == 4) && name[0] == 'r' && name[1] == '1' {
+		idx := int((name[2]-'0') + 10)
+		if idx < 10 || idx > 15 {
+			return 0, 0, false
+		}
+		width := 64
+		if len(name) == 4 {
+			suf := name[3]
+			switch suf {
+			case 'b':
+				width = 8
+			case 'w':
+				width = 16
+			case 'd':
+				width = 32
+			default:
+				return 0, 0, false
+			}
+		}
+		return codeFromBase(byte(idx), width)
+	}
+	if bytesHasPrefix(name, []byte("r8")) && (len(name) == 3 && (name[2] == 'b' || name[2] == 'w' || name[2] == 'd')) {
+	
+	}
+	return 0, 0, false
+}
+
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func bytesHasPrefix(a, prefix []byte) bool {
+	if len(prefix) > len(a) {
+		return false
+	}
+	for i := 0; i < len(prefix); i++ {
+		if a[i] != prefix[i] {
+			return false
+		}
+	}
+	return true
+}
+
 
 type operandType int
 
@@ -162,8 +249,8 @@ func parseOperand(tok []byte) (operand, error) {
 	if len(tok) == 0 {
 		return operand{}, errors.New("empty operand")
 	}
-	if reg, ok := parseRegister(tok); ok {
-		return operand{typ: opReg, reg: reg.code}, nil
+	if code, _, ok := parseRegister(tok); ok {
+		return operand{typ: opReg, reg: code}, nil
 	}
 	if len(tok) > 2 && tok[0] == '[' && tok[len(tok)-1] == ']' {
 		inner := trimSpace(tok[1 : len(tok)-1])
@@ -208,11 +295,11 @@ func parseOperand(tok []byte) (operand, error) {
 				disp += sign * int64(num)
 				continue
 			}
-			if reg, ok := parseRegister(part); ok {
+			if code, _, ok := parseRegister(part); ok {
 				if base == 255 {
-					base = reg.code
+					base = code
 				} else if index == 255 {
-					index = reg.code
+					index = code
 				} else {
 					return operand{}, errors.New("too many registers")
 				}
@@ -221,7 +308,7 @@ func parseOperand(tok []byte) (operand, error) {
 			if idx := bytes.IndexByte(part, '*'); idx != -1 {
 				regPart := trimSpace(part[:idx])
 				scalePart := trimSpace(part[idx+1:])
-				reg, ok := parseRegister(regPart)
+				code, _, ok := parseRegister(regPart)
 				if !ok {
 					return operand{}, errors.New("invalid index register")
 				}
@@ -232,7 +319,7 @@ func parseOperand(tok []byte) (operand, error) {
 				if index != 255 {
 					return operand{}, errors.New("index already set")
 				}
-				index = reg.code
+				index = code
 				scale = byte(scaleVal)
 				continue
 			}
