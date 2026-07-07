@@ -4,7 +4,7 @@
  *   This program is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
- *   (at your option) any later version of the License.
+ *   (at your option) any later version.
  *
  *   This program is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -29,7 +29,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 
 	"github.com/forgezero-cli/ForgeZero/internal/logger"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
@@ -49,13 +48,13 @@ func archivePath(hashHex string, cacheDir string) string {
 }
 
 const (
-	l1EntryCount      = 1 << 16
-	l1EntryMask       = l1EntryCount - 1
-	l2HeaderMagic     = 0xA1C3CAC0
-	l2HeaderVersion   = 1
-	l2HeaderSize      = 64
+	l1EntryCount       = 1 << 16
+	l1EntryMask        = l1EntryCount - 1
+	l2HeaderMagic      = 0xA1C3CAC0
+	l2HeaderVersion    = 1
+	l2HeaderSize       = 64
 	l2OutputHeaderSize = 16
-	l1OffsetBias      = 1
+	l1OffsetBias       = 1
 )
 
 type l1Entry struct {
@@ -76,11 +75,11 @@ type actionCacheJob struct {
 }
 
 var (
-	l2Data   []byte
-	l2File   *os.File
-	l2Mutex  sync.RWMutex
-	jobQueue chan actionCacheJob
-	initOnce sync.Once
+	l2Data      []byte
+	l2File      *os.File
+	l2Mutex     sync.RWMutex
+	jobQueue    chan actionCacheJob
+	initOnce    sync.Once
 	preloadOnce sync.Once
 )
 
@@ -162,7 +161,7 @@ func l1Key(digest [32]byte) uint64 {
 }
 
 func l1Load(key uint64) (*l1Entry, bool) {
-expected := key
+	expected := key
 	for probe := 0; probe < 16; probe++ {
 		idx := l1Index(key, probe)
 		entry := &l1Entries[idx]
@@ -491,7 +490,7 @@ func mapL2Data(cacheDir string) error {
 		file.Close()
 		return nil
 	}
-	data, err := syscall.Mmap(int(file.Fd()), 0, int(info.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+	data, err := mmapFile(int(file.Fd()), int(info.Size()))
 	if err != nil {
 		file.Close()
 		return err
@@ -503,7 +502,7 @@ func mapL2Data(cacheDir string) error {
 
 func reloadL2Data(cacheDir string) error {
 	if l2Data != nil {
-		_ = syscall.Munmap(l2Data)
+		_ = munmapFile(l2Data)
 		l2Data = nil
 	}
 	if l2File != nil {
@@ -524,7 +523,7 @@ func reloadL2Data(cacheDir string) error {
 		file.Close()
 		return nil
 	}
-	data, err := syscall.Mmap(int(file.Fd()), 0, int(info.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+	data, err := mmapFile(int(file.Fd()), int(info.Size()))
 	if err != nil {
 		file.Close()
 		return err
