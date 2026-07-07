@@ -21,8 +21,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync"
+	"syscall"
 
 	"github.com/forgezero-cli/ForgeZero/internal/config"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
@@ -41,35 +43,93 @@ type cachedObject struct {
 	syms   []byte
 }
 
-type objectCache struct {
-	mu      sync.RWMutex
-	entries map[string]*cachedObject
+type objectCache struct{
+	entries sync.Map
 }
 
-func newObjectCache() *objectCache {
-	return &objectCache{entries: make(map[string]*cachedObject)}
-}
+func newObjectCache() *objectCache { return &objectCache{} }
 
 func (c *objectCache) get(key string) (*cachedObject, bool) {
-	c.mu.RLock()
-	entry, ok := c.entries[key]
-	c.mu.RUnlock()
-	return entry, ok
+	v, ok := c.entries.Load(key)
+	if !ok {
+		return nil, false
+	}
+	return v.(*cachedObject), true
 }
 
 func (c *objectCache) delete(key string) {
-	c.mu.Lock()
-	delete(c.entries, key)
-	c.mu.Unlock()
+	if v, ok := c.entries.Load(key); ok {
+		if ent, ok2 := v.(*cachedObject); ok2 && ent != nil {
+			data := ent.object
+			c.entries.Delete(key)
+			if len(data) > 0 {
+				_ = syscall.Munmap(data)
+				ent.object = nil
+				runtime.KeepAlive(data)
+			}
+			return
+		}
+	}
+	c.entries.Delete(key)
 }
 
 func (c *objectCache) set(key string, object, syms []byte) {
-	c.mu.Lock()
-	c.entries[key] = &cachedObject{object: append([]byte(nil), object...), syms: append([]byte(nil), syms...)}
-	c.mu.Unlock()
+	c.entries.Store(key, &cachedObject{object: object, syms: append([]byte(nil), syms...)})
 }
 
 var ramObjectStore = newObjectCache()
+var ramCacheHits *utils.NumaCounters
+var ramCacheMisses *utils.NumaCounters
+
+type cacheTask struct{
+	src string
+	obj string
+	cacheDir string
+	debug bool
+	verbose bool
+	mode string
+}
+
+var cacheWriteCh chan cacheTask
+
+func init() {
+	cacheWriteCh = make(chan cacheTask, 1024)
+	workers := runtime.GOMAXPROCS(0)
+	if workers <= 0 {
+		workers = 1
+	}
+	for i := 0; i < workers; i++ {
+		go func() {
+			for t := range cacheWriteCh {
+				_ = storeCache(t.src, t.obj, t.cacheDir, t.debug, t.verbose, t.mode)
+			}
+		}()
+	}
+	ramCacheHits = utils.NewNumaCounters()
+	ramCacheMisses = utils.NewNumaCounters()
+}
+
+func AsyncStoreCache(src, obj, cacheDir string, debug, verbose bool, mode string) error {
+	t := cacheTask{src:src, obj:obj, cacheDir:cacheDir, debug:debug, verbose:verbose, mode:mode}
+	cacheWriteCh <- t
+	return nil
+}
+
+type shadowTask struct{ src, obj string; debug bool; mode string }
+var shadowWriteCh = make(chan shadowTask, 256)
+func init() {
+	go func() {
+		for t := range shadowWriteCh {
+			_ = storeShadowCache(t.src, t.obj, t.debug, t.mode)
+		}
+	}()
+}
+
+func AsyncStoreShadowCache(src, obj string, debug bool, mode string) error {
+	t := shadowTask{src:src, obj:obj, debug:debug, mode:mode}
+	shadowWriteCh <- t
+	return nil
+}
 
 type pathBuffer struct {
 	buf   [2048]byte
@@ -190,10 +250,16 @@ func restoreRAMCache(src, obj string, debug bool, mode string) (bool, error) {
 	key := buildCacheKey(h, debug, mode)
 	entry, ok := ramObjectStore.get(key)
 	if !ok {
+		if ramCacheMisses != nil {
+			ramCacheMisses.Inc()
+		}
 		return false, nil
 	}
 	if len(entry.object) == 0 {
 		ramObjectStore.delete(key)
+		if ramCacheMisses != nil {
+			ramCacheMisses.Inc()
+		}
 		return false, nil
 	}
 	if err := utils.EnsureDir(obj); err != nil {
@@ -208,27 +274,59 @@ func restoreRAMCache(src, obj string, debug bool, mode string) (bool, error) {
 	if debug {
 		os.Stdout.WriteString("RAM cache restored " + src + " -> " + obj + "\n")
 	}
+	if ramCacheHits != nil {
+		ramCacheHits.Inc()
+	}
 	return true, nil
 }
 
 func storeRAMCache(src, obj string, debug bool, mode string) error {
-	object, err := os.ReadFile(obj)
+	f, err := os.Open(obj)
 	if err != nil {
 		return err
 	}
-	if len(object) == 0 {
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if info.Size() == 0 {
 		return errors.New("refusing to cache empty object: " + obj)
+	}
+	fd := int(f.Fd())
+	data, err := syscall.Mmap(fd, 0, int(info.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
+		object, err2 := os.ReadFile(obj)
+		if err2 != nil {
+			return err
+		}
+		syms, err2 := os.ReadFile(obj + ".syms")
+		if err2 != nil && !errors.Is(err2, os.ErrNotExist) {
+			return err2
+		}
+		h, err2 := utils.HashFile(src)
+		if err2 != nil {
+			return err2
+		}
+		key := buildCacheKey(h, debug, mode)
+		ramObjectStore.set(key, object, syms)
+		if debug {
+			os.Stdout.WriteString("RAM cache stored " + src + "\n")
+		}
+		return nil
 	}
 	syms, err := os.ReadFile(obj + ".syms")
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		_ = syscall.Munmap(data)
 		return err
 	}
 	h, err := utils.HashFile(src)
 	if err != nil {
+		_ = syscall.Munmap(data)
 		return err
 	}
 	key := buildCacheKey(h, debug, mode)
-	ramObjectStore.set(key, object, syms)
+	ramObjectStore.set(key, data, syms)
 	if debug {
 		os.Stdout.WriteString("RAM cache stored " + src + "\n")
 	}
