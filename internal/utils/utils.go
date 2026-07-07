@@ -394,7 +394,7 @@ func buildCommand(ctx context.Context, name string, args ...string) (*exec.Cmd, 
 		}
 	}
 	for i, a := range args {
-		if (base == "sh" || base == "bash") && i == 1 && args[0] == "-c" {
+		if i == 1 && (args[0] == "-c" || args[0] == "/C") {
 			continue
 		}
 		if err := ValidateCLIArg(a); err != nil {
