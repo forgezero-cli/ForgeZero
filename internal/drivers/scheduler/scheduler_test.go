@@ -89,15 +89,29 @@ func TestSchedulerContextCancel(t *testing.T) {
 	}
 }
 
+func noopTask(ctx context.Context) error {
+	return nil
+}
+
 func BenchmarkSchedulerSubmitRun(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		sched := NewScheduler(4, 512)
 		for j := 0; j < 100; j++ {
-			sched.SubmitBlocking(func(ctx context.Context) error {
-				return nil
-			}, 0)
+			sched.SubmitBlocking(noopTask, 0)
 		}
 		_ = sched.Run(context.Background())
+	}
+}
+
+func BenchmarkSchedulerSubmitRunReuseScheduler(b *testing.B) {
+	b.ReportAllocs()
+	sched := NewScheduler(4, 512)
+	ctx := context.Background()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < 100; j++ {
+			sched.SubmitBlocking(noopTask, 0)
+		}
+		_ = sched.Run(ctx)
 	}
 }
