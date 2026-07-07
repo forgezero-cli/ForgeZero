@@ -23,6 +23,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strconv"
 	"sync"
 )
 
@@ -228,7 +229,7 @@ func emitSourceObject(src []byte, profile targetEmitterProfile) ([]byte, error) 
 	for p.pos < len(p.src) {
 		line := p.readLine()
 		if err := p.parseLine(line); err != nil {
-			return nil, err
+			return nil, p.formatError(err)
 		}
 	}
 	if len(p.text.data) == 0 && len(p.data.data) == 0 && p.bss.size == 0 {
@@ -272,7 +273,7 @@ func emitSourceRaw(src []byte, profile targetEmitterProfile) ([]byte, error) {
 	for p.pos < len(p.src) {
 		line := p.readLine()
 		if err := p.parseLine(line); err != nil {
-			return nil, err
+			return nil, p.formatError(err)
 		}
 	}
 	return p.emitRaw(profile)
@@ -648,6 +649,23 @@ func (p *parser) findSymbol(name []byte) int {
 		}
 	}
 	return -1
+}
+
+func (p *parser) formatError(err error) error {
+	if err == nil {
+		return nil
+	}
+	lineNum := bytes.Count(p.src[:p.pos], []byte{'\n'})
+	bptr := emitterBufferPool.Get().(*[]byte)
+	buf := *bptr
+	buf = buf[:0]
+	buf = append(buf, "assembler: line "...)
+	buf = strconv.AppendInt(buf, int64(lineNum+1), 10)
+	buf = append(buf, ": "...)
+	buf = append(buf, err.Error()...)
+	s := string(buf)
+	emitterBufferPool.Put(bptr)
+	return errors.New(s)
 }
 
 func (p *parser) emitBytes(rest []byte) error {
