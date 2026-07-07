@@ -42,9 +42,12 @@ var (
 	ZigRequested     bool
 	ZigEnabled       bool
 	CcFLagsParsed    []string
-	ForceInternalAsm bool
-	CcFlagsOnce      sync.Once
-	runCommand       = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+	ForceInternalAsm bool = true
+
+	UseNasm bool
+
+	CcFlagsOnce sync.Once
+	runCommand  = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
 		return utils.RunCommandSilent(ctx, verbose, name, args...)
 	}
 )
@@ -198,6 +201,18 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 		}
 	}
 
+if useNasmFlag := flag.Lookup("use-nasm"); useNasmFlag != nil {
+		UseNasm = useNasmFlag.Value.String() == "true"
+	}
+	ForceInternalAsm = !UseNasm
+	if verbose {
+		if UseNasm {
+			writeStderr("Using NASM for .asm files\n")
+		} else {
+			writeStderr("Using internal assembler for .asm files\n")
+		}
+	}
+
 	src = filepath.Clean(src)
 	obj = filepath.Clean(obj)
 	if seal.IsDecoyMode() {
@@ -226,11 +241,12 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 			return errors.New("cannot assemble .asm files for wasm target")
 		}
 
-		if strings.HasSuffix(src, ".asm") && !ForceInternalAsm {
+	if strings.HasSuffix(src, ".asm") && UseNasm {
+
 			return assembleWithNasm(ctx, src, obj, debug, verbose)
 		}
-
 		return assembleRawASM(ctx, src, obj)
+
 	case ".s":
 		if isGoAsmFile(src) {
 			return assembleGoAsm(ctx, src, obj, verbose)
@@ -359,3 +375,4 @@ func assembleRawBinary(src, obj string) error {
 func isWasmTarget() bool {
 	return strings.Contains(Target, "wasm") || strings.Contains(Target, "wasm32")
 }
+

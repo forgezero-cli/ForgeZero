@@ -54,6 +54,8 @@ func SetupFlags() *Flags {
 	flag.StringVar(&f.CcFlags, "cc-flag", "", "additional C compiler flags (space-separated)")
 	flag.StringVar(&f.LdFlags, "ld-flag", "", "additional linker flags (space-separated)")
 	flag.BoolVar(&f.ForceFASM, "fasm", false, "use FASM instead of NASM for .asm files")
+	flag.BoolVar(&f.UseNasm, "use-nasm", false, "use NASM instead of internal assembler for .asm files")
+
 	flag.BoolVar(&f.RawFlag, "raw", false, "force raw linking (alias for -mode raw)")
 	flag.BoolVar(&f.ForceLdFlag, "ld", false, "invoke ld directly, skip gcc/clang probes")
 	flag.StringVar(&f.AsmPath, "asm", "", "path to .asm file")
@@ -123,6 +125,8 @@ type Flags struct {
 	CcFlags             string
 	LdFlags             string
 	ForceFASM           bool
+	UseNasm             bool
+
 	RawFlag             bool
 	ForceLdFlag         bool
 	AsmPath             string
