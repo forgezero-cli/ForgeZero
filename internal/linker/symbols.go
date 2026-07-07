@@ -25,9 +25,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/forgezero-cli/ForgeZero/internal/drivers/concurrency"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
@@ -40,6 +40,7 @@ type SymbolInfo struct {
 	Size  int
 	Bound string
 }
+
 
 var (
 	detectedTool     string
@@ -257,7 +258,7 @@ func readSymbolsWithNm(ctx context.Context, objPath string, verbose bool) ([]Sym
 		b.WriteString(err.Error())
 		return nil, errors.New(b.String())
 	}
-	return parseNmOutput(objPath, string(out)), nil
+	return parseNmOutputBytes(objPath, out), nil
 }
 
 func readSymbolsWithObjdump(ctx context.Context, objPath string, verbose bool) ([]SymbolInfo, error) {
@@ -270,7 +271,7 @@ func readSymbolsWithObjdump(ctx context.Context, objPath string, verbose bool) (
 		b.WriteString(err.Error())
 		return nil, errors.New(b.String())
 	}
-	return parseObjdumpOutput(objPath, string(out)), nil
+	return parseObjdumpOutputBytes(objPath, out), nil
 }
 
 func readSymbolsWithReadelf(ctx context.Context, objPath string, verbose bool) ([]SymbolInfo, error) {
@@ -283,77 +284,234 @@ func readSymbolsWithReadelf(ctx context.Context, objPath string, verbose bool) (
 		b.WriteString(err.Error())
 		return nil, errors.New(b.String())
 	}
-	return parseReadelfOutput(objPath, string(out)), nil
+	return parseReadelfOutputBytes(objPath, out), nil
 }
+
 
 func parseNmOutput(objPath, text string) []SymbolInfo {
-	var syms []SymbolInfo
-	scanner := bufio.NewScanner(strings.NewReader(text))
-	for scanner.Scan() {
-		line := scanner.Text()
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
+	return parseNmOutputBytes(objPath, []byte(text))
+}
+
+func parseNmOutputBytes(objPath string, data []byte) []SymbolInfo {
+	syms := make([]SymbolInfo, 0, 64)
+	var i int
+	for i < len(data) {
+		j := i
+		for j < len(data) && data[j] != '\n' {
+			j++
+		}
+		line := data[i:j]
+		i = j + 1
+
+		if len(line) == 0 {
 			continue
 		}
-		typ := fields[1]
-		if typ != "T" && typ != "D" && typ != "B" {
+
+		p0 := 0
+		for p0 < len(line) && (line[p0] == ' ' || line[p0] == '\t' || line[p0] == '\r') {
+			p0++
+		}
+		p1 := p0
+		for p1 < len(line) && line[p1] != ' ' && line[p1] != '\t' && line[p1] != '\r' {
+			p1++
+		}
+		p2 := p1
+		for p2 < len(line) && (line[p2] == ' ' || line[p2] == '\t' || line[p2] == '\r') {
+			p2++
+		}
+		p3 := p2
+		for p3 < len(line) && line[p3] != ' ' && line[p3] != '\t' && line[p3] != '\r' {
+			p3++
+		}
+		p4 := p3
+		for p4 < len(line) && (line[p4] == ' ' || line[p4] == '\t' || line[p4] == '\r') {
+			p4++
+		}
+		p5 := p4
+		for p5 < len(line) && line[p5] != ' ' && line[p5] != '\t' && line[p5] != '\r' {
+			p5++
+		}
+
+		if p5-p4 <= 0 {
 			continue
 		}
-		name := fields[2]
-		if name == "" || name == "_start" || strings.HasPrefix(name, ".") {
+
+		typStart := p2
+		typLen := p3 - p2
+		if typLen == 0 {
 			continue
 		}
+
+		var typ byte
+		if typLen > 0 {
+			typ = line[typStart]
+		}
+
+		if !(typ == 'T' || typ == 'D' || typ == 'B') {
+			continue
+		}
+
+		name := string(line[p4:p5])
+		if name == "" || name == "_start" || (len(name) > 0 && name[0] == '.') {
+			continue
+		}
+
 		syms = append(syms, SymbolInfo{File: objPath, Name: name, Type: "global"})
 	}
 	return syms
 }
+
+
+
 
 func parseObjdumpOutput(objPath, text string) []SymbolInfo {
-	var syms []SymbolInfo
-	scanner := bufio.NewScanner(strings.NewReader(text))
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.Contains(line, "g") {
+	return parseObjdumpOutputBytes(objPath, []byte(text))
+}
+
+func parseObjdumpOutputBytes(objPath string, data []byte) []SymbolInfo {
+	syms := make([]SymbolInfo, 0, 64)
+	var i int
+	for i < len(data) {
+		j := i
+		for j < len(data) && data[j] != '\n' {
+			j++
+		}
+		line := data[i:j]
+		i = j + 1
+		if len(line) == 0 {
 			continue
 		}
-		fields := strings.Fields(line)
-		if len(fields) < 6 {
+
+		if !bytes.Contains(line, []byte{'g'}) {
 			continue
 		}
-		section := fields[2]
-		if section == "UND" || section == "*ABS*" {
+
+		// tokenization: fields separated by space/tab
+		p := 0
+		idx := 0
+		var f2 []byte
+		var last []byte
+
+		for p < len(line) {
+			for p < len(line) && (line[p] == ' ' || line[p] == '\t' || line[p] == '\r') {
+				p++
+			}
+			if p >= len(line) {
+				break
+			}
+			start := p
+			for p < len(line) && line[p] != ' ' && line[p] != '\t' && line[p] != '\r' {
+				p++
+			}
+			end := p
+			if end <= start {
+				break
+			}
+			field := line[start:end]
+			if idx == 2 {
+				f2 = field
+			}
+			last = field
+			idx++
+		}
+
+		if idx < 6 {
 			continue
 		}
-		name := fields[len(fields)-1]
-		if name == "" || name == "_start" || strings.HasPrefix(name, ".") {
+		if f2 == nil {
 			continue
 		}
-		syms = append(syms, SymbolInfo{File: objPath, Name: name, Type: "global"})
+		if string(f2) == "UND" || string(f2) == "*ABS*" {
+			continue
+		}
+
+		name := last
+		if len(name) == 0 {
+			continue
+		}
+		if bytes.Equal(name, []byte("_start")) {
+			continue
+		}
+		if name[0] == '.' {
+			continue
+		}
+
+		syms = append(syms, SymbolInfo{File: objPath, Name: string(name), Type: "global"})
 	}
 	return syms
 }
 
+
 func parseReadelfOutput(objPath, text string) []SymbolInfo {
-	var syms []SymbolInfo
-	scanner := bufio.NewScanner(strings.NewReader(text))
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.Contains(line, "GLOBAL") {
+	return parseReadelfOutputBytes(objPath, []byte(text))
+}
+
+func parseReadelfOutputBytes(objPath string, data []byte) []SymbolInfo {
+	syms := make([]SymbolInfo, 0, 64)
+	var i int
+	for i < len(data) {
+		j := i
+		for j < len(data) && data[j] != '\n' {
+			j++
+		}
+		line := data[i:j]
+		i = j + 1
+		if len(line) == 0 {
 			continue
 		}
-		fields := strings.Fields(line)
-		if len(fields) < 8 {
+
+		if !bytes.Contains(line, []byte("GLOBAL")) {
 			continue
 		}
-		sectionIdx := 6
-		if sectionIdx < len(fields) && fields[sectionIdx] == "UND" {
+
+		p := 0
+		idx := 0
+		var field6 []byte
+		var last []byte
+		for p < len(line) {
+			for p < len(line) && (line[p] == ' ' || line[p] == '\t' || line[p] == '\r') {
+				p++
+			}
+			if p >= len(line) {
+				break
+			}
+			start := p
+			for p < len(line) && line[p] != ' ' && line[p] != '\t' && line[p] != '\r' {
+				p++
+			}
+			end := p
+			if end <= start {
+				break
+			}
+			field := line[start:end]
+			if idx == 6 {
+				field6 = field
+			}
+			last = field
+			idx++
+		}
+
+		if idx < 8 {
 			continue
 		}
-		name := fields[len(fields)-1]
-		if name == "" || name == "_start" || strings.HasPrefix(name, ".") {
+		if field6 != nil && bytes.Equal(field6, []byte("UND")) {
 			continue
 		}
-		syms = append(syms, SymbolInfo{File: objPath, Name: name, Type: "global"})
+
+		name := last
+		if len(name) == 0 {
+			continue
+		}
+		if bytes.Equal(name, []byte("_start")) {
+			continue
+		}
+		if name[0] == '.' {
+			continue
+		}
+
+		syms = append(syms, SymbolInfo{File: objPath, Name: string(name), Type: "global"})
 	}
 	return syms
 }
+
+

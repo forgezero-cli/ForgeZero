@@ -30,6 +30,7 @@ func TestParseNmOutput(t *testing.T) {
 0000000000000000 .L123
 `
 	syms := parseNmOutput("/obj.o", text)
+
 	if len(syms) != 3 {
 		t.Fatalf("got %d symbols", len(syms))
 	}
