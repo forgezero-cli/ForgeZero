@@ -17,28 +17,6 @@
 
 package scheduler
 
-import (
-	"context"
-	"sync"
-)
+import "context"
 
 type Task func(ctx context.Context) error
-
-type taskSlot struct {
-	task Task
-}
-
-var taskSlotPool = sync.Pool{
-	New: func() interface{} {
-		return &taskSlot{}
-	},
-}
-
-func acquireTaskSlot() *taskSlot {
-	return taskSlotPool.Get().(*taskSlot)
-}
-
-func releaseTaskSlot(s *taskSlot) {
-	s.task = nil
-	taskSlotPool.Put(s)
-}
