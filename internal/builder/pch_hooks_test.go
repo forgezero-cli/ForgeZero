@@ -78,30 +78,30 @@ func TestPreBuildHooksExecuteBeforeCompileAndRefreshUpdatesCache(t *testing.T) {
 		pos++
 		return nil
 	}
-	refreshTask := func(ctx context.Context) error {
+	refreshTask := func(arg uintptr, extra uintptr) error {
 		order[pos] = 1
 		pos++
 		return refreshSourceHashes([]string{srcDir})
 	}
-	genTask := func(ctx context.Context) error {
+	genTask := func(arg uintptr, extra uintptr) error {
 		order[pos] = 0
 		pos++
 		return nil
 	}
 
 	dag := scheduler.NewDAGScheduler(2, 8)
-	genDep, err := dag.Submit(genTask, nil)
+	genDep, err := dag.Submit(scheduler.AcquireTask(genTask, 0, 0), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	refreshDep, err := dag.Submit(refreshTask, []int{genDep})
+	refreshDep, err := dag.Submit(scheduler.AcquireTask(refreshTask, 0, 0), []int{genDep})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = dag.Submit(func(taskCtx context.Context) error {
+	_, err = dag.Submit(scheduler.AcquireTask(func(arg uintptr, extra uintptr) error {
 		_ = refreshDep
-		return compilerTask(taskCtx)
-	}, []int{refreshDep})
+		return compilerTask(context.Background())
+	}, 0, 0), []int{refreshDep})
 	if err != nil {
 		t.Fatal(err)
 	}
