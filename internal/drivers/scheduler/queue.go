@@ -98,13 +98,14 @@ func (q *ringQueue) tryDequeue() (Task, bool) {
 		if seq == head+1 {
 			if q.head.CompareAndSwap(head, head+1) {
 				task := slot.task
+				slot.task = Task{}
 				slot.seq.Store(head + q.cap)
 				return task, true
 			}
 			continue
 		}
 		if seq <= head {
-			return nil, false
+			return Task{}, false
 		}
 		runtime.Gosched()
 	}
