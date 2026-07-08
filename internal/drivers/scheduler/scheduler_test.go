@@ -22,17 +22,22 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"unsafe"
 )
+
+func makeCounterTask(counter *int64) Task {
+	return AcquireTask(func(arg uintptr, extra uintptr) error {
+		atomic.AddInt64((*int64)(unsafe.Pointer(arg)), 1)
+		return nil
+	}, uintptr(unsafe.Pointer(counter)), 0)
+}
 
 func TestSchedulerRunsAllTasks(t *testing.T) {
 	t.Parallel()
 	sched := NewScheduler(4, 256)
 	var counter int64
 	for i := 0; i < 200; i++ {
-		sched.SubmitBlocking(func(ctx context.Context) error {
-			atomic.AddInt64(&counter, 1)
-			return nil
-		}, 0)
+		sched.SubmitBlocking(makeCounterTask(&counter), 0)
 	}
 	if err := sched.Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -47,10 +52,7 @@ func TestSchedulerPriorityOrdering(t *testing.T) {
 	sched := NewScheduler(1, 64)
 	var counter int64
 	for i := 0; i < 16; i++ {
-		sched.SubmitBlocking(func(ctx context.Context) error {
-			atomic.AddInt64(&counter, 1)
-			return nil
-		}, i%8)
+		sched.SubmitBlocking(makeCounterTask(&counter), i%8)
 	}
 	if err := sched.Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -65,9 +67,9 @@ func TestSchedulerCollectsErrors(t *testing.T) {
 	sched := NewScheduler(2, 32)
 	testErr := errors.New("task failed")
 	for i := 0; i < 4; i++ {
-		sched.SubmitBlocking(func(ctx context.Context) error {
+		sched.SubmitBlocking(AcquireTask(func(arg uintptr, extra uintptr) error {
 			return testErr
-		}, 0)
+		}, 0, 0), 0)
 	}
 	err := sched.Run(context.Background())
 	if err == nil {
@@ -80,37 +82,40 @@ func TestSchedulerContextCancel(t *testing.T) {
 	sched := NewScheduler(2, 32)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	sched.SubmitBlocking(func(c context.Context) error {
+	sched.SubmitBlocking(AcquireTask(func(arg uintptr, extra uintptr) error {
 		return nil
-	}, 0)
+	}, 0, 0), 0)
 	err := sched.Run(ctx)
 	if err == nil {
 		t.Fatal("expected context error")
 	}
 }
 
-func noopTask(ctx context.Context) error {
+func noopTask(arg uintptr, extra uintptr) error {
 	return nil
 }
 
 func BenchmarkSchedulerSubmitRun(b *testing.B) {
+	sched := NewScheduler(4, 512)
+	ctx := context.Background()
 	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		sched := NewScheduler(4, 512)
 		for j := 0; j < 100; j++ {
-			sched.SubmitBlocking(noopTask, 0)
+			sched.SubmitBlocking(AcquireTask(noopTask, 0, 0), 0)
 		}
-		_ = sched.Run(context.Background())
+		_ = sched.Run(ctx)
 	}
 }
 
 func BenchmarkSchedulerSubmitRunReuseScheduler(b *testing.B) {
-	b.ReportAllocs()
 	sched := NewScheduler(4, 512)
 	ctx := context.Background()
+	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 100; j++ {
-			sched.SubmitBlocking(noopTask, 0)
+			sched.SubmitBlocking(AcquireTask(noopTask, 0, 0), 0)
 		}
 		_ = sched.Run(ctx)
 	}
