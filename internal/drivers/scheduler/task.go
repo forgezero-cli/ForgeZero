@@ -17,6 +17,36 @@
 
 package scheduler
 
-import "context"
+import "sync"
 
-type Task func(ctx context.Context) error
+type TaskFn func(arg uintptr, extra uintptr) error
+
+type Task struct {
+	Fn    TaskFn
+	Arg   uintptr
+	Extra uintptr
+	pool  *Task
+}
+
+var taskPool = sync.Pool{New: func() any { return new(Task) }}
+
+func AcquireTask(fn TaskFn, arg uintptr, extra uintptr) Task {
+	t := taskPool.Get().(*Task)
+	t.Fn = fn
+	t.Arg = arg
+	t.Extra = extra
+	t.pool = t
+	return *t
+}
+
+func ReleaseTask(task Task) {
+	if task.pool == nil {
+		return
+	}
+	t := task.pool
+	t.Fn = nil
+	t.Arg = 0
+	t.Extra = 0
+	t.pool = nil
+	taskPool.Put(t)
+}
