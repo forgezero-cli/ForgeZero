@@ -1,56 +1,37 @@
-FORGEZERO DOCUMENTATION
-==============================================================================
+FORGEZERO DOCUMENTATION CONTENTS
+===============================
 
-Generated from README.md, version 5.3.0, GPLv3, Go, Linux/Windows/macOS.
-Every fact in every file below is taken directly from that source. Nothing
-is invented, projected, or embellished beyond what README.md states.
+PRIMARY READING ORDER
+---------------------
+1. QUICKSTART
+2. CLI-REFERENCE
+3. TOML_CONFIG
+4. CONFIGURE_FZ
+5. EXAMPLES
 
-FILES IN THIS TREE
-------------------------------------------------------------------------------
-
-CONTENTS
-    This file. Index and reading order.
-
-INSTALL
-    Toolchain requirements per source type, per-linker requirements,
-    optional internal tools, and per-platform bootstrap commands
-    (Debian/Ubuntu, Fedora/RHEL/CentOS, Arch/Manjaro, openSUSE, macOS,
-    Windows, build-from-source, go install).
-
+DOCUMENTATION SET
+-----------------
+QUICKSTART
+    Installation, first build, and project initialization.
 CLI-REFERENCE
-    Full flag table, package manager subcommands, security/integrity
-    subcommands, performance subcommands, contributor subcommands,
-    build profiles, and linking modes.
-
-ARCHITECTURE
-    Process model, the make -j4 scaling benchmark data, scaling
-    efficiency metrics, and a high-level map of the internal build
-    mechanisms (cache, symbol check, watch mode, JSON output, clean,
-    parallel builds, shell, virtual filesystem layer).
-
-LANGUAGES
-    Supported source extensions and their backends: assembly (NASM,
-    GAS, FASM), C, C++, Objective-C, Gloria, the Zig toolchain
-    backend, cross-compilation, and WebAssembly targets.
-
-WORKFLOW
-    Configuration file reference, project initialization, package
-    manager (fz pm), supply chain security (fz sbom, fz audit),
-    reproducible builds, source tree verification (fz verify), the
-    build profiler (fz bench), contributor guidance (fz contribute),
-    LSP/IDE integration, and self-update.
-
+    Command-line options and subcommands.
+TOML_CONFIG
+    Full TOML configuration reference.
+CONFIGURE_FZ
+    The configure.fz DSL and runtime mutation model.
+CONFIG_FLEXIBILITY
+    Overrides, includes, and profiles.
+ERROR_HANDLING
+    Error codes and diagnostics.
+PERFORMANCE
+    Scheduler, cache, linker, and benchmark notes.
 INTERNALS
-    Advanced/internal mechanisms: the virtual filesystem layer
-    (Aegis), the Aegis security core (command hardening, atomic
-    writes, checksum verification), fz doctor, cross-platform
-    readiness, testing standards, and the HADES codegen/ELF engine.
+    Architecture and contributor guidance.
+EXAMPLES
+    Reference examples for common project layouts.
+INDEX
+    Navigation entry point for the documentation set.
 
-YOUTUBE.md
-    Link to the published benchmark video, kept with a markdown
-    extension so it renders as a clickable link on GitHub.
-
-------------------------------------------------------------------------------
-READING ORDER FOR A NEW USER: INSTALL, then CLI-REFERENCE, then WORKFLOW.
-READING ORDER FOR A CONTRIBUTOR: ARCHITECTURE, then INTERNALS.
-==============================================================================
+CONTRIBUTOR PATH
+----------------
+For contributors, continue with INTERNALS after QUICKSTART and CLI-REFERENCE.
