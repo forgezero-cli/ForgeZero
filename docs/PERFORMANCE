@@ -1,0 +1,47 @@
+FORGEZERO PERFORMANCE NOTES
+===========================
+
+BENCHMARK PROFILE
+-----------------
+ForgeZero is designed for large, incremental builds where the cost of
+orchestration dominates the cost of individual compiler invocations.
+
+The implementation targets three main bottlenecks: task scheduling, cache
+locality, and file I/O.
+
+MULTI-LEVEL CACHE
+-----------------
+ForgeZero uses a three-tier action cache:
+- L1: in-memory metadata for the hottest entries
+- L2: memory-mapped data for larger working sets
+- L3: on-disk archives for persisted results
+
+This layout keeps the fast path fast while still allowing recovery across
+process boundaries.
+
+OS AND I/O ACCELERATORS
+-----------------------
+MAP_POPULATE
+    On Linux, mapped cache files are opened with MAP_POPULATE to reduce
+    page-fault overhead during large scans.
+
+io_uring
+    When FORGEZERO_IO_URING=1 is set on supported Linux systems, the I/O
+    layer can use io_uring for file reads and writes. The implementation falls
+    back to the standard library automatically when the backend is unavailable.
+
+PREFETCH
+    The builder uses explicit prefetch instructions on supported x86_64 builds
+    to reduce cache-miss latency in hot loops.
+
+PARALLEL LINKING
+----------------
+For larger object sets, ForgeZero can partition outputs and link them through
+the same DAG scheduler used for compilation.
+
+HASHING AND CONFIG PARSING
+--------------------------
+- BLAKE3 hashing is pooled and reused across worker goroutines.
+- TOML parsing is cached by file metadata to avoid redundant startup cost.
+- Config includes and profiles are resolved once and reused across the build
+  session.
