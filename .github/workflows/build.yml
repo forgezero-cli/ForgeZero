@@ -20,9 +20,6 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Clean Go Cache
-        run: go clean -cache -modcache -testcache
-
       - name: Run Go tests
         run: go test -v $(go list ./... | grep -v fz/internal/musl)
 
