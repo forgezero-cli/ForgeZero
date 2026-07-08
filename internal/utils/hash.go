@@ -18,7 +18,6 @@
 package utils
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,20 +27,18 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/zeebo/blake3"
+	fzerr "github.com/forgezero-cli/ForgeZero/internal/errors"
 )
 
 var (
-	hashKey    = [32]byte{0x9d, 0x74, 0x31, 0x6f, 0xd5, 0x23, 0x1b, 0xe4, 0xa1, 0x8f, 0x03, 0x71, 0x42, 0x5d, 0x6b, 0x9a, 0x3c, 0xf4, 0x75, 0x28, 0x0d, 0x62, 0x8a, 0x19, 0xbf, 0x4e, 0x50, 0x33, 0x13, 0x21, 0x97, 0x6c}
-	hasherPool = sync.Pool{New: func() any { h, _ := blake3.NewKeyed(hashKey[:]); return h }}
-	hashSep    = []byte{0}
+	hashSep = []byte{0}
 )
 
 var (
-	ErrHashOpen = errors.New("hash: open")
-	ErrHashMmap = errors.New("hash: mmap")
-	ErrHashSize = errors.New("hash: size")
-	ErrHashRead = errors.New("hash: read")
+	ErrHashOpen = fzerr.New(fzerr.CodeHashOpen)
+	ErrHashMmap = fzerr.New(fzerr.CodeHashMmap)
+	ErrHashSize = fzerr.New(fzerr.CodeHashSize)
+	ErrHashRead = fzerr.New(fzerr.CodeHashRead)
 )
 
 var alignedBufPool = sync.Pool{
@@ -85,7 +82,7 @@ func blake3HexDigestToString(d [32]byte) string {
 func BuildMerkleRoot(root string) ([32]byte, error) {
 	var out [32]byte
 	if root == "" {
-		return out, errors.New("invalid merkle root")
+		return out, fzerr.New(fzerr.CodePathInvalid)
 	}
 	files, err := collectRootFiles(root)
 	if err != nil {
@@ -95,7 +92,7 @@ func BuildMerkleRoot(root string) ([32]byte, error) {
 	count := 0
 	for i := range files {
 		if count >= len(reg) {
-			return out, errors.New("merkle registry overflow")
+			return out, fzerr.New(fzerr.CodeHashSize)
 		}
 		h, err := HashFileDigest(files[i])
 		if err != nil {
@@ -152,7 +149,7 @@ func collectRootFiles(root string) ([]string, error) {
 			return err
 		}
 		if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-			return errors.New("invalid path outside root: " + path)
+			return fzerr.NewMsg(fzerr.CodePathOutside, path)
 		}
 		files = append(files, path)
 		return nil
@@ -166,34 +163,29 @@ func collectRootFiles(root string) ([]string, error) {
 
 func hashEmptyDigest() ([32]byte, error) {
 	var out [32]byte
-	hasher := hasherPool.Get().(*blake3.Hasher)
+	hasher := getKeyedHasher()
 	digest := hasher.Digest()
 	if _, err := digest.Read(out[:]); err != nil {
-		hasher.Reset()
-		hasherPool.Put(hasher)
+		putKeyedHasher(hasher)
 		return out, err
 	}
-	hasher.Reset()
-	hasherPool.Put(hasher)
+	putKeyedHasher(hasher)
 	return out, nil
 }
 
 func HashDataDigest(data []byte) ([32]byte, error) {
 	var out [32]byte
-	hasher := hasherPool.Get().(*blake3.Hasher)
+	hasher := getKeyedHasher()
 	if _, err := hasher.Write(data); err != nil {
-		hasher.Reset()
-		hasherPool.Put(hasher)
+		putKeyedHasher(hasher)
 		return out, err
 	}
 	digest := hasher.Digest()
 	if _, err := digest.Read(out[:]); err != nil {
-		hasher.Reset()
-		hasherPool.Put(hasher)
+		putKeyedHasher(hasher)
 		return out, err
 	}
-	hasher.Reset()
-	hasherPool.Put(hasher)
+	putKeyedHasher(hasher)
 	return out, nil
 }
 
@@ -228,7 +220,7 @@ func HashFileCached(path string) (string, error) {
 func HashDir(root string) (string, error) {
 	rootAbs, err := resolveOrAbs(root)
 	if err != nil {
-		return "", errors.New("hash dir " + root + ": " + err.Error())
+		return "", fzerr.NewMsg(fzerr.CodeHashRead, root+": "+err.Error())
 	}
 	return HashDirWithRoot(rootAbs, rootAbs)
 }
@@ -329,45 +321,38 @@ func HashDirDigest(rootAbs, dir string) ([32]byte, error) {
 	}
 	wg.Wait()
 
-	hasher := hasherPool.Get().(*blake3.Hasher)
+	hasher := getKeyedHasher()
 	buf := getAlignedBuf(32 * 1024)
 	defer putAlignedBuf(buf)
 
 	for _, res := range results {
 		if res.err != nil {
-			hasher.Reset()
-			hasherPool.Put(hasher)
+			putKeyedHasher(hasher)
 			return out, res.err
 		}
 		n := copy(buf, res.rel)
 		if _, err := hasher.Write(buf[:n]); err != nil {
-			hasher.Reset()
-			hasherPool.Put(hasher)
+			putKeyedHasher(hasher)
 			return out, ErrHashRead
 		}
 		if _, err := hasher.Write(hashSep); err != nil {
-			hasher.Reset()
-			hasherPool.Put(hasher)
+			putKeyedHasher(hasher)
 			return out, ErrHashRead
 		}
 		if _, err := hasher.Write(res.h[:]); err != nil {
-			hasher.Reset()
-			hasherPool.Put(hasher)
+			putKeyedHasher(hasher)
 			return out, ErrHashRead
 		}
 		if _, err := hasher.Write(hashSep); err != nil {
-			hasher.Reset()
-			hasherPool.Put(hasher)
+			putKeyedHasher(hasher)
 			return out, ErrHashRead
 		}
 	}
 	digest := hasher.Digest()
 	if _, err := digest.Read(out[:]); err != nil {
-		hasher.Reset()
-		hasherPool.Put(hasher)
+		putKeyedHasher(hasher)
 		return out, err
 	}
-	hasher.Reset()
-	hasherPool.Put(hasher)
+	putKeyedHasher(hasher)
 	return out, nil
 }
