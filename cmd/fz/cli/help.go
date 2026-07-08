@@ -48,7 +48,7 @@ Options:
   -clean               Remove build artifacts
   -watch               Watch files and auto-rebuild
   -json                Output build report in JSON
-  -config <file>       Config file (default: .fz.yaml)
+  -config <file>       Config file (default: .fz.toml, .fz.yaml, fz.toml, fz.yaml, .fz.yml, fz.yml)
   -man                 Generate roff man page and exit
   -format <elf32|elf64|bin>  Output format (default: elf64)
   -T <file>            Linker script
