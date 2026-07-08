@@ -69,12 +69,23 @@ func (pq *priorityQueues) enqueue(task Task, priority int) bool {
 func (pq *priorityQueues) spinEnqueue(task Task, priority int) {
 	level := clampPriority(priority)
 	pq.levels[level].spinEnqueue(task)
+	pq.counts[level].Add(1)
+	bit := uint64(1) << uint(level)
+	for {
+		old := pq.mask.Load()
+		if old&bit != 0 {
+			break
+		}
+		if pq.mask.CompareAndSwap(old, old|bit) {
+			break
+		}
+	}
 }
 
 func (pq *priorityQueues) dequeue() (Task, bool) {
 	m := pq.mask.Load()
 	if m == 0 {
-		return nil, false
+		return Task{}, false
 	}
 	for i := numPriorities - 1; i >= 0; i-- {
 		bit := uint64(1) << uint(i)
@@ -100,7 +111,7 @@ func (pq *priorityQueues) dequeue() (Task, bool) {
 		}
 		return task, true
 	}
-	return nil, false
+	return Task{}, false
 }
 
 func (pq *priorityQueues) pending() uint64 {
