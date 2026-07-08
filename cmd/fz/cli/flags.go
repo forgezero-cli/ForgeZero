@@ -70,7 +70,7 @@ func SetupFlags() *Flags {
 	flag.BoolVar(&f.KeepObj, "keep-obj", false, "keep temporary object files (when using -dir)")
 	flag.BoolVar(&f.NoCache, "no-cache", false, "disable incremental cache")
 	flag.BoolVar(&f.NoSymbolCheck, "no-symbol-check", false, "skip duplicate symbol pre-check")
-	flag.StringVar(&f.ConfigPath, "config", "", "config file (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)")
+	flag.StringVar(&f.ConfigPath, "config", "", "config file (default: .fz.toml, .fz.yaml, fz.toml, fz.yaml, .fz.yml, fz.yml)")
 	flag.StringVar(&f.PluginPath, "plugin", "", "shared object plugin file to load before build")
 	flag.BoolVar(&f.Clean, "clean", false, "remove all build artifacts (.fz_objs, .fz_cache, binaries)")
 	flag.StringVar(&f.GloriaPath, "gloria", "", "path to .glo file")
