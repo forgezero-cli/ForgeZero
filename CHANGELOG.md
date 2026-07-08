@@ -21,7 +21,7 @@
 [1100f19](https://github.com/forgezero-cli/ForgeZero/commit/1100f19))
 - **Plan9 cache support** – added cache implementation for Plan9 operating system.  
   ([8a94769](https://github.com/forgezero-cli/ForgeZero/commit/8a94769))
-#### [NEW]
+#### [NEW] 2026-07-08
 - **Multi‑level action cache (L1/L2/L3)** – stores build rule outputs in a zero‑copy memory‑mapped cache with BLAKE3 keys, dramatically reducing rebuild times for expensive actions like `./configure`.  
   ([29ae2c8](https://github.com/forgezero-cli/ForgeZero/commit/29ae2c8))
 - **Build rule execution system** – supports custom `build_rules` in config with `action`, `inputs`, `outputs`, `depfile`; DAG‑based ordering; variable expansion (`$in`, `$out`, `$depfile`); and `restat` behaviour.  
@@ -57,7 +57,7 @@
   ([f8ed04b](https://github.com/forgezero-cli/ForgeZero/commit/f8ed04b))
 - **Code style cleanup** – removed extra blank lines in `cache.go` and `symbols.go`.  
   ([5c1cea5](https://github.com/forgezero-cli/ForgeZero/commit/5c1cea5), [f293ec0](https://github.com/forgezero-cli/ForgeZero/commit/f293ec0))
-### [NEW]
+### [NEW] 2026-07-8
 - **Scheduler overhaul** – replaced lock‑based queues with lock‑free ring queues, added worker‑local priority queues (8 levels), work‑stealing, and persistent worker goroutines; benchmarks show **0 allocs/op** in hot path.  
   ([bbdc2a2](https://github.com/forgezero-cli/ForgeZero/commit/bbdc2a2), [606913e](https://github.com/forgezero-cli/ForgeZero/commit/606913e), [8875114](https://github.com/forgezero-cli/ForgeZero/commit/8875114), [102a1d0](https://github.com/forgezero-cli/ForgeZero/commit/102a1d0), [e8905fb](https://github.com/forgezero-cli/ForgeZero/commit/e8905fb))
 - **Builder cache and action cache** – replaced direct `syscall.Mmap`/`Munmap` calls with the new cross‑platform wrappers, enabling zero‑copy caching on Linux while gracefully falling back on other OSes.  
