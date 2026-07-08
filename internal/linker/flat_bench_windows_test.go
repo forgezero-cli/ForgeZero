@@ -24,7 +24,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
 )
 
@@ -42,7 +41,7 @@ func TestCopyFileHotAllocations(t *testing.T) {
 	}
 	f := func() {
 		_ = copyFileHot(src, dst)
-		_ = syscall.DeleteFile(dst)
+		_ = os.Remove(dst)
 	}
 	allocs := testing.AllocsPerRun(20, f)
 	if allocs > 0 {
@@ -67,6 +66,6 @@ func BenchmarkCopyFileHot(b *testing.B) {
 		if err := copyFileHot(src, dst); err != nil {
 			b.Fatal(err)
 		}
-		_ = syscall.DeleteFile(dst)
+		_ = os.Remove(dst)
 	}
 }
