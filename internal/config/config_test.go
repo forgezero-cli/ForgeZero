@@ -147,12 +147,41 @@ func TestFindConfigs(t *testing.T) {
 	if system != "" || user != "" || local != "" {
 		t.Errorf("found unexpected configs: system=%s user=%s local=%s", system, user, local)
 	}
-	if err := os.WriteFile(".fz.yaml", []byte{}, 0o644); err != nil {
+	if err := os.WriteFile(".fz.toml", []byte{}, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, _, local = FindConfigs()
-	if local != ".fz.yaml" {
-		t.Errorf("expected .fz.yaml, got %s", local)
+	if local != ".fz.toml" {
+		t.Errorf("expected .fz.toml, got %s", local)
+	}
+}
+
+func TestLoadTOMLConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".fz.toml")
+	content := `output = "mybin"
+mode = "raw"
+debug = true
+[flags]
+cc = ["-O2"]`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Output != "mybin" {
+		t.Errorf("Output = %q, want mybin", cfg.Output)
+	}
+	if cfg.Mode != "raw" {
+		t.Errorf("Mode = %q, want raw", cfg.Mode)
+	}
+	if !cfg.Debug {
+		t.Error("Debug should be true")
+	}
+	if len(cfg.Flags.Cc) != 1 || cfg.Flags.Cc[0] != "-O2" {
+		t.Error("Flags.Cc not parsed")
 	}
 }
 
@@ -185,6 +214,32 @@ func TestLoadMerged(t *testing.T) {
 	}
 	if cfg.SourceDir != "./src" {
 		t.Errorf("expected source_dir ./src, got %s", cfg.SourceDir)
+	}
+}
+
+func TestLoadTOMLConfigIncludesRelativeFiles(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "base.toml")
+	if err := os.WriteFile(basePath, []byte("output = \"from-base\"\nmode = \"raw\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(dir, "app.toml")
+	if err := os.WriteFile(cfgPath, []byte("include = [\"base.toml\"]\noutput = \"from-app\"\n[flags]\ncc = [\"-O2\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Output != "from-app" {
+		t.Fatalf("Output = %q, want from-app", cfg.Output)
+	}
+	if cfg.Mode != "raw" {
+		t.Fatalf("Mode = %q, want raw", cfg.Mode)
+	}
+	if len(cfg.Flags.Cc) != 1 || cfg.Flags.Cc[0] != "-O2" {
+		t.Fatalf("Flags.Cc = %v, want [-O2]", cfg.Flags.Cc)
 	}
 }
 
