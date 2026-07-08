@@ -20,6 +20,14 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Set cache to /tmp
+        run: |
+          echo "GOCACHE=/tmp/go-build-cache" >> $GITHUB_ENV
+          echo "GOMODCACHE=/tmp/go-mod-cache" >> $GITHUB_ENV
+          mkdir -p /tmp/go-build-cache /tmp/go-mod-cache
+          go clean -cache
+        shell: bash
+
       - name: Run Go tests
         run: go test -v $(go list ./... | grep -v fz/internal/musl)
 
@@ -35,6 +43,14 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Set cache to /tmp
+        run: |
+          echo "GOCACHE=/tmp/go-build-cache" >> $GITHUB_ENV
+          echo "GOMODCACHE=/tmp/go-mod-cache" >> $GITHUB_ENV
+          mkdir -p /tmp/go-build-cache /tmp/go-mod-cache
+          go clean -cache
+        shell: bash
+
       - name: Run Go race detector
         run: go test -race -cpu 4 $(go list ./... | grep -v fz/internal/musl)
 
@@ -47,6 +63,14 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Set cache to /tmp
+        run: |
+          echo "GOCACHE=/tmp/go-build-cache" >> $GITHUB_ENV
+          echo "GOMODCACHE=/tmp/go-mod-cache" >> $GITHUB_ENV
+          mkdir -p /tmp/go-build-cache /tmp/go-mod-cache
+          go clean -cache
+        shell: bash
+
       - name: Benchmark Go Code and allocations count
         run: go test -bench=. -benchmem $(go list ./... | grep -v fz/internal/musl)
 
@@ -58,6 +82,14 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+
+      - name: Set cache to /tmp
+        run: |
+          echo "GOCACHE=/tmp/go-build-cache" >> $GITHUB_ENV
+          echo "GOMODCACHE=/tmp/go-mod-cache" >> $GITHUB_ENV
+          mkdir -p /tmp/go-build-cache /tmp/go-mod-cache
+          go clean -cache
+        shell: bash
 
       - name: Cross-compile all platforms
         run: |
