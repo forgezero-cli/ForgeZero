@@ -2,17 +2,6 @@
  * Copyright (c) 2026 ForgeZero-cli
  *
  * This program is free software: you can redistribute it and/or modify
-	s.queues.spinEnqueue(task, priority)
-	s.pending.Add(1)
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
-/*
- * Copyright (c) 2026 ForgeZero-cli
- *
- * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
@@ -24,8 +13,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
-
+ */
 package scheduler
 
 import (
@@ -45,6 +33,8 @@ type runContextHolder struct {
 	ctx context.Context
 }
 
+var globalRunContext atomic.Pointer[runContextHolder]
+
 type Scheduler struct {
 	poolSize   int
 	queueSize  int
@@ -53,12 +43,9 @@ type Scheduler struct {
 	nextSubmit atomic.Uint64
 	pending    atomic.Int64
 	running    atomic.Bool
-	startOnce  sync.Once
-	taskWake   chan struct{}
-	ctxHolder  runContextHolder
-	ctxPtr     atomic.Pointer[runContextHolder]
 	errMu      sync.Mutex
 	errs       []error
+	ctxHolder  runContextHolder
 }
 
 func NewScheduler(workerPoolSize int, queueSize int) *Scheduler {
@@ -76,18 +63,19 @@ func NewScheduler(workerPoolSize int, queueSize int) *Scheduler {
 		queueSize: queueSize,
 		queues:    newPriorityQueues(queueSize),
 		workers:   make([]priorityQueues, workerPoolSize),
-		taskWake:  make(chan struct{}, 1),
 	}
 
 	for i := 0; i < workerPoolSize; i++ {
 		s.workers[i] = newPriorityQueues(queueSize)
 	}
-	s.startWorkers()
+	for i := 0; i < workerPoolSize; i++ {
+		go s.workerLoop(i)
+	}
 	return s
 }
 
 func (s *Scheduler) Submit(task Task, priority int) error {
-	if task == nil {
+	if task.Fn == nil {
 		return nil
 	}
 	if s.running.Load() {
@@ -98,7 +86,6 @@ func (s *Scheduler) Submit(task Task, priority int) error {
 		return errQueueFull
 	}
 	s.pending.Add(1)
-	s.signalWorkers()
 	return nil
 }
 
@@ -108,7 +95,6 @@ func (s *Scheduler) SubmitBlocking(task Task, priority int) {
 	}
 	s.queues.spinEnqueue(task, priority)
 	s.pending.Add(1)
-	s.signalWorkers()
 }
 
 func (s *Scheduler) recordError(err error) {
@@ -118,21 +104,6 @@ func (s *Scheduler) recordError(err error) {
 	s.errMu.Lock()
 	s.errs = append(s.errs, err)
 	s.errMu.Unlock()
-}
-
-func (s *Scheduler) signalWorkers() {
-	select {
-	case s.taskWake <- struct{}{}:
-	default:
-	}
-}
-
-func (s *Scheduler) startWorkers() {
-	s.startOnce.Do(func() {
-		for i := 0; i < s.poolSize; i++ {
-			go s.workerLoop(i)
-		}
-	})
 }
 
 func (s *Scheduler) dequeueForWorker(idx int) (Task, bool) {
@@ -149,6 +120,13 @@ func (s *Scheduler) dequeueForWorker(idx int) (Task, bool) {
 	return s.queues.dequeue()
 }
 
+func CurrentContext() context.Context {
+	if ptr := globalRunContext.Load(); ptr != nil {
+		return ptr.ctx
+	}
+	return context.Background()
+}
+
 func (s *Scheduler) Run(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -162,26 +140,25 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	s.errMu.Unlock()
 
 	s.ctxHolder.ctx = ctx
-	s.ctxPtr.Store(&s.ctxHolder)
-	s.signalWorkers()
+	globalRunContext.Store(&s.ctxHolder)
 
 	if s.pending.Load() == 0 {
 		s.running.Store(false)
-		s.ctxPtr.Store(nil)
+		globalRunContext.Store(nil)
 		return nil
 	}
 
 	for s.pending.Load() > 0 {
 		if err := ctx.Err(); err != nil {
 			s.running.Store(false)
-			s.ctxPtr.Store(nil)
+			globalRunContext.Store(nil)
 			return err
 		}
 		runtime.Gosched()
 	}
 
 	s.running.Store(false)
-	s.ctxPtr.Store(nil)
+	globalRunContext.Store(nil)
 	if len(s.errs) == 0 {
 		return nil
 	}
@@ -194,32 +171,18 @@ func (s *Scheduler) Run(ctx context.Context) error {
 func (s *Scheduler) workerLoop(workerIdx int) {
 	for {
 		if !s.running.Load() {
-			select {
-			case <-s.taskWake:
-				continue
-			}
+			runtime.Gosched()
+			continue
 		}
 		task, ok := s.dequeueForWorker(workerIdx)
 		if !ok {
-			select {
-			case <-s.taskWake:
-				continue
-			default:
-				runtime.Gosched()
-				continue
-			}
+			runtime.Gosched()
+			continue
 		}
-		holder := s.ctxPtr.Load()
-		var ctx context.Context
-		if holder != nil {
-			ctx = holder.ctx
-		}
-		if ctx == nil {
-			ctx = context.Background()
-		}
-		if err := task(ctx); err != nil {
+		if err := task.Fn(task.Arg, task.Extra); err != nil {
 			s.recordError(err)
 		}
+		ReleaseTask(task)
 		s.pending.Add(-1)
 	}
 }
