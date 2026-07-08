@@ -1,8 +1,12 @@
+// Copyright (c) 2026 ForgeZero-cli
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 module github.com/forgezero-cli/ForgeZero
 
 go 1.25.0
 
 require (
+	github.com/BurntSushi/toml v0.4.1
 	github.com/c-bata/go-prompt v0.2.6
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/stretchr/testify v1.11.1
