@@ -19,7 +19,6 @@ package builder
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/forgezero-cli/ForgeZero/internal/config"
 	"github.com/forgezero-cli/ForgeZero/internal/drivers/scheduler"
+	fzerr "github.com/forgezero-cli/ForgeZero/internal/errors"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
@@ -38,7 +38,7 @@ func buildRulesGraph(rules []config.BuildRule) ([][]int, error) {
 		for _, out := range rule.Outputs {
 			key := normalizeRulePath(out)
 			if _, ok := outputs[key]; ok {
-				return nil, errors.New("duplicate build rule output: " + out)
+				return nil, fzerr.NewMsg(fzerr.CodeDepResolutionFailed, "duplicate build rule output: "+out)
 			}
 			outputs[key] = i
 		}
@@ -101,7 +101,7 @@ func executeBuildRule(ctx context.Context, rule config.BuildRule, verbose bool) 
 
 func ruleNeedsBuild(rule config.BuildRule) (bool, error) {
 	if len(rule.Outputs) == 0 {
-		return false, errors.New("build rule outputs are required")
+		return false, fzerr.New(fzerr.CodeBuildActionFailed)
 	}
 	outTimes := make([]time.Time, 0, len(rule.Outputs))
 	for _, out := range rule.Outputs {
@@ -113,7 +113,7 @@ func ruleNeedsBuild(rule config.BuildRule) (bool, error) {
 			return false, err
 		}
 		if fi.IsDir() {
-			return false, errors.New("build rule output is a directory: " + out)
+			return false, fzerr.NewMsg(fzerr.CodePathInvalid, "build rule output is a directory: "+out)
 		}
 		outTimes = append(outTimes, fi.ModTime())
 	}
@@ -134,7 +134,7 @@ func ruleNeedsBuild(rule config.BuildRule) (bool, error) {
 			return false, err
 		}
 		if fi.IsDir() {
-			return false, errors.New("build rule dependency is a directory: " + dep)
+			return false, fzerr.NewMsg(fzerr.CodePathInvalid, "build rule dependency is a directory: "+dep)
 		}
 		if fi.ModTime().After(latestDep) {
 			latestDep = fi.ModTime()
@@ -260,9 +260,9 @@ func runBuildRules(ctx context.Context, cfg *config.Config, verbose bool, jobs i
 	for i := range cfg.BuildRules {
 		rule := cfg.BuildRules[i]
 		idx := i
-		_, err := dag.Submit(func(ctx context.Context) error {
+		_, err := dag.Submit(scheduler.AcquireTask(func(arg uintptr, extra uintptr) error {
 			return executeBuildRule(ctx, rule, verbose)
-		}, graph[idx])
+		}, 0, 0), graph[idx])
 		if err != nil {
 			return nil, err
 		}
