@@ -1,3 +1,6 @@
+//go:build !aix
+// +build !aix
+
 /*
  *   Copyright (c) 2026 ForgeZero-cli
  *
