@@ -26,8 +26,6 @@ import (
 	"unsafe"
 
 	fzvfs "github.com/forgezero-cli/ForgeZero/internal/fs"
-
-	"github.com/zeebo/blake3"
 )
 
 func openRawPath(path string) (int, error) {
@@ -52,27 +50,23 @@ func hashRawFileDigest(path string) ([32]byte, error) {
 		if err != nil {
 			return out, ErrHashOpen
 		}
-		hasher := hasherPool.Get().(*blake3.Hasher)
+		hasher := getKeyedHasher()
 		var buf [65536]byte
 		if _, err := io.CopyBuffer(hasher, f, buf[:]); err != nil {
-			hasher.Reset()
-			hasherPool.Put(hasher)
+			putKeyedHasher(hasher)
 			f.Close()
 			return out, err
 		}
 		if cerr := f.Close(); cerr != nil {
-			hasher.Reset()
-			hasherPool.Put(hasher)
+			putKeyedHasher(hasher)
 			return out, cerr
 		}
 		digest := hasher.Digest()
 		if _, err := digest.Read(out[:]); err != nil {
-			hasher.Reset()
-			hasherPool.Put(hasher)
+			putKeyedHasher(hasher)
 			return out, err
 		}
-		hasher.Reset()
-		hasherPool.Put(hasher)
+		putKeyedHasher(hasher)
 		return out, nil
 	}
 
@@ -80,22 +74,20 @@ func hashRawFileDigest(path string) ([32]byte, error) {
 	if err != nil {
 		return out, ErrHashOpen
 	}
-	hasher := hasherPool.Get().(*blake3.Hasher)
+	hasher := getKeyedHasher()
 	var buf [65536]byte
 	for {
 		n, readErr := syscall.Read(fd, buf[:])
 		if n > 0 {
 			if _, err := hasher.Write(buf[:n]); err != nil {
 				syscall.Close(fd)
-				hasher.Reset()
-				hasherPool.Put(hasher)
+				putKeyedHasher(hasher)
 				return out, err
 			}
 		}
 		if readErr != nil {
 			syscall.Close(fd)
-			hasher.Reset()
-			hasherPool.Put(hasher)
+			putKeyedHasher(hasher)
 			return out, ErrHashRead
 		}
 		if n == 0 {
@@ -105,11 +97,9 @@ func hashRawFileDigest(path string) ([32]byte, error) {
 	syscall.Close(fd)
 	digest := hasher.Digest()
 	if _, err := digest.Read(out[:]); err != nil {
-		hasher.Reset()
-		hasherPool.Put(hasher)
+		putKeyedHasher(hasher)
 		return out, err
 	}
-	hasher.Reset()
-	hasherPool.Put(hasher)
+	putKeyedHasher(hasher)
 	return out, nil
 }
