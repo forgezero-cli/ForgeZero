@@ -31,7 +31,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/zeebo/blake3"
+	"github.com/forgezero-cli/ForgeZero/internal/hashpool"
 	"golang.org/x/sys/unix"
 )
 
@@ -90,7 +90,8 @@ func computeFileHash(path string) ([32]byte, error) {
 	if err := unix.Fstat(fd, &st); err != nil {
 		return out, err
 	}
-	hasher := blake3.New()
+	hasher := hashpool.GetHasher()
+	defer hashpool.PutHasher(hasher)
 	if st.Size > 0 {
 		data, err := syscall.Mmap(int(fd), 0, int(st.Size), syscall.PROT_READ, syscall.MAP_PRIVATE)
 		if err == nil {
@@ -270,7 +271,8 @@ func resetSealState() {
 
 func UpdateGlobalState(data []byte) {
 	stateMu.Lock()
-	hasher := blake3.New()
+	hasher := hashpool.GetHasher()
+	defer hashpool.PutHasher(hasher)
 	if _, err := hasher.Write(globalState[:]); err != nil {
 		stateMu.Unlock()
 		return
@@ -325,7 +327,8 @@ func Seal() error {
 	if err != nil {
 		return err
 	}
-	hasher := blake3.New()
+	hasher := hashpool.GetHasher()
+	defer hashpool.PutHasher(hasher)
 	if _, err := hasher.Write(execHash[:]); err != nil {
 		return err
 	}
@@ -453,7 +456,8 @@ func Verify() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	hasher := blake3.New()
+	hasher := hashpool.GetHasher()
+	defer hashpool.PutHasher(hasher)
 	if _, err := hasher.Write(execHash[:]); err != nil {
 		return false, err
 	}
