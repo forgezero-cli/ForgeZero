@@ -379,66 +379,7 @@ func Link(ctx context.Context, obj, bin string, verbose bool, mode string, noSym
 }
 
 func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool, libs []string) error {
-	if shouldSkipLinker() {
-		if len(objFiles) != 1 {
-			return errors.New("flat binary link requires exactly one object")
-		}
-		return linkFlatBinary(ctx, objFiles[0], bin)
-	}
-	if len(objFiles) == 0 {
-		return errors.New("no object files to link")
-	}
-	sort.Strings(objFiles)
-	for _, obj := range objFiles {
-		info, err := os.Stat(obj)
-		if err != nil {
-			return err
-		}
-		if info.Size() == 0 {
-			return errors.New("object file " + obj + " is empty")
-		}
-	}
-	if err := utils.EnsureDir(bin); err != nil {
-		return err
-	}
-	if !noSymbolCheck {
-		if err := CheckDuplicateSymbols(ctx, objFiles, verbose); err != nil {
-			return err
-		}
-	}
-
-	if runtime.GOOS == "windows" {
-		return linkWindowsImpl(ctx, objFiles, bin, verbose, sanitize, libs)
-	}
-
-	var linkErr error
-	switch mode {
-	case "raw":
-		if linkErr = utils.CheckTool(ldForTarget()); linkErr != nil {
-			return linkErr
-		}
-		linkErr = linkWithLd(ctx, objFiles, bin, verbose, libs)
-	case "c":
-		if useZig() {
-			linkErr = linkWithZig(ctx, objFiles, bin, verbose, Target, sanitize, strict, libs)
-			break
-		}
-		if linkErr = utils.CheckTool(gccForTarget()); linkErr != nil {
-			return linkErr
-		}
-		linkErr = linkWithGcc(ctx, objFiles, bin, verbose, false, sanitize, strict, libs)
-	case "auto":
-		linkErr = tryAutoLink(ctx, objFiles, bin, verbose, sanitize, strict, libs)
-	default:
-		return errors.New("unsupported mode: " + mode + " (valid: auto, c, raw)")
-	}
-	if linkErr != nil {
-		return linkErr
-	}
-	if cfg := utils.ConfigFromContext(ctx); cfg != nil && cfg.DeterministicStrip {
-		_, _ = utils.ScrubHostPaths(bin, utils.GetExecutionRoot())
-	}
-	return nil
+	return LinkMultipleParallel(ctx, objFiles, bin, verbose, mode, noSymbolCheck, sanitize, strict, libs, runtime.GOMAXPROCS(0))
 }
 
 func writeStderr(s string) {
