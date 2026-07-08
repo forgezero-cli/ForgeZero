@@ -21,10 +21,10 @@ func TestSchedulerStressNoLeak(t *testing.T) {
 	s := NewScheduler(4, 1024)
 	var counter int64
 	for i := 0; i < tasks; i++ {
-		s.SubmitBlocking(func(ctx context.Context) error {
+		s.SubmitBlocking(AcquireTask(func(arg uintptr, extra uintptr) error {
 			atomic.AddInt64(&counter, 1)
 			return nil
-		}, i%numPriorities)
+		}, 0, 0), i%numPriorities)
 	}
 	var mStart runtime.MemStats
 	runtime.GC()
