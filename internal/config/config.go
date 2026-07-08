@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/forgezero-cli/ForgeZero/internal/config/toml"
 	"github.com/forgezero-cli/ForgeZero/internal/variables"
 
 	"gopkg.in/yaml.v3"
@@ -81,6 +82,30 @@ func (m *CacheMode) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+func loadYAML(data []byte, cfg *Config) error {
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return errors.New("cannot parse YAML: " + err.Error())
+	}
+	return nil
+}
+
+func loadTOML(data []byte, cfg *Config) error {
+	if err := toml.Unmarshal(data, cfg); err != nil {
+		return errors.New("cannot parse TOML: " + err.Error())
+	}
+	return nil
+}
+
+func isConfigFilePath(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".toml" || ext == ".yaml" || ext == ".yml"
+}
+
+func isTOMLPath(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".toml"
+}
+
 func (m *IsolationMode) UnmarshalYAML(node *yaml.Node) error {
 	var s string
 	if err := node.Decode(&s); err == nil {
@@ -111,84 +136,84 @@ func (m *IsolationMode) UnmarshalYAML(node *yaml.Node) error {
 }
 
 type Flags struct {
-	Asm []string `yaml:"asm"`
-	Cc  []string `yaml:"cc"`
-	Ld  []string `yaml:"ld"`
+	Asm []string `yaml:"asm" toml:"asm"`
+	Cc  []string `yaml:"cc" toml:"cc"`
+	Ld  []string `yaml:"ld" toml:"ld"`
 }
 
 type Hook struct {
-	Cmd      string `yaml:"cmd"`
-	Critical bool   `yaml:"critical"`
+	Cmd      string `yaml:"cmd" toml:"cmd"`
+	Critical bool   `yaml:"critical" toml:"critical"`
 }
 
 type Hooks struct {
-	PreBuild  []Hook `yaml:"pre_build"`
-	OnFailure string `yaml:"on_failure"`
+	PreBuild  []Hook `yaml:"pre_build" toml:"pre_build"`
+	OnFailure string `yaml:"on_failure" toml:"on_failure"`
 }
 
 type BuildRule struct {
-	Name    string   `yaml:"name"`
-	Action  string   `yaml:"action"`
-	Inputs  []string `yaml:"inputs"`
-	Outputs []string `yaml:"outputs"`
-	Depfile string   `yaml:"depfile"`
+	Name    string   `yaml:"name" toml:"name"`
+	Action  string   `yaml:"action" toml:"action"`
+	Inputs  []string `yaml:"inputs" toml:"inputs"`
+	Outputs []string `yaml:"outputs" toml:"outputs"`
+	Depfile string   `yaml:"depfile" toml:"depfile"`
 }
 
 type ISOConfig struct {
-	Enabled       bool     `yaml:"enabled"`
-	SourceDir     string   `yaml:"source_dir"`
-	Output        string   `yaml:"output"`
-	VolumeID      string   `yaml:"volume_id"`
-	BootImage     string   `yaml:"boot_image"`
-	BootCatalog   string   `yaml:"boot_catalog"`
-	BootLoadSize  string   `yaml:"boot_load_size"`
-	NoEmulBoot    bool     `yaml:"no_emul_boot"`
-	BootInfoTable bool     `yaml:"boot_info_table"`
-	Joliet        bool     `yaml:"joliet"`
-	RockRidge     bool     `yaml:"rock_ridge"`
-	Hybrid        bool     `yaml:"hybrid"`
-	CustomArgs    []string `yaml:"custom_args"`
+	Enabled       bool     `yaml:"enabled" toml:"enabled"`
+	SourceDir     string   `yaml:"source_dir" toml:"source_dir"`
+	Output        string   `yaml:"output" toml:"output"`
+	VolumeID      string   `yaml:"volume_id" toml:"volume_id"`
+	BootImage     string   `yaml:"boot_image" toml:"boot_image"`
+	BootCatalog   string   `yaml:"boot_catalog" toml:"boot_catalog"`
+	BootLoadSize  string   `yaml:"boot_load_size" toml:"boot_load_size"`
+	NoEmulBoot    bool     `yaml:"no_emul_boot" toml:"no_emul_boot"`
+	BootInfoTable bool     `yaml:"boot_info_table" toml:"boot_info_table"`
+	Joliet        bool     `yaml:"joliet" toml:"joliet"`
+	RockRidge     bool     `yaml:"rock_ridge" toml:"rock_ridge"`
+	Hybrid        bool     `yaml:"hybrid" toml:"hybrid"`
+	CustomArgs    []string `yaml:"custom_args" toml:"custom_args"`
 }
 
 type Config struct {
-	Name    string `yaml:"name"`
-	Profile string `yaml:"profile"`
-	Target  string `yaml:"target"`
-	Sysroot string `yaml:"sysroot"`
+	Name    string `yaml:"name" toml:"name"`
+	Profile string `yaml:"profile" toml:"profile"`
+	Target  string `yaml:"target" toml:"target"`
+	Sysroot string `yaml:"sysroot" toml:"sysroot"`
 
-	SourceDir          string            `yaml:"source_dir"`
-	SourceDirs         []string          `yaml:"source_dirs"`
-	SourceFiles        []string          `yaml:"source_files"`
-	SourceFile         string            `yaml:"source_file"`
-	Output             string            `yaml:"output"`
-	OutObj             string            `yaml:"out_obj"`
-	Mode               string            `yaml:"mode"`
-	Toolchain          string            `yaml:"toolchain"`
-	Debug              bool              `yaml:"debug"`
-	Verbose            bool              `yaml:"verbose"`
-	KeepObj            bool              `yaml:"keep_obj"`
-	NoCache            bool              `yaml:"no_cache"`
-	CacheMode          CacheMode         `yaml:"cache_mode"`
-	OptimizationLevel  int               `yaml:"optimization_level"`
-	Exclude            []string          `yaml:"exclude"`
-	Include            []string          `yaml:"include"`
-	Scripts            []string          `yaml:"scripts"`
-	Libs               []string          `yaml:"libs"`
-	IgnoreFile         string            `yaml:"ignore_file"`
-	AuditIgnore        []string          `yaml:"audit_ignore"`
-	ToolChecksums      map[string]string `yaml:"tool_checksums"`
-	Variables          map[string]string `yaml:"variables"`
-	Flags              Flags             `yaml:"flags"`
-	Isolation          IsolationMode     `yaml:"isolation"`
-	DeterministicStrip bool              `yaml:"deterministic_strip"`
+	SourceDir          string            `yaml:"source_dir" toml:"source_dir"`
+	SourceDirs         []string          `yaml:"source_dirs" toml:"source_dirs"`
+	SourceFiles        []string          `yaml:"source_files" toml:"source_files"`
+	SourceFile         string            `yaml:"source_file" toml:"source_file"`
+	Output             string            `yaml:"output" toml:"output"`
+	OutObj             string            `yaml:"out_obj" toml:"out_obj"`
+	Mode               string            `yaml:"mode" toml:"mode"`
+	Toolchain          string            `yaml:"toolchain" toml:"toolchain"`
+	Debug              bool              `yaml:"debug" toml:"debug"`
+	Verbose            bool              `yaml:"verbose" toml:"verbose"`
+	KeepObj            bool              `yaml:"keep_obj" toml:"keep_obj"`
+	NoCache            bool              `yaml:"no_cache" toml:"no_cache"`
+	CacheMode          CacheMode         `yaml:"cache_mode" toml:"cache_mode"`
+	OptimizationLevel  int               `yaml:"optimization_level" toml:"optimization_level"`
+	Exclude            []string          `yaml:"exclude" toml:"exclude"`
+	Include            []string          `yaml:"include" toml:"include"`
+	Scripts            []string          `yaml:"scripts" toml:"scripts"`
+	Libs               []string          `yaml:"libs" toml:"libs"`
+	IgnoreFile         string            `yaml:"ignore_file" toml:"ignore_file"`
+	AuditIgnore        []string          `yaml:"audit_ignore" toml:"audit_ignore"`
+	ToolChecksums      map[string]string `yaml:"tool_checksums" toml:"tool_checksums"`
+	Variables          map[string]string `yaml:"variables" toml:"variables"`
+	Flags              Flags             `yaml:"flags" toml:"flags"`
+	Isolation          IsolationMode     `yaml:"isolation" toml:"isolation"`
+	DeterministicStrip bool              `yaml:"deterministic_strip" toml:"deterministic_strip"`
 	ToolchainSettings  struct {
-		SearchPriority []string          `yaml:"search_priority"`
-		EnvAllow       []string          `yaml:"env_allow"`
-		ToolPaths      map[string]string `yaml:"tool_paths"`
-	} `yaml:"toolchain_opts"`
-	Hooks      Hooks      `yaml:"hooks"`
-	BuildRules []BuildRule `yaml:"build_rules"`
-	ISO        ISOConfig  `yaml:"iso"`
+		SearchPriority []string          `yaml:"search_priority" toml:"search_priority"`
+		EnvAllow       []string          `yaml:"env_allow" toml:"env_allow"`
+		ToolPaths      map[string]string `yaml:"tool_paths" toml:"tool_paths"`
+	} `yaml:"toolchain_opts" toml:"toolchain_opts"`
+	Hooks      Hooks       `yaml:"hooks" toml:"hooks"`
+	BuildRules []BuildRule `yaml:"build_rules" toml:"build_rules"`
+	ISO        ISOConfig   `yaml:"iso" toml:"iso"`
 }
 
 func (c *Config) expand() {
@@ -324,19 +349,105 @@ func mergeStringMap(dst, src map[string]string) map[string]string {
 }
 
 func Load(path string) (*Config, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, errors.New("cannot stat config file " + path + ": " + err.Error())
+	}
+	if cfg, ok := loadConfigCache(path, fi); ok {
+		return cfg, nil
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, errors.New("cannot read config file " + path + ": " + err.Error())
 	}
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, errors.New("cannot parse YAML: " + err.Error())
+	if err := loadConfigData(path, data, &cfg, make(map[string]struct{})); err != nil {
+		return nil, err
 	}
 	cfg.expand()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	storeConfigCache(path, fi, &cfg)
 	return &cfg, nil
+}
+
+func loadConfigData(path string, data []byte, cfg *Config, seen map[string]struct{}) error {
+	if cfg == nil {
+		return nil
+	}
+	if isTOMLPath(path) {
+		if err := loadTOML(data, cfg); err != nil {
+			return err
+		}
+	} else {
+		if err := loadYAML(data, cfg); err != nil {
+			return err
+		}
+	}
+	return resolveConfigIncludes(path, cfg, seen)
+}
+
+func resolveConfigIncludes(path string, cfg *Config, seen map[string]struct{}) error {
+	if cfg == nil {
+		return nil
+	}
+	absPath := path
+	if !filepath.IsAbs(absPath) {
+		var err error
+		absPath, err = filepath.Abs(path)
+		if err != nil {
+			absPath = filepath.Clean(path)
+		}
+	}
+	if seen == nil {
+		seen = make(map[string]struct{})
+	}
+	if _, ok := seen[absPath]; ok {
+		return errors.New("cyclic config include: " + absPath)
+	}
+	seen[absPath] = struct{}{}
+	defer delete(seen, absPath)
+
+	var configIncludes []string
+	var buildIncludes []string
+	for _, raw := range cfg.Include {
+		includePath := strings.TrimSpace(raw)
+		if includePath == "" {
+			continue
+		}
+		if isConfigFilePath(includePath) {
+			configIncludes = append(configIncludes, includePath)
+			continue
+		}
+		buildIncludes = append(buildIncludes, includePath)
+	}
+	if len(configIncludes) == 0 {
+		return nil
+	}
+
+	merged := Config{}
+	for _, includePath := range configIncludes {
+		childPath := includePath
+		if !filepath.IsAbs(childPath) {
+			childPath = filepath.Join(filepath.Dir(absPath), includePath)
+		}
+		data, err := os.ReadFile(childPath)
+		if err != nil {
+			return errors.New("cannot read included config file " + childPath + ": " + err.Error())
+		}
+		var childCfg Config
+		if err := loadConfigData(childPath, data, &childCfg, seen); err != nil {
+			return err
+		}
+		merged.Merge(&childCfg)
+	}
+
+	raw := *cfg
+	raw.Include = buildIncludes
+	merged.Merge(&raw)
+	*cfg = merged
+	return nil
 }
 
 func (c *Config) Validate() error {
@@ -648,7 +759,7 @@ func (c *Config) mergeISO(other *ISOConfig) {
 }
 
 func FindConfigs() (system, user, local string) {
-	systemPaths := []string{"/etc/github.com/forgezero-cli/ForgeZero/config.yaml", "/etc/fz.yaml"}
+	systemPaths := []string{"/etc/github.com/forgezero-cli/ForgeZero/config.toml", "/etc/fz.toml", "/etc/github.com/forgezero-cli/ForgeZero/config.yaml", "/etc/fz.yaml"}
 	for _, p := range systemPaths {
 		if _, err := os.Stat(p); err == nil {
 			system = p
@@ -658,7 +769,9 @@ func FindConfigs() (system, user, local string) {
 	home, err := os.UserHomeDir()
 	if err == nil {
 		userPaths := []string{
+			filepath.Join(home, ".config", "fz", "config.toml"),
 			filepath.Join(home, ".config", "fz", "config.yaml"),
+			filepath.Join(home, ".fz.toml"),
 			filepath.Join(home, ".fz.yaml"),
 		}
 		for _, p := range userPaths {
@@ -668,7 +781,7 @@ func FindConfigs() (system, user, local string) {
 			}
 		}
 	}
-	localPaths := []string{".fz.yaml", "fz.yaml", ".fz.yml", "fz.yml"}
+	localPaths := []string{".fz.toml", "fz.toml", ".fz.yaml", "fz.yaml", ".fz.yml", "fz.yml"}
 	for _, p := range localPaths {
 		if _, err := os.Stat(p); err == nil {
 			local = p
