@@ -25,6 +25,9 @@ jobs:
 
       - name: Run Go coverage
         run: go test -cover $(go list ./... | grep -v fz/internal/musl)
+      
+      - name: Benchmark Go Code and allocations count 
+        run: go test -bench=. -benchmem $(go list ./... | grep -v fz/internal/musl)
 
       - name: Cross-compile all platforms
         run: |
