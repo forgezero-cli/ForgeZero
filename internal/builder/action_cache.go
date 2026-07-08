@@ -29,10 +29,12 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
+	"github.com/forgezero-cli/ForgeZero/internal/hashpool"
+	"github.com/forgezero-cli/ForgeZero/internal/io_uring"
 	"github.com/forgezero-cli/ForgeZero/internal/logger"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
-	"github.com/zeebo/blake3"
 )
 
 func l3DataDir(cacheDir string) string {
@@ -75,12 +77,13 @@ type actionCacheJob struct {
 }
 
 var (
-	l2Data      []byte
-	l2File      *os.File
-	l2Mutex     sync.RWMutex
-	jobQueue    chan actionCacheJob
-	initOnce    sync.Once
-	preloadOnce sync.Once
+	l2Data       []byte
+	l2File       *os.File
+	l2Mutex      sync.RWMutex
+	jobQueue     chan actionCacheJob
+	initOnce     sync.Once
+	preloadStart sync.Map
+	preloadWait  sync.WaitGroup
 )
 
 func actionCacheInit() {
@@ -126,9 +129,7 @@ func actionCacheRestore(ctx context.Context, inputs []string, action string, out
 			}
 		}
 	}
-	preloadOnce.Do(func() {
-		go preloadActionCache(cacheDir)
-	})
+	go PreloadCache(context.Background(), cacheDir)
 	return false, nil
 }
 
@@ -165,6 +166,11 @@ func l1Load(key uint64) (*l1Entry, bool) {
 	for probe := 0; probe < 16; probe++ {
 		idx := l1Index(key, probe)
 		entry := &l1Entries[idx]
+		prefetch(unsafe.Pointer(entry))
+		if probe+1 < 16 {
+			next := l1Index(key, probe+1)
+			prefetch(unsafe.Pointer(&l1Entries[next]))
+		}
 		if atomic.LoadUint64(&entry.key) != expected {
 			if atomic.LoadUint64(&entry.key) == 0 {
 				return nil, false
@@ -218,11 +224,34 @@ func l1Store(key uint64, hash [32]byte, size uint32, offset uint64) {
 	}
 }
 
+func readFileMaybeIOUring(path string) ([]byte, error) {
+	if io_uring.Enabled() {
+		data, err := io_uring.ReadFile(path)
+		if err == nil {
+			return data, nil
+		}
+		logger.Debug("io_uring read failed: " + err.Error() + "\n")
+	}
+	return os.ReadFile(path)
+}
+
+func writeFileMaybeIOUring(path string, data []byte, perm os.FileMode) error {
+	if io_uring.Enabled() {
+		if err := io_uring.WriteFile(path, data, perm); err == nil {
+			return nil
+		} else {
+			logger.Debug("io_uring write failed: " + err.Error() + "\n")
+		}
+	}
+	return os.WriteFile(path, data, perm)
+}
+
 func actionCacheKey(inputs []string, action string, env []string) ([32]byte, error) {
 	sorted := make([]string, len(inputs))
 	copy(sorted, inputs)
 	sort.Strings(sorted)
-	hasher := blake3.New()
+	hasher := hashpool.GetHasher()
+	defer hashpool.PutHasher(hasher)
 	for _, in := range sorted {
 		digest, err := utils.HashFileDigest(in)
 		if err != nil {
@@ -310,7 +339,7 @@ func restoreFromL2(cacheDir string, offset uint64) error {
 
 func restoreFromL3(cacheDir string, digest [32]byte) error {
 	archive := archivePath(hex.EncodeToString(digest[:]), cacheDir)
-	data, err := os.ReadFile(archive)
+	data, err := readFileMaybeIOUring(archive)
 	if err != nil {
 		return err
 	}
@@ -348,7 +377,7 @@ func restoreOutputsFromBytes(data []byte) error {
 		if err := utils.EnsureDir(name); err != nil {
 			return err
 		}
-		if err := os.WriteFile(name, data[pos:pos+dataLen], 0o644); err != nil {
+		if err := writeFileMaybeIOUring(name, data[pos:pos+dataLen], 0o644); err != nil {
 			return err
 		}
 		pos += dataLen
@@ -495,6 +524,7 @@ func mapL2Data(cacheDir string) error {
 		file.Close()
 		return err
 	}
+	prefetchMappedFile(data)
 	l2File = file
 	l2Data = data
 	return nil
@@ -528,6 +558,7 @@ func reloadL2Data(cacheDir string) error {
 		file.Close()
 		return err
 	}
+	prefetchMappedFile(data)
 	l2File = file
 	l2Data = data
 	return nil
@@ -555,7 +586,7 @@ func actionCacheStoreSync(inputs []string, action string, outputs []string, env 
 }
 
 func appendL2FromArchiveFromDisk(path string, cacheDir string) (uint64, error) {
-	data, err := os.ReadFile(path)
+	data, err := readFileMaybeIOUring(path)
 	if err != nil {
 		return 0, err
 	}
