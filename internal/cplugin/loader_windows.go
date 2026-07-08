@@ -22,7 +22,6 @@ package cplugin
 
 import (
 	"errors"
-	"fmt"
 	"syscall"
 	"unsafe"
 )
@@ -34,7 +33,7 @@ type Module struct {
 func Load(path string) (*Module, error) {
 	h, err := syscall.LoadLibrary(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load DLL %s: %w", path, err)
+		return nil, errors.New("failed to load DLL " + path + ": " + err.Error())
 	}
 	return &Module{h: h}, nil
 }
@@ -45,7 +44,7 @@ func (m *Module) Lookup(sym string) (unsafe.Pointer, error) {
 	}
 	proc, err := syscall.GetProcAddress(m.h, sym)
 	if err != nil {
-		return nil, fmt.Errorf("symbol %s not found: %w", sym, err)
+		return nil, errors.New("symbol " + sym + " not found: " + err.Error())
 	}
 	return unsafe.Pointer(proc), nil
 }
