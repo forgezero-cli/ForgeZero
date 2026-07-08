@@ -1,0 +1,28 @@
+CONFIGURE.FZ
+============
+
+configure.fz is ForgeZero's lightweight build-script language. It is evaluated
+during configuration and can mutate the active build context before the main
+build graph is created.
+
+BASIC EXAMPLE
+-------------
+ctx.AddSources("src/**/*.c")
+ctx.AddCompilerFlags("-DDEBUG")
+ctx.AddLDFlags("-Wl,--gc-sections")
+
+AVAILABLE OPERATIONS
+---------------------
+ctx.AddSources(pattern)
+ctx.RemoveSources(pattern)
+ctx.AddCompilerFlags(flag)
+ctx.RemoveCompilerFlags(flag)
+ctx.AddLDFlags(flag)
+ctx.RemoveLDFlags(flag)
+ctx.SetVariable(name, value)
+
+NOTES
+-----
+The script runs with access to the current environment and the resolved config
+values. This makes it suitable for platform checks, toolchain detection,
+generated-source discovery, and build-profile specialization.
