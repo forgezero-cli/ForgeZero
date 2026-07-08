@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 /*
  *   Copyright (c) 2026 ForgeZero-cli
  *
@@ -23,10 +26,9 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 	"golang.org/x/sys/unix"
 )
-
-func callUint64(ptr unsafe.Pointer) uint64
 
 func TestKernelPokeAndPeek(t *testing.T) {
 	src, err := os.ReadFile("test_kernel.glo")
@@ -61,7 +63,7 @@ func TestKernelPokeAndPeek(t *testing.T) {
 
 	dataArea, err := unix.Mmap(-1, 0, pageSize,
 		unix.PROT_READ|unix.PROT_WRITE,
-		unix.MAP_ANON|unix.MAP_PRIVATE|unix.MAP_32BIT)
+		unix.MAP_ANON|unix.MAP_PRIVATE|0x40) // 0x40 = MAP_32BIT
 	if err != nil {
 		t.Fatal("mmap data: " + err.Error())
 	}
@@ -93,29 +95,8 @@ func TestKernelPokeAndPeek(t *testing.T) {
 		t.Fatal("mprotect execArea: " + err.Error())
 	}
 
-	simpleCode := []byte{0x48, 0xc7, 0xc0, 0x47, 0x0a, 0x00, 0x00, 0xc3}
-	simplePage, err := unix.Mmap(-1, 0, pageSize,
-		unix.PROT_READ|unix.PROT_WRITE,
-		unix.MAP_ANON|unix.MAP_PRIVATE)
-	if err != nil {
-		t.Fatal("mmap simple: " + err.Error())
-	}
-	defer func() {
-		if err := unix.Munmap(simplePage); err != nil {
-			t.Fatal("failed to munmap: " + err.Error())
-		}
-	}()
-
-	copy(simplePage, simpleCode)
-	if err := unix.Mprotect(simplePage, unix.PROT_READ|unix.PROT_EXEC); err != nil {
-		t.Fatal("mprotect simple: " + err.Error())
-	}
-	if res := callUint64(unsafe.Pointer(&simplePage[0])); res != 2631 {
-		t.Fatal("simple code returned " + strconv.Itoa(int(res)))
-	}
-
-	result := callUint64(unsafe.Pointer(&execArea[0]))
-	if result != 2631 {
-		t.Error("expected 2631, got " + strconv.Itoa(int(result)))
+	ret := utils.ExecRawRet(machineCode)
+	if ret != 2631 {
+		t.Errorf("expected 2631, got %d", ret)
 	}
 }
