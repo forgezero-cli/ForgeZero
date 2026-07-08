@@ -1,250 +1,106 @@
 FORGEZERO CLI REFERENCE
-==============================================================================
+========================
 
 SYNOPSIS
-------------------------------------------------------------------------------
+--------
+fz [options] [sources...]
 
-  fz [options]
+ForgeZero accepts a primary build entry point such as assembly, C/C++, Gloria,
+a directory build, initialization, shell mode, contributor mode, or an explicit
+configuration file.
 
-  At least one of -asm, -cc, -gloria, -dir, -init, -shell, -contribute,
-  pm, sbom, audit, verify, bench, doctor, or a valid config file must
-  be present.
+CORE OPTIONS
+------------
+-init
+    Scaffold a new project. Creates .fz.toml, .fzignore, configure.fz, and
+    README.txt style scaffolding when absent.
+-config <file>
+    Load a specific TOML or YAML configuration file.
+--set <key=value>
+    Apply runtime overrides such as output, mode, profile, or flags.
+-profile, -p <name>
+    Select a named profile: performance, balanced, or power-saver.
+-mode <auto|c|raw>
+    Choose the linker strategy.
+-target <triple>
+    Cross-compile for a target triple.
+-j <N>
+    Set worker count; 0 uses the detected CPU count.
+-debug
+    Pass debug information to the toolchain.
+-verbose
+    Print each executed command.
+-json
+    Emit a machine-readable build report.
+-watch
+    Rebuild automatically when watched sources change.
+-clean
+    Remove build artifacts and exit.
+-compile-commands
+    Emit compile_commands.json for IDE integration.
+-update
+    Download and install the latest ForgeZero binary.
+-h, --help
+    Print help and exit.
+-v, --version
+    Print version and build metadata.
 
-FULL FLAG REFERENCE
-------------------------------------------------------------------------------
+CONFIGURATION SOURCES
+----------------------
+ForgeZero resolves configuration in this order:
+1. system config
+2. user config
+3. local project config
+4. runtime overrides from --set
 
-  -asm <file>        --            Assemble the given assembly source
-                                    file.
-  -cc <file>         --            Compile the given C, C++, or
-                                    Objective-C source file.
-  -gloria <file>     --            Compile the given Gloria (.glo)
-                                    source file via the built-in HADES
-                                    engine.
-  -dir <dir>         --            Recursively build all supported
-                                    files in the directory.
-  -out <name>        derived       Name of the output binary.
-  -out-obj <name>    <base>.o      Object file name, single-file mode
-                                    only.
-  -profile, -p       balanced      Apply a named build profile:
-                                    performance, balanced, power-saver.
-                                    Persisted to
-                                    ~/.config/fz/.profile.config.
-  -mode              auto          Linking mode: auto, c, or raw. See
-                                    LINKING MODES below.
-  -ld                off           Invoke the linker directly,
-                                    bypassing compiler validation
-                                    layers. Reduces overhead about
-                                    3 to 5 percent on small projects.
-  -format             elf64        Output format for assembled
-                                    binaries: elf32, elf64, or bin.
-  -target <triple>   --            Cross-compilation target triple,
-                                    e.g. arm-linux-gnueabihf,
-                                    wasm32-wasi.
-  -zig               off           Use Zig (zig cc / zig c++) as the
-                                    compiler backend.
-  --reproducible     off           Enable deterministic builds:
-                                    suppress build IDs, timestamps,
-                                    path references; sort objects.
-  --arena-size=N     auto          Override default arena capacity
-                                    for plugin execution. Advanced
-                                    use only.
-  -type              executable    Output type: linked binary or
-                                    static library (.a).
-  -lib <name>        --            Output library name when -type
-                                    static is used, without the lib
-                                    prefix or .a suffix.
-  -shared            off           Build a shared library
-                                    (.so / .dylib / .dll).
-  -cc-flag <flags>   --            Extra compiler flags, space
-                                    separated, injected after
-                                    standard flags.
-  -ld-flag <flags>   --            Extra linker flags, space
-                                    separated, appended to the linker
-                                    command.
-  -j <N>             profile-dep   Parallel compilation jobs. 0 means
-                                    auto, number of CPU cores.
-                                    Overridden by -profile.
-  -T <script>        --            Linker script passed to ld.
-  -Ttext <addr>      --            Entry point address passed to the
-                                    linker, hex or decimal.
-  -debug             off           Pass -g to the assembler/compiler
-                                    to emit debug symbols.
-  -verbose           off           Print each external command to
-                                    stdout before running it.
-  -keep-obj          off           Preserve object files after
-                                    linking, directory mode.
-  -no-cache          off           Disable the build cache; always
-                                    recompile every file.
-  -no-symbol-check   off           Skip the pre-link duplicate symbol
-                                    check.
-  -sanitize          on            Enable -fsanitize=address,undefined
-                                    for C/C++. Disable with
-                                    -sanitize=false.
-  -strict            off           Stricter sanitizers plus
-                                    use-after-return/scope checks.
-                                    Prefers clang/clang++.
-  -json              off           Suppress normal output; emit a
-                                    JSON build report to stdout.
-  -watch             off           Watch source files for changes and
-                                    rebuild automatically.
-  -clean             off           Remove all build artifacts and
-                                    exit.
-  -compile-commands  off           Generate compile_commands.json for
-                                    LSP/IDE integration.
-  -init              off           Scaffold a new project: creates
-                                    .fz.yaml, .fzignore, README.md.
-  -shell             off           Open interactive REPL shell.
-  -update            off           Download and install the latest fz
-                                    binary; backs up current binary to
-                                    fz.old.
-  -config <file>     auto-detect   Path to a YAML configuration file.
-  -timeout <sec>     60            Timeout in seconds for each
-                                    sub-command.
-  -manifest <file>   .fz.manifest  Path to the BLAKE3 source manifest
-                                    used by fz verify.
-  -h, --help         --            Print help and exit.
-  -v                 --            Print short version string and
-                                    exit, e.g. 4.7.0.
-  --version          --            Print full version details:
-                                    platform, Go version, build
-                                    metadata.
+Common locations include /etc/fz.toml, ~/.config/fz/config.toml, ./.fz.toml,
+and ./fz.toml.
 
-PACKAGE MANAGER SUBCOMMANDS
-------------------------------------------------------------------------------
+BUILD PROFILES
+--------------
+performance
+    Maximize build throughput with more parallelism and higher optimization.
+balanced
+    Default developer profile.
+power-saver
+    Reduce resource consumption for laptops and CI workers.
 
-  fz pm add <repo>[@version]   Clone a package from a Git repository
-                                and register it in .fz.yaml.
-  fz pm remove <package>       Remove a package; clean up .fz.yaml
-                                and empty parent directories.
-  fz pm list                   List all installed packages.
-  fz pm update                 Update all installed packages to the
-                                latest commit or tag.
-  fz pm catalog                Browse the official ForgeZero package
-                                catalog.
-  fz pm search <query>         Search the catalog by name or keyword.
-  fz pm install <name>         Install a package from the catalog
-                                with BLAKE3 hash verification.
+LINKING MODES
+-------------
+auto
+    Default path; attempts the most suitable linker strategy.
+c
+    Force a compiler-driven link. Recommended for libc-dependent code.
+raw
+    Force direct linker usage for kernels, bootloaders, and freestanding
+    binaries.
 
-SECURITY AND INTEGRITY SUBCOMMANDS
-------------------------------------------------------------------------------
-
-  fz sbom                      Generate a CycloneDX SBOM with BLAKE3
-                                hashes for all build components.
-  fz sbom -o <path>            Write the SBOM to a specific output
-                                file, default sbom.cdx.json.
-  fz sbom -dir <dir>           Generate SBOM scoped to a specific
-                                source directory.
-  fz audit                     Run the built-in SAST scanner: secrets,
-                                license compliance, dangerous
-                                patterns.
-  fz audit -dir <dir>          Audit a specific directory.
-  fz audit -json               Emit the audit report as JSON.
-  fz verify                    Verify the current source tree against
-                                the stored BLAKE3 manifest.
-  fz verify --generate         Generate a new BLAKE3 manifest of the
-                                current source tree.
-  fz verify --strict           Also report UNTRACKED files not in the
-                                manifest.
-  fz verify -manifest <f>      Use a specific manifest file instead of
-                                the default .fz.manifest.
-  fz doctor                    Run the Aegis self-audit: toolchain,
-                                permissions, platform integrity.
-  fz doctor -root <dir>        Audit a specific project root, default
-                                current working directory.
-  fz doctor -json              Emit the audit report as JSON; exit
-                                code 1 if healthy is false.
-
-PERFORMANCE SUBCOMMANDS
-------------------------------------------------------------------------------
-
-  fz bench                     Profile the build: nanosecond
-                                precision timing per phase.
-  fz bench -n <N>               Run N times; report average and
-                                standard deviation per phase.
-  fz bench -json                Emit the benchmark report as JSON.
-
-CONTRIBUTOR SUBCOMMANDS
-------------------------------------------------------------------------------
-
-  fz contribute                 Generate CONTRIBUTING_USER.md with
-                                environment diagnostics and
-                                contributor guidance.
-
-BUILD PROFILES, -profile / -p
-------------------------------------------------------------------------------
-
-  Named presets configuring CPU core usage, parallel job count, and
-  compiler optimization level in a single flag. Persisted between
-  runs in ~/.config/fz/.profile.config and applied automatically on
-  subsequent invocations unless overridden.
-
-    performance    all cores    -O3    all cores    max build speed,
-                                                     CI, release
-    balanced       half cores   -O2    half cores    default, daily
-                                                      development
-    power-saver    1 core       -Os    1 core        battery
-                                                      constrained
-
-  Usage:
-    fz -p performance -cc main.c
-    fz -p power-saver -dir ./src
-    fz -profile balanced -dir ./src
-
-  Reset to default:
-    rm ~/.config/fz/.profile.config
-    fz -profile balanced -cc main.c
-
-  Flags that directly override profile-managed settings take
-  precedence over the profile, e.g. fz -p performance -dir ./src -j 2
-  uses -j 2 even though performance would otherwise set all cores.
-
-  GOMAXPROCS is set internally by fz for the duration of the build; it
-  does not affect the calling shell environment.
-
-  In a config file:
-    profile: performance
-  CLI -profile / -p takes precedence over the config file value.
-
-LINKING MODES, -mode
-------------------------------------------------------------------------------
-
-  auto (default)
-    fz tries linkers in sequence until one succeeds: gcc (standard
-    linking with libc and C runtime), gcc -no-pie (position-dependent
-    executable, for code assuming fixed load addresses), ld (raw
-    system linker, last resort). When -strict is active, clang with
-    full sanitizer flags is tried first.
-
-  c, force gcc / clang
-    fz -asm program.asm -mode c
-    fz -cc main.c -mode c
-    Always links using gcc, or clang in strict mode. Required when
-    code calls libc functions (printf, malloc, exit) or depends on C
-    runtime initialization.
-
-  raw, force ld
-    fz -asm kernel.asm -mode raw -out kernel.bin
-    Bypasses gcc entirely and invokes ld directly. Suitable for OS
-    kernels, bootloaders, bare-metal firmware, programs defining their
-    own _start and using raw syscalls, and embedded targets requiring
-    full control over binary layout. Raw-linked binaries cannot
-    reference any libc symbol.
-
-  direct linker invocation, -ld
-    fz -asm boot.asm -ld -out boot.elf
-    Invokes the linker directly, bypassing compiler validation layers
-    entirely. Reduces orchestration overhead about 3 to 5 percent on
-    small projects. Unlike -mode raw, -ld does not imply a particular
-    linking strategy; it removes the gcc/clang wrapper from the
-    invocation chain.
+SUBCOMMANDS
+-----------
+fz pm add <repo>
+    Install a package from a Git repository.
+fz pm remove <name>
+    Remove an installed package.
+fz pm list
+    List installed packages.
+fz sbom
+    Generate a CycloneDX SBOM.
+fz audit
+    Run static analysis and policy checks.
+fz verify
+    Verify the source tree against a BLAKE3 manifest.
+fz doctor
+    Run the platform and toolchain self-check.
+fz bench
+    Profile build phases.
+fz contribute
+    Generate contributor guidance.
 
 EXIT CODES
-------------------------------------------------------------------------------
-
-  0   Success. Binary produced; or fz verify / fz audit found no
-      violations; or fz doctor is healthy.
-  1   Build error. Assembler, compiler, or linker failed; duplicate
-      global symbol; fz verify found MODIFIED or MISSING files; fz
-      audit found WARNING or above; fz doctor is degraded.
-  2   Argument error. Invalid or missing flags, source file not
-      found, cross-compiler not on PATH, unreadable config file.
+----------
+0
+    Success.
+1
+    Build, verification, or audit failure.
+2
+    Invalid arguments or unreadable configuration.
