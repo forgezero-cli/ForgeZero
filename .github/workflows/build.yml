@@ -6,38 +6,68 @@ on:
   pull_request:
     branches: [ main, master ]
 
+env:
+  RUNS_ON: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
+  GO_VERSION: '1.25.0'
+
 jobs:
-  test-and-build:
+  test-and-cover:
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.0'
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
       - name: Run Go tests
         run: go test -v $(go list ./... | grep -v fz/internal/musl)
 
-      - name: Run Go race detector
-        run: go test -race $(go list ./... | grep -v fz/internal/musl)
-
       - name: Run Go coverage
         run: go test -cover $(go list ./... | grep -v fz/internal/musl)
-      
-      - name: Benchmark Go Code and allocations count 
+
+  race-detector:
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run Go race detector
+        run: go test -race -cpu 4 $(go list ./... | grep -v fz/internal/musl)
+
+  benchmarks:
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Benchmark Go Code and allocations count
         run: go test -bench=. -benchmem $(go list ./... | grep -v fz/internal/musl)
+
+  build:
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
 
       - name: Cross-compile all platforms
         run: |
           set -e
           mkdir -p release
-          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-linux-amd64 ./cmd/fz
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-linux-arm64 ./cmd/fz
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-windows-amd64.exe ./cmd/fz
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-darwin-amd64 ./cmd/fz
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w" -o release/fz-darwin-arm64 ./cmd/fz
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -p 4 -buildvcs=false -ldflags="-s -w" -o release/fz-linux-amd64 ./cmd/fz
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -p 4 -buildvcs=false -ldflags="-s -w" -o release/fz-linux-arm64 ./cmd/fz
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -p 4 -buildvcs=false -ldflags="-s -w" -o release/fz-windows-amd64.exe ./cmd/fz
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -p 4 -buildvcs=false -ldflags="-s -w" -o release/fz-darwin-amd64 ./cmd/fz
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -p 4 -buildvcs=false -ldflags="-s -w" -o release/fz-darwin-arm64 ./cmd/fz
           ls -la release/
 
       - name: Upload compiled binaries
