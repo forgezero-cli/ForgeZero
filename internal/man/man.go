@@ -89,7 +89,7 @@ Watch source files and rebuild automatically
 Output build report in JSON format (CI/CD)
 .TP
 \fB\-\-config\fR <file>
-Config file path (default: .fz.yaml, fz.yaml, .fz.yml, fz.yml)
+Config file path (default: .fz.toml, .fz.yaml, fz.toml, fz.yaml, .fz.yml, fz.yml)
 .TP
 \fB\-\-man\fR
 Generate roff man page and exit
