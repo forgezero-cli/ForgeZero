@@ -15,17 +15,28 @@
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *   along with this program.  If not, see <https://www.gnu.org/licenses/\>.
  */
 
 package builder
 
-import "syscall"
+import (
+	"syscall"
+
+	"github.com/forgezero-cli/ForgeZero/internal/logger"
+)
 
 func mmapFile(fd int, size int) ([]byte, error) {
-	return syscall.Mmap(fd, 0, size, syscall.PROT_READ, syscall.MAP_SHARED)
+	logger.Debug("MAP_POPULATE enabled for mmap\n")
+	return syscall.Mmap(fd, 0, size, syscall.PROT_READ, syscall.MAP_SHARED|syscall.MAP_POPULATE)
 }
 
 func munmapFile(data []byte) error {
 	return syscall.Munmap(data)
+}
+
+func prefetchMappedFile(data []byte) {
+	if len(data) > 0 {
+		_ = syscall.Madvise(data, syscall.MADV_WILLNEED)
+	}
 }
