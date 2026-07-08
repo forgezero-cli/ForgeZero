@@ -1,0 +1,52 @@
+FORGEZERO TOML CONFIGURATION
+============================
+
+ForgeZero supports project configuration in TOML, YAML, and their .yml variants.
+TOML is the recommended format for new projects because it is explicit, easy to
+read, and works well with generated files.
+
+MINIMAL EXAMPLE
+---------------
+output = "app"
+mode = "auto"
+profile = "balanced"
+
+[flags]
+cc = ["-O2"]
+ld = ["-Wl,--gc-sections"]
+
+COMMON KEYS
+-----------
+output
+    The default output name.
+mode
+    Link strategy: auto, c, or raw.
+profile
+    Named profile preset.
+target
+    Cross-compilation triple.
+debug
+    Emit debug symbols.
+verbose
+    Print executed commands.
+no_cache
+    Disable incremental caching.
+include
+    Include other config files.
+variables
+    Named variables exposed to configure.fz.
+flags.cc
+    Extra C/C++ compiler flags.
+flags.ld
+    Extra linker flags.
+
+INCLUDES
+--------
+include = ["base.toml", "common/build.toml"]
+
+Included files are resolved relative to the including file and merged before
+the active project config is validated.
+
+RUNTIME OVERRIDE EXAMPLE
+------------------------
+fz --config .fz.toml --set output=myapp --set mode=raw
