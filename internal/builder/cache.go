@@ -18,7 +18,6 @@
 package builder
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -26,6 +25,7 @@ import (
 	"sync"
 
 	"github.com/forgezero-cli/ForgeZero/internal/config"
+	fzerr "github.com/forgezero-cli/ForgeZero/internal/errors"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
@@ -269,11 +269,11 @@ func restoreRAMCache(src, obj string, debug bool, mode string) (bool, error) {
 	if err := utils.EnsureDir(obj); err != nil {
 		return false, err
 	}
-	if err := os.WriteFile(obj, entry.object, 0o644); err != nil {
+	if err := writeFileMaybeIOUring(obj, entry.object, 0o644); err != nil {
 		return false, err
 	}
 	if len(entry.syms) > 0 {
-		_ = os.WriteFile(obj+".syms", entry.syms, 0o644)
+		_ = writeFileMaybeIOUring(obj+".syms", entry.syms, 0o644)
 	}
 	if debug {
 		os.Stdout.WriteString("RAM cache restored " + src + " -> " + obj + "\n")
@@ -295,17 +295,17 @@ func storeRAMCache(src, obj string, debug bool, mode string) error {
 		return err
 	}
 	if info.Size() == 0 {
-		return errors.New("refusing to cache empty object: " + obj)
+		return fzerr.NewMsg(fzerr.CodeCacheEmpty, "refusing to cache empty object: "+obj)
 	}
 	fd := int(f.Fd())
 	data, err := mmapFile(fd, int(info.Size()))
 	if err != nil {
-		object, err2 := os.ReadFile(obj)
+		object, err2 := readFileMaybeIOUring(obj)
 		if err2 != nil {
 			return err
 		}
-		syms, err2 := os.ReadFile(obj + ".syms")
-		if err2 != nil && !errors.Is(err2, os.ErrNotExist) {
+		syms, err2 := readFileMaybeIOUring(obj + ".syms")
+		if err2 != nil && !os.IsNotExist(err2) {
 			return err2
 		}
 		h, err2 := utils.HashFile(src)
@@ -319,8 +319,8 @@ func storeRAMCache(src, obj string, debug bool, mode string) error {
 		}
 		return nil
 	}
-	syms, err := os.ReadFile(obj + ".syms")
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	syms, err := readFileMaybeIOUring(obj + ".syms")
+	if err != nil && !os.IsNotExist(err) {
 		_ = munmapFile(data)
 		return err
 	}
@@ -350,7 +350,7 @@ func checkCache(src, cacheDir string, debug, verbose bool, mode string) (string,
 	}
 	if info.Size() == 0 {
 		os.Remove(cacheObj)
-		return "", errors.New("cached file is empty")
+		return "", fzerr.New(fzerr.CodeCacheEmpty)
 	}
 	return cacheObj, nil
 }
@@ -394,7 +394,7 @@ func storeCache(src, obj, cacheDir string, debug, verbose bool, mode string) err
 		return err
 	}
 	if info.Size() == 0 {
-		return errors.New("refusing to cache empty object: " + obj)
+		return fzerr.NewMsg(fzerr.CodeCacheEmpty, "refusing to cache empty object: "+obj)
 	}
 	h, err := utils.HashFile(src)
 	if err != nil {
@@ -411,7 +411,7 @@ func storeShadowCache(src, obj string, debug bool, mode string) error {
 		return err
 	}
 	if info.Size() == 0 {
-		return errors.New("refusing to cache empty object: " + obj)
+		return fzerr.NewMsg(fzerr.CodeCacheEmpty, "refusing to cache empty object: "+obj)
 	}
 	flags := []string{"debug=" + strconv.FormatBool(debug), "mode=" + mode}
 	key, err := utils.ShadowCacheKey(src, flags)
