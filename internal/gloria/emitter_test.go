@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 /*
  *   Copyright (c) 2026 ForgeZero-cli
  *
@@ -18,6 +21,7 @@
 package gloria
 
 import (
+"golang.org/x/sys/unix"
 	"bytes"
 	"io"
 	"os"
@@ -140,7 +144,7 @@ func TestGloriaPrint(t *testing.T) {
 		t.Fatalf("failed to clone stdout fd: %v", err)
 	}
 
-	err = syscall.Dup2(int(w.Fd()), stdoutFd)
+	err = unix.Dup2(int(w.Fd()), stdoutFd)
 	if err != nil {
 		t.Fatalf("failed to redirect stdout fd: %v", err)
 	}
@@ -155,7 +159,7 @@ func TestGloriaPrint(t *testing.T) {
 	utils.ExecRawRet(code)
 
 	w.Close()
-	_ = syscall.Dup2(clonedStdoutFd, stdoutFd)
+	_ = unix.Dup2(clonedStdoutFd, stdoutFd)
 	_ = syscall.Close(clonedStdoutFd)
 
 	result := <-outChan
