@@ -22,7 +22,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zeebo/blake3"
+	"github.com/forgezero-cli/ForgeZero/internal/hashpool"
 )
 
 var sourceHashes = make(map[string][32]byte)
@@ -45,7 +45,8 @@ func refreshSourceHashes(dirs []string) error {
 			if err != nil {
 				return err
 			}
-			h := blake3.New()
+			h := hashpool.GetHasher()
+			defer hashpool.PutHasher(h)
 			for {
 				n, rerr := f.Read(buf)
 				if n > 0 {
