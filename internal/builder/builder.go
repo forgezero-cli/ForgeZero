@@ -205,7 +205,9 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 			hashCache = nil
 		}
 	}
-	
+	if effectiveCache == cacheDisk {
+		_ = PreloadCache(ctx, cacheDir)
+	}
 
 	if err := refreshSourceHashes(dirs); err != nil {
 		return nil, errors.New("failed to refresh source hashes: " + err.Error())
@@ -370,11 +372,12 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 
 	if useDAG {
 		dag := scheduler.NewDAGScheduler(jobs, len(pairs))
-		for i, p := range pairs {
+		for i := range pairs {
 			idx := i
-			_, err := dag.Submit(func(ctx context.Context) error {
+			p := pairs[i]
+			_, err := dag.Submit(scheduler.AcquireTask(func(arg uintptr, extra uintptr) error {
 				return buildOne(p)
-			}, depGraph[idx])
+			}, 0, 0), depGraph[idx])
 			if err != nil {
 				if cleanupObjDir {
 					os.RemoveAll(objDir)
@@ -392,9 +395,9 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		sched := scheduler.NewScheduler(jobs, len(pairs)*2)
 		for i := range pairs {
 			p := pairs[i]
-			sched.SubmitBlocking(func(taskCtx context.Context) error {
+			sched.SubmitBlocking(scheduler.AcquireTask(func(arg uintptr, extra uintptr) error {
 				return buildOne(p)
-			}, 0)
+			}, 0, 0), 0)
 		}
 		if err := sched.Run(ctx); err != nil {
 			if cleanupObjDir {
