@@ -23,26 +23,27 @@ import (
 	"testing"
 )
 
+func makeDAGTask(id int, order *[]int, mu *atomic.Int64) Task {
+	return AcquireTask(func(arg uintptr, extra uintptr) error {
+		*order = append(*order, id)
+		mu.Add(1)
+		return nil
+	}, 0, 0)
+}
+
 func TestDAGSchedulerRespectsDependencies(t *testing.T) {
 	sched := NewDAGScheduler(2, 8)
 	var order []int
 	var mu atomic.Int64
-	makeTask := func(id int) Task {
-		return func(ctx context.Context) error {
-			order = append(order, id)
-			mu.Add(1)
-			return nil
-		}
-	}
-	a, err := sched.Submit(makeTask(1), nil)
+	a, err := sched.Submit(makeDAGTask(1, &order, &mu), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := sched.Submit(makeTask(2), []int{a})
+	b, err := sched.Submit(makeDAGTask(2, &order, &mu), []int{a})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = sched.Submit(makeTask(3), []int{b})
+	_, err = sched.Submit(makeDAGTask(3, &order, &mu), []int{b})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +60,7 @@ func TestDAGSchedulerRespectsDependencies(t *testing.T) {
 
 func TestDAGSchedulerReturnsCycleError(t *testing.T) {
 	sched := NewDAGScheduler(1, 4)
-	_, err := sched.Submit(func(ctx context.Context) error { return nil }, []int{1})
+	_, err := sched.Submit(AcquireTask(func(arg uintptr, extra uintptr) error { return nil }, 0, 0), []int{1})
 	if err == nil {
 		t.Fatal("expected invalid dependency error")
 	}
