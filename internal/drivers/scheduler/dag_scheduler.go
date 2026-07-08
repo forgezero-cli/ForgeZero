@@ -20,6 +20,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sync"
 	"sync/atomic"
 )
@@ -33,12 +34,12 @@ type dagNode struct {
 type DAGScheduler struct {
 	pool      *Scheduler
 	nodes     []dagNode
-	ready     chan int
+	ready     *intRingQueue
 	running   atomic.Bool
 	errOnce   sync.Once
 	err       error
 	pending   atomic.Int64
-	closeOnce sync.Once
+	cancel    context.CancelFunc
 }
 
 func NewDAGScheduler(workerPoolSize int, nodeCapacity int) *DAGScheduler {
@@ -48,12 +49,12 @@ func NewDAGScheduler(workerPoolSize int, nodeCapacity int) *DAGScheduler {
 	return &DAGScheduler{
 		pool:  NewScheduler(workerPoolSize, nodeCapacity*2),
 		nodes: make([]dagNode, 0, nodeCapacity),
-		ready: make(chan int, nodeCapacity),
+		ready: newIntRingQueue(nodeCapacity),
 	}
 }
 
 func (d *DAGScheduler) Submit(task Task, deps []int) (int, error) {
-	if task == nil {
+	if task.Fn == nil {
 		return -1, errors.New("task required")
 	}
 	if d.running.Load() {
@@ -73,53 +74,47 @@ func (d *DAGScheduler) Submit(task Task, deps []int) (int, error) {
 }
 
 func (d *DAGScheduler) enqueueReady(index int) {
-	defer func() {
-		recover()
-	}()
-	d.ready <- index
+	d.ready.spinEnqueue(index)
 }
 
-func (d *DAGScheduler) closeReady() {
-	d.closeOnce.Do(func() {
-		close(d.ready)
-	})
-}
-
-func (d *DAGScheduler) setError(err error, cancel context.CancelFunc) {
+func (d *DAGScheduler) setError(err error) {
 	d.errOnce.Do(func() {
 		d.err = err
-		if cancel != nil {
-			cancel()
+		if d.cancel != nil {
+			d.cancel()
 		}
-		d.closeReady()
 	})
 }
 
-func (d *DAGScheduler) worker(ctx context.Context, cancel context.CancelFunc) {
+func (d *DAGScheduler) worker(ctx context.Context) {
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return
-		case idx, ok := <-d.ready:
-			if !ok {
+		}
+		idx, ok := d.ready.tryDequeue()
+		if !ok {
+			if d.err != nil || d.pending.Load() == 0 {
 				return
 			}
-			if d.err != nil {
-				return
+			runtime.Gosched()
+			continue
+		}
+		if d.err != nil {
+			return
+		}
+		node := &d.nodes[idx]
+		if err := node.task.Fn(node.task.Arg, node.task.Extra); err != nil {
+			d.setError(err)
+			return
+		}
+		ReleaseTask(node.task)
+		for _, next := range node.dependents {
+			if d.nodes[next].deps.Add(-1) == 0 {
+				d.enqueueReady(next)
 			}
-			node := &d.nodes[idx]
-			if err := node.task(ctx); err != nil {
-				d.setError(err, cancel)
-				return
-			}
-			for _, next := range node.dependents {
-				if d.nodes[next].deps.Add(-1) == 0 {
-					d.enqueueReady(next)
-				}
-			}
-			if d.pending.Add(-1) == 0 {
-				d.closeReady()
-			}
+		}
+		if d.pending.Add(-1) == 0 {
+			return
 		}
 	}
 }
@@ -137,7 +132,7 @@ func (d *DAGScheduler) Run(ctx context.Context) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	d.closeOnce = sync.Once{}
+	d.cancel = cancel
 	d.pending.Store(int64(len(d.nodes)))
 	for i := range d.nodes {
 		if d.nodes[i].deps.Load() == 0 {
@@ -149,7 +144,7 @@ func (d *DAGScheduler) Run(ctx context.Context) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			d.worker(ctx, cancel)
+			d.worker(ctx)
 		}()
 	}
 	wg.Wait()
