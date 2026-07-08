@@ -90,7 +90,7 @@ func main() {
 			stdio.WriteFmt(2, "init failed: %v\n", err)
 			os.Exit(1)
 		}
-		stdio.WriteFmt(1, "%s\n", "project initialized. edit .fz.yaml to configure ur build.")
+		stdio.WriteFmt(1, "%s\n", "project initialized. edit .fz.toml to configure ur build.")
 		return
 	}
 
