@@ -681,9 +681,9 @@ func TestFindExecutable(t *testing.T) {
 func TestSafeEnv(t *testing.T) {
 	cfg := &config.Config{
 		ToolchainSettings: struct {
-			SearchPriority []string          `yaml:"search_priority"`
-			EnvAllow       []string          `yaml:"env_allow"`
-			ToolPaths      map[string]string `yaml:"tool_paths"`
+			SearchPriority []string          `yaml:"search_priority" toml:"search_priority"`
+			EnvAllow       []string          `yaml:"env_allow" toml:"env_allow"`
+			ToolPaths      map[string]string `yaml:"tool_paths" toml:"tool_paths"`
 		}{
 			EnvAllow: []string{"USER", "HOME"},
 		},
