@@ -23,8 +23,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/forgezero-cli/ForgeZero/internal/hashpool"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
-	"github.com/zeebo/blake3"
 )
 
 var PCHIncludeArgs []string
@@ -44,16 +44,25 @@ func SetPCHCacheDir(dir string) {
 }
 
 func computePCHHash(headerPath string, compiler string, flags []string, target string) ([32]byte, error) {
-	h := blake3.New()
+	h := hashpool.GetHasher()
+	defer hashpool.PutHasher(h)
 	data, err := os.ReadFile(headerPath)
 	if err != nil {
 		return [32]byte{}, err
 	}
-	h.Write(data)
-	h.Write([]byte(compiler))
-	h.Write([]byte(target))
+	if _, err := h.Write(data); err != nil {
+		return [32]byte{}, err
+	}
+	if _, err := h.Write([]byte(compiler)); err != nil {
+		return [32]byte{}, err
+	}
+	if _, err := h.Write([]byte(target)); err != nil {
+		return [32]byte{}, err
+	}
 	for _, f := range flags {
-		h.Write([]byte(f))
+		if _, err := h.Write([]byte(f)); err != nil {
+			return [32]byte{}, err
+		}
 	}
 	var sum [32]byte
 	h.Sum(sum[:0])
