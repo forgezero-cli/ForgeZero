@@ -30,7 +30,7 @@ This project was initialized with [ForgeZero](https://github.com/forgezero-cli/F
 
 ## How to build
 
-1. Edit .fz.yaml to configure source directories, output name, etc.
+1. Edit .fz.toml to configure source directories, output name, etc.
 2. Run:
 
     fz 
@@ -56,9 +56,9 @@ or with custom flags:
 - ` + "`-clean`" + ` – remove all build artifacts
 - ` + "`-format bin`" + ` – build flat binary (e.g., bootloader)
 
-## .fz.yaml configuration
+## .fz.toml configuration
 
-See the generated .fz.yaml file for all options. It supports:
+See the generated .fz.toml file for all options. It supports:
 - Multiple source directories (` + "`source_dirs`" + `)
 - Exact file list (` + "`source_files`" + `)
 - Exclude patterns (` + "`exclude`" + `) and include patterns (` + "`include`" + `)
@@ -80,62 +80,51 @@ MIT
 
 `)
 
-var yamlTemplate = []byte(`# fz configuration file
+var tomlTemplate = []byte(`# fz configuration file
 
 # Copyright (c) 2026 ForgeZero
 
 # Source directories to scan recursively (optional, default: current directory)
-source_dirs:
-  - src
-  - lib
+source_dirs = ["src", "lib"]
 
 # Explicit source files (overrides source_dirs if set)
-# source_files:
-#   - boot.asm
-#   - main.c
+# source_files = ["boot.asm", "main.c"]
 
 # Patterns to exclude (glob syntax)
-exclude:
-  - test_*
-  - temp/
-  - "*.bak"
+exclude = ["test_*", "temp/", "*.bak"]
 
 # Only include files matching these patterns (empty means all)
-# include:
-#   - "*.asm"
-#   - "*.c"
+# include = ["*.asm", "*.c"]
 
 # Libraries to link (passed as -l<name>)
-# libs:
-#   - m
-#   - c
+# libs = ["m", "c"]
 
 # Output binary name (default: derived from source or directory)
-output: myprogram
+output = "myprogram"
 
 # Linking mode: auto (gcc -> gcc -no-pie -> ld), c (gcc only), raw (ld only)
-mode: auto
+mode = "auto"
 
 # Emit debug information
-debug: false
+debug = false
 
 # Print executed commands
-verbose: false
+verbose = false
 
 # Keep intermediate object files
-keep_obj: false
+keep_obj = false
 
 # Disable incremental cache
-no_cache: false
+no_cache = false
 
 # Custom flags for assembler, C compiler, and linker
-# flags:
-#   asm: ["-felf64", "-Ox"]
-#   cc: ["-O2"]
-#   ld: ["-T", "linker.ld"]
+[flags]
+asm = ["-felf64"]
+cc = ["-O2"]
+ld = ["-T", "linker.ld"]
 
 # Path to .fzignore file (default: .fzignore)
-ignore_file: .fzignore
+ignore_file = ".fzignore"
 `)
 
 var ignoreTemplate = []byte(`# fz ignore file
@@ -161,22 +150,37 @@ test_*
 .fz_cache/
 `)
 
+var configureTemplate = []byte(`# ForgeZero configure script
+# This file can be used to adjust config dynamically at build time.
+
+# Example:
+# add_sources("src/**/*.asm")
+# add_compiler_flags("-O2")
+# add_ld_flags("-Wl,--gc-sections")
+`)
+
 func Run() error {
-	if _, err := os.Stat(".fz.yaml"); err == nil {
-		return errors.New(".fz.yaml already exists (not overwritten)")
+	if _, err := os.Stat(".fz.toml"); err == nil {
+		return errors.New(".fz.toml already exists (not overwritten)")
 	}
 	if _, err := os.Stat(".fzignore"); err == nil {
 		return errors.New(".fzignore already exists (not overwritten)")
+	}
+	if _, err := os.Stat("configure.fz"); err == nil {
+		return errors.New("configure.fz already exists (not overwritten)")
 	}
 	if _, err := os.Stat("README.md"); err != nil {
 		if err := utils.SecureWriteFile("README.md", readmeTemplate); err != nil {
 			return err
 		}
 	}
-	if err := utils.SecureWriteFile(".fz.yaml", yamlTemplate); err != nil {
+	if err := utils.SecureWriteFile(".fz.toml", tomlTemplate); err != nil {
 		return err
 	}
 	if err := utils.SecureWriteFile(".fzignore", ignoreTemplate); err != nil {
+		return err
+	}
+	if err := utils.SecureWriteFile("configure.fz", configureTemplate); err != nil {
 		return err
 	}
 	return nil
