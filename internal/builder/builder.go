@@ -25,6 +25,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/forgezero-cli/ForgeZero/internal/fzp"
+
 	"github.com/forgezero-cli/ForgeZero/internal/assembler"
 	"github.com/forgezero-cli/ForgeZero/internal/config"
 	"github.com/forgezero-cli/ForgeZero/internal/drivers/scheduler"
@@ -177,22 +179,36 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 			}
 		}
 	}
+	objDir := joinPath(filepath.Dir(outBin), ".fz_objs")
+	generatedIncludeDir := joinPath(objDir, "include")
+	if err := utils.SecureMkdirAll(generatedIncludeDir); err != nil {
+		return nil, errors.New("cannot create generated include dir: " + err.Error())
+	}
+	includeDirs := []string{generatedIncludeDir}
+	if cfg != nil {
+		includeDirs = append(includeDirs, cfg.Include...)
+	}
+	includeDirs = append(includeDirs, includes...)
+	assembler.SetAdditionalIncludeDirs(includeDirs)
+	defer assembler.SetAdditionalIncludeDirs(nil)
+	if err := runPreprocessStep(cfg, dirs, generatedIncludeDir, verbose); err != nil {
+		return nil, err
+	}
+
 	if len(srcFiles) == 0 {
 		return nil, errors.New("no supported files found")
 	}
 	sort.Strings(srcFiles)
 
-	objDir := joinPath(filepath.Dir(outBin), ".fz_objs")
 	cacheDir := joinPath(filepath.Dir(outBin), ".fz_cache")
-	
 
 	effectiveCache := determineCacheMode(cfg, noCache)
 	var hashCache map[string][32]byte
 
 	if cacheDir != "" {
-	
+
 		assembler.SetPCHCacheDir(filepath.Join(cacheDir, "pch"))
-	
+
 	}
 
 	if effectiveCache != cacheOff {
@@ -449,6 +465,81 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		ObjDir:      objDir,
 		CacheDir:    cacheDir,
 	}, nil
+}
+
+func runPreprocessStep(cfg *config.Config, dirs []string, outputRoot string, verbose bool) error {
+	if cfg == nil {
+		return nil
+	}
+	if !cfg.Preprocess.Enabled {
+		if len(cfg.Preprocess.Inputs) == 0 && len(cfg.Preprocess.Outputs) == 0 {
+			for _, dir := range dirs {
+				matches, err := filepath.Glob(filepath.Join(dir, "*.h.in"))
+				if err != nil {
+					return err
+				}
+				if len(matches) == 0 {
+					continue
+				}
+				for _, templatePath := range matches {
+					base := strings.TrimSuffix(filepath.Base(templatePath), ".in")
+					outputPath := filepath.Join(outputRoot, base)
+					if verbose {
+						os.Stdout.WriteString("Generating header " + outputPath + " from " + templatePath + "\n")
+					}
+					if err := config.GenerateConfigH(templatePath, outputPath, cfg); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		return nil
+	}
+
+	for _, dir := range dirs {
+		for _, input := range cfg.Preprocess.Inputs {
+			if input == "" {
+				continue
+			}
+			inputPath := input
+			if !filepath.IsAbs(inputPath) {
+				inputPath = filepath.Join(dir, inputPath)
+			}
+			outputPath := inputPath
+			if len(cfg.Preprocess.Outputs) > 0 {
+				if len(cfg.Preprocess.Outputs) == 1 {
+					outputPath = cfg.Preprocess.Outputs[0]
+				} else if len(cfg.Preprocess.Outputs) > 0 {
+					outputPath = cfg.Preprocess.Outputs[0]
+				}
+			}
+			if !filepath.IsAbs(outputPath) {
+				outputPath = filepath.Join(dir, outputPath)
+			}
+			if verbose {
+				os.Stdout.WriteString("Generating preprocessed output " + outputPath + " from " + inputPath + "\n")
+			}
+			data, err := os.ReadFile(inputPath)
+			if err != nil {
+				return err
+			}
+			proc := fzp.NewProcessor(fzp.Options{RootDir: filepath.Dir(inputPath), Macros: map[string]string{}})
+			processed, err := proc.Process(inputPath, fzp.Options{RootDir: filepath.Dir(inputPath), Macros: cfg.Preprocess.Defines})
+			if err != nil {
+				return err
+			}
+			if processed == "" {
+				processed = string(data)
+			}
+			if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(outputPath, []byte(processed), 0o644); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func createArchive(ctx context.Context, objFiles []string, outBin string, verbose bool) error {
