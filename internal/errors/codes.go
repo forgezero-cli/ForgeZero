@@ -22,11 +22,13 @@ type Code uint16
 const (
 	CodeOK Code = 0
 
-	CodeFileNotFound Code = 1
-	CodeParseFailed  Code = 2
-	CodeConfigInvalid Code = 3
-	CodeBuildActionFailed Code = 4
+	CodeFileNotFound        Code = 1
+	CodeParseFailed         Code = 2
+	CodeConfigInvalid       Code = 3
+	CodeBuildActionFailed   Code = 4
 	CodeDepResolutionFailed Code = 5
+	CodePreprocessFailed    Code = 6
+	CodeIncludeFailed       Code = 7
 
 	CodeHashOpen Code = 10
 	CodeHashMmap Code = 11
