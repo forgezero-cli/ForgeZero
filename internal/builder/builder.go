@@ -523,8 +523,8 @@ func runPreprocessStep(cfg *config.Config, dirs []string, outputRoot string, ver
 			if err != nil {
 				return err
 			}
-			proc := fzp.NewProcessor(fzp.Options{RootDir: filepath.Dir(inputPath), Macros: map[string]string{}})
-			processed, err := proc.Process(inputPath, fzp.Options{RootDir: filepath.Dir(inputPath), Macros: cfg.Preprocess.Defines})
+			proc := fzp.NewProcessor(fzp.Options{RootDir: filepath.Dir(inputPath), Macros: cfg.Preprocess.Defines})
+			processed, err := proc.Process(inputPath, fzp.Options{RootDir: filepath.Dir(inputPath)})
 			if err != nil {
 				return err
 			}
