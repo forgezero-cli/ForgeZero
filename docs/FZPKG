@@ -1,0 +1,22 @@
+ForgeZero package manager
+
+ForgeZero packages are verified with trusted-key checks before installation.
+
+Trust model
+
+- Package manifests must include a signature field.
+- The signature key must be present in the trusted-key store.
+- Untrusted keys are rejected before a package is accepted.
+
+Commands
+
+- fz pm trust <key> - add a key to the trust store
+- fz pm keys - list trusted keys
+- fz pm verify <package> - verify a package manifest
+- fz pm install <package> - install a package after verification
+
+Example
+
+fz pm trust demo-key
+fz pm verify ./pkg
+fz pm install ./pkg
