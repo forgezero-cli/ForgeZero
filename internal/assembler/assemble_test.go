@@ -24,6 +24,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -176,6 +178,47 @@ start:
 	err := Assemble(context.Background(), src, obj, false, false, "raw")
 	if err == nil {
 		t.Fatal("expected wasm assembly error")
+	}
+}
+
+func TestCompileCAddsAdditionalIncludeDirs(t *testing.T) {
+	oldDirs := AdditionalIncludeDirs
+	oldFlags := CcFlags
+	oldParsed := CcFLagsParsed
+	defer func() {
+		AdditionalIncludeDirs = oldDirs
+		CcFlags = oldFlags
+		CcFLagsParsed = oldParsed
+		CcFlagsOnce = sync.Once{}
+		SetRunCommand(nil)
+	}()
+
+	CcFlags = ""
+	CcFLagsParsed = nil
+	CcFlagsOnce = sync.Once{}
+	SetAdditionalIncludeDirs([]string{"/tmp/generated/include", "/tmp/other/include"})
+
+	var gotArgs []string
+	SetRunCommand(func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+		gotArgs = append([]string{}, args...)
+		return "", nil
+	})
+
+	if err := compileC(context.Background(), "/tmp/test.c", "/tmp/test.o", false, "cc"); err != nil {
+		t.Fatalf("compileC() error = %v", err)
+	}
+
+	var foundGenerated, foundOther bool
+	for _, arg := range gotArgs {
+		if arg == "-I/tmp/generated/include" {
+			foundGenerated = true
+		}
+		if arg == "-I/tmp/other/include" {
+			foundOther = true
+		}
+	}
+	if !foundGenerated || !foundOther {
+		t.Fatalf("expected include dirs in compiler args, got %s", strings.Join(gotArgs, " "))
 	}
 }
 
