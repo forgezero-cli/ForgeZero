@@ -1,9 +1,9 @@
 FORGEZERO TOML CONFIGURATION
 ============================
 
-ForgeZero supports project configuration in TOML, YAML, and their .yml variants.
-TOML is the recommended format for new projects because it is explicit, easy to
-read, and works well with generated files.
+ForgeZero supports TOML as the primary configuration format. YAML remains available for compatibility, but it emits a deprecation warning and should be migrated to TOML for new projects.
+
+TOML is the recommended format because it is explicit, easy to read, and works well with generated files.
 
 MINIMAL EXAMPLE
 ---------------
