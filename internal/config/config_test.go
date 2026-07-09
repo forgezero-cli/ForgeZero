@@ -18,8 +18,10 @@
 package config
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -240,6 +242,147 @@ func TestLoadTOMLConfigIncludesRelativeFiles(t *testing.T) {
 	}
 	if len(cfg.Flags.Cc) != 1 || cfg.Flags.Cc[0] != "-O2" {
 		t.Fatalf("Flags.Cc = %v, want [-O2]", cfg.Flags.Cc)
+	}
+}
+
+func TestLoadTOMLEnumValues(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".fz.toml")
+	content := "isolation = \"strict\"\ncache_mode = \"ram\"\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Isolation != IsolationStrict {
+		t.Fatalf("Isolation = %q, want %q", cfg.Isolation, IsolationStrict)
+	}
+	if cfg.CacheMode != CacheModeRAM {
+		t.Fatalf("CacheMode = %q, want %q", cfg.CacheMode, CacheModeRAM)
+	}
+}
+
+func TestLoadTOMLEnvironmentVariables(t *testing.T) {
+	t.Setenv("FZ_TEST_OUTPUT", "mars")
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".fz.toml")
+	content := "output = \"${FZ_TEST_OUTPUT}\"\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Output != "mars" {
+		t.Fatalf("Output = %q, want mars", cfg.Output)
+	}
+}
+
+func TestLoadYAMLDeprecationWarning(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("output: app\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = oldStderr }()
+	_, err = Load(cfgPath)
+	_ = w.Close()
+	data, err := io.ReadAll(r)
+	_ = r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) == 0 {
+		t.Fatal("expected deprecation warning")
+	}
+}
+
+func TestApplySetOverrides(t *testing.T) {
+	cfg := &Config{}
+	if err := cfg.ApplySetOverrides([]string{"output=release", "mode=raw", "debug=true", "optimization_level=3"}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Output != "release" {
+		t.Fatalf("Output = %q, want release", cfg.Output)
+	}
+	if cfg.Mode != "raw" {
+		t.Fatalf("Mode = %q, want raw", cfg.Mode)
+	}
+	if !cfg.Debug {
+		t.Fatal("Debug should be true")
+	}
+	if cfg.OptimizationLevel != 3 {
+		t.Fatalf("OptimizationLevel = %d, want 3", cfg.OptimizationLevel)
+	}
+}
+
+func TestApplySetOverridesNestedKeys(t *testing.T) {
+	cfg := &Config{}
+	err := cfg.ApplySetOverrides([]string{
+		"variables.DEBUG=1",
+		"toolchain_opts.search_priority=clang,gcc",
+		"toolchain_opts.env_allow=CC,CXX",
+		"toolchain_opts.tool_paths.gcc=/usr/bin/gcc",
+		"hooks.on_failure=echo fail",
+		"iso.enabled=true",
+		"iso.output=boot.iso",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Variables["DEBUG"] != "1" {
+		t.Fatalf("Variables.DEBUG = %q, want 1", cfg.Variables["DEBUG"])
+	}
+	if len(cfg.ToolchainSettings.SearchPriority) != 2 || cfg.ToolchainSettings.SearchPriority[0] != "clang" {
+		t.Fatalf("SearchPriority = %v, want [clang gcc]", cfg.ToolchainSettings.SearchPriority)
+	}
+	if len(cfg.ToolchainSettings.EnvAllow) != 2 || cfg.ToolchainSettings.EnvAllow[1] != "CXX" {
+		t.Fatalf("EnvAllow = %v, want [CC CXX]", cfg.ToolchainSettings.EnvAllow)
+	}
+	if cfg.ToolchainSettings.ToolPaths["gcc"] != "/usr/bin/gcc" {
+		t.Fatalf("ToolPaths[gcc] = %q, want /usr/bin/gcc", cfg.ToolchainSettings.ToolPaths["gcc"])
+	}
+	if cfg.Hooks.OnFailure != "echo fail" {
+		t.Fatalf("Hooks.OnFailure = %q, want echo fail", cfg.Hooks.OnFailure)
+	}
+	if !cfg.ISO.Enabled {
+		t.Fatal("ISO.Enabled should be true")
+	}
+	if cfg.ISO.Output != "boot.iso" {
+		t.Fatalf("ISO.Output = %q, want boot.iso", cfg.ISO.Output)
+	}
+}
+
+func TestGenerateConfigHeader(t *testing.T) {
+	dir := t.TempDir()
+	templatePath := filepath.Join(dir, "config.h.in")
+	outputPath := filepath.Join(dir, "config.h")
+	if err := os.WriteFile(templatePath, []byte("#define FZ_OUTPUT \"${OUTPUT}\"\n#define FZ_MODE \"${MODE}\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{Output: "release", Mode: "raw"}
+	if err := GenerateConfigH(templatePath, outputPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, `#define FZ_OUTPUT "release"`) {
+		t.Fatalf("header missing output substitution: %s", content)
+	}
+	if !strings.Contains(content, `#define FZ_MODE "raw"`) {
+		t.Fatalf("header missing mode substitution: %s", content)
 	}
 }
 
