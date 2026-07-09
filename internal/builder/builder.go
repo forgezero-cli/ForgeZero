@@ -478,9 +478,6 @@ func runPreprocessStep(cfg *config.Config, dirs []string, outputRoot string, ver
 				if err != nil {
 					return err
 				}
-				if len(matches) == 0 {
-					continue
-				}
 				for _, templatePath := range matches {
 					base := strings.TrimSuffix(filepath.Base(templatePath), ".in")
 					outputPath := filepath.Join(outputRoot, base)
@@ -497,7 +494,7 @@ func runPreprocessStep(cfg *config.Config, dirs []string, outputRoot string, ver
 	}
 
 	for _, dir := range dirs {
-		for _, input := range cfg.Preprocess.Inputs {
+		for i, input := range cfg.Preprocess.Inputs {
 			if input == "" {
 				continue
 			}
@@ -505,23 +502,19 @@ func runPreprocessStep(cfg *config.Config, dirs []string, outputRoot string, ver
 			if !filepath.IsAbs(inputPath) {
 				inputPath = filepath.Join(dir, inputPath)
 			}
-			outputPath := inputPath
-			if len(cfg.Preprocess.Outputs) > 0 {
-				if len(cfg.Preprocess.Outputs) == 1 {
-					outputPath = cfg.Preprocess.Outputs[0]
-				} else if len(cfg.Preprocess.Outputs) > 0 {
-					outputPath = cfg.Preprocess.Outputs[0]
-				}
+			var outputPath string
+			if len(cfg.Preprocess.Outputs) > i {
+				outputPath = cfg.Preprocess.Outputs[i]
+			} else if len(cfg.Preprocess.Outputs) == 1 {
+				outputPath = cfg.Preprocess.Outputs[0]
+			} else {
+				outputPath = strings.TrimSuffix(filepath.Base(inputPath), ".in")
 			}
 			if !filepath.IsAbs(outputPath) {
-				outputPath = filepath.Join(dir, outputPath)
+				outputPath = filepath.Join(outputRoot, filepath.Base(outputPath))
 			}
 			if verbose {
 				os.Stdout.WriteString("Generating preprocessed output " + outputPath + " from " + inputPath + "\n")
-			}
-			data, err := os.ReadFile(inputPath)
-			if err != nil {
-				return err
 			}
 			proc := fzp.NewProcessor(fzp.Options{RootDir: filepath.Dir(inputPath), Macros: cfg.Preprocess.Defines})
 			processed, err := proc.Process(inputPath, fzp.Options{RootDir: filepath.Dir(inputPath)})
@@ -529,6 +522,10 @@ func runPreprocessStep(cfg *config.Config, dirs []string, outputRoot string, ver
 				return err
 			}
 			if processed == "" {
+				data, err := os.ReadFile(inputPath)
+				if err != nil {
+					return err
+				}
 				processed = string(data)
 			}
 			if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
