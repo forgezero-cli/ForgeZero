@@ -1,0 +1,362 @@
+================================================================
+ FZPKG CATALOG - README 
+ File: catalog.json
+ Total packages: 99
+================================================================
+
+WHAT THIS IS
+
+This is a JSON catalog of C/C++ open-source libraries and system
+components of the ForgeZero infactructure.
+
+WHO IS THIS FOR?
+For FZ users and sys devs who need fast, reliable, and secure lib provisioning for their specific tasks - the package are automatically vendored into the config.
+
+Tags marked "master" have no strict release tag upstream; pin
+them to a specific commit before using in production.
+
+IMPORTANT
+If you would like to contribute and add your own library or any third-party package, please open a PR and include a link to package you with to add in the description so that we can review it.
+
+================================================================
+ KERNEL / OS
+================================================================
+
+linux        - The Linux kernel itself. Core of most embedded
+               and server Linux systems.
+busybox      - Single binary combining tiny versions of many
+               standard UNIX command line tools (ls, mount,
+               init, etc). Common in embedded Linux images.
+FreeRTOS     - Small real-time OS kernel, most widely used RTOS
+               for microcontrollers.
+Zephyr       - Full-featured scalable RTOS from the Linux
+               Foundation, supports many architectures.
+RT-Thread    - RTOS popular in China, modular, POSIX-like API.
+NuttX        - POSIX-compliant RTOS (Apache project), feels
+               like a tiny embedded Linux.
+systemd      - Linux init system and service manager, also
+               provides logging (journald), udev, networkd.
+
+
+================================================================
+ BOOTLOADER
+================================================================
+
+u-boot       - "Das U-Boot", the most common bootloader for
+               embedded ARM/RISC-V/MIPS boards.
+
+
+================================================================
+ IOT / VENDOR FRAMEWORKS
+================================================================
+
+esp-idf      - Espressif's official SDK for ESP32 family chips
+               (WiFi/BLE microcontrollers).
+
+
+================================================================
+ HARDWARE ABSTRACTION / LOW LEVEL
+================================================================
+
+pico-sdk     - Official SDK for Raspberry Pi RP2040/RP2350 chips.
+libopencm3   - Free firmware library for ARM Cortex-M
+               microcontrollers (STM32, others).
+CMSIS_6      - ARM's Cortex Microcontroller Software Interface
+               Standard, common HAL layer for Cortex-M/A cores.
+libgpiod     - Modern Linux GPIO access library (replaces the
+               old sysfs GPIO interface).
+pigpio       - GPIO control library for Raspberry Pi (also PWM,
+               servo, waveform generation).
+
+
+================================================================
+ LIBC
+================================================================
+
+picolibc     - Small C library made for embedded systems
+               (merged Newlib + avr-libc), low memory footprint.
+musl         - Lightweight, fast, standards-compliant libc,
+               popular for static binaries and Alpine Linux.
+
+
+================================================================
+ NETWORK
+================================================================
+
+lwip         - Lightweight TCP/IP stack for embedded systems
+               with limited RAM.
+curl         - The library behind the curl command, supports
+               HTTP/FTP/and many other protocols.
+mongoose     - Embedded web server / networking library, easy
+               to embed in firmware.
+civetweb     - Small embeddable HTTP server library.
+kcp          - Fast reliable UDP-based protocol, low latency,
+               used in games and real-time apps.
+quiche       - Cloudflare's QUIC and HTTP/3 implementation.
+libpcap      - Packet capture library, used by tcpdump/Wireshark
+               and for writing network sniffers.
+dpdk         - Data Plane Development Kit, kernel-bypass high
+               performance packet processing.
+
+
+================================================================
+ ASYNC / EVENT LOOPS / CONCURRENCY
+================================================================
+
+libevent     - Portable async event notification library.
+libuv        - Async I/O library, the engine behind Node.js.
+libev        - Minimal high-performance event loop library.
+concurrentqueue - Lock-free multi-producer multi-consumer queue
+               for C++.
+userspace-rcu - Read-Copy-Update synchronization for userspace,
+               used for very low overhead concurrent reads.
+
+
+================================================================
+ CRYPTO / TLS
+================================================================
+
+mbedtls      - Small footprint TLS/crypto library, popular in
+               embedded and IoT projects.
+wolfssl      - Lightweight embedded TLS library, alternative
+               to mbedTLS/OpenSSL.
+openssl      - The most widely used general purpose TLS/crypto
+               library.
+libsodium    - Modern, easy-to-use crypto library (based on
+               NaCl), good default choice for new projects.
+liboqs       - Post-quantum cryptography algorithms, for
+               future-proofing against quantum computers.
+
+
+================================================================
+ SERIALIZATION
+================================================================
+
+protobuf-c   - Protocol Buffers implementation for plain C.
+nanopb       - Very small Protocol Buffers implementation,
+               made for microcontrollers.
+protobuf     - Google's Protocol Buffers, main C++/multi-lang
+               implementation.
+flatbuffers  - Zero-copy serialization format, good for games
+               and high performance apps.
+msgpack-c    - MessagePack binary serialization for C/C++.
+tinycbor     - Small CBOR (binary JSON-like format) encoder
+               and decoder.
+
+
+================================================================
+ JSON / CONFIG FORMATS
+================================================================
+
+cJSON        - Lightweight JSON parser/writer in plain C,
+               very common in embedded projects.
+yyjson       - Extremely fast JSON library for C.
+jsmn         - Minimal JSON tokenizer, no allocations.
+tomlc99      - TOML config file parser for C99.
+inih         - Simple .ini config file parser.
+yaml         - libyaml, YAML parser and emitter for C.
+
+
+================================================================
+ COMPRESSION
+================================================================
+
+zlib         - The classic DEFLATE compression library, used
+               almost everywhere.
+zstd         - Facebook's Zstandard, fast modern compression
+               with high ratio.
+lz4          - Extremely fast compression, low ratio, good for
+               real-time use cases.
+brotli       - Google's compression algorithm, used a lot on
+               the web (better ratio than gzip).
+
+
+================================================================
+ IMAGE / GUI / TEXT
+================================================================
+
+libpng       - Reference library for reading/writing PNG images.
+libjpeg-turbo - Fast JPEG codec (SIMD-optimized libjpeg fork).
+stb          - Single-header public domain libraries for image
+               loading, fonts, etc (stb_image and friends).
+lvgl         - Popular embedded graphics library for building
+               UI on microcontrollers with a display.
+freetype     - Font rendering engine, renders TrueType/OpenType
+               fonts.
+harfbuzz     - Text shaping engine, works together with
+               FreeType for complex scripts.
+
+
+================================================================
+ AUDIO / VIDEO
+================================================================
+
+PortAudio    - Cross-platform audio I/O library.
+libsndfile   - Library for reading/writing audio files (WAV,
+               FLAC, etc).
+opus         - Modern low-latency audio codec, used in VoIP
+               and streaming.
+FFmpeg       - The universal multimedia framework: decode,
+               encode, transcode, stream almost any format.
+
+
+================================================================
+ MATH
+================================================================
+
+Eigen        - C++ template library for linear algebra
+               (matrices, vectors, solvers).
+cglm         - Fast C library for graphics math (vectors,
+               matrices, quaternions), OpenGL/Vulkan friendly.
+
+
+================================================================
+ DATABASE
+================================================================
+
+sqlite       - Self-contained, serverless, embedded SQL
+               database engine, extremely widely used.
+hiredis      - Minimalistic C client library for Redis.
+
+
+================================================================
+ FILESYSTEM
+================================================================
+
+littlefs     - Fail-safe filesystem for embedded flash storage,
+               designed to survive power loss.
+FatFs        - Generic FAT filesystem module for small
+               embedded systems.
+spiffs       - SPI Flash File System, made for small embedded
+               flash chips.
+
+
+================================================================
+ USB
+================================================================
+
+tinyusb      - Open source cross-platform USB host/device stack
+               for embedded systems.
+libusb       - Cross-platform library for USB device access
+               from userspace (host side).
+hidapi       - Simple library for talking to USB and Bluetooth
+               HID devices.
+
+
+================================================================
+ MESSAGING / RPC
+================================================================
+
+mosquitto    - Popular open source MQTT broker.
+paho.mqtt.c  - Eclipse Paho MQTT client library in C.
+libcoap      - CoAP protocol library, lightweight alternative
+               to HTTP for constrained devices.
+libzmq       - ZeroMQ, high performance asynchronous messaging
+               library.
+nng          - nanomsg-next-gen, lightweight messaging library,
+               successor to nanomsg.
+grpc         - Google's RPC framework, works over HTTP/2 with
+               Protocol Buffers.
+
+
+================================================================
+ INDUSTRIAL / FIELDBUS
+================================================================
+
+libmodbus    - C library implementing the Modbus protocol,
+               common in industrial automation.
+can-utils    - Linux userspace utilities for CAN bus (used in
+               automotive and industrial systems).
+
+
+================================================================
+ IPC
+================================================================
+
+dbus         - Desktop Bus, standard Linux inter-process
+               communication system.
+
+
+================================================================
+ STORAGE (HIGH PERFORMANCE)
+================================================================
+
+spdk         - Storage Performance Development Kit, kernel
+               bypass NVMe/storage acceleration framework.
+
+
+================================================================
+ MEMORY ALLOCATORS
+================================================================
+
+jemalloc     - General purpose malloc implementation with good
+               multi-threaded performance, used by Meta/Redis.
+mimalloc     - Microsoft's fast, small footprint malloc
+               replacement.
+tlsf         - Two-Level Segregated Fit allocator, O(1)
+               allocation, popular in embedded/real-time systems.
+
+
+================================================================
+ LOGGING
+================================================================
+
+spdlog       - Fast C++ logging library, header-only or compiled.
+liblog4c     - log4j-style logging library for C.
+
+
+================================================================
+ STRING FORMATTING
+================================================================
+
+fmt          - Modern, fast, type-safe string formatting
+               library for C++ (basis of C++20 std::format).
+
+
+================================================================
+ TESTING
+================================================================
+
+Catch2       - Modern C++ unit testing framework, simple syntax.
+googletest   - Google's C++ testing framework, very widely used.
+Unity        - Lightweight C unit testing framework, made for
+               embedded targets.
+cmocka       - Unit testing framework for C with mocking support.
+doctest      - Extremely lightweight single-header C++ test
+               framework.
+benchmark    - Google's microbenchmarking library for C++.
+
+
+================================================================
+ DEBUGGING
+================================================================
+
+OpenOCD      - On-Chip Debugger, connects to JTAG/SWD hardware
+               for flashing and debugging microcontrollers.
+tracy        - Real-time, nanosecond-resolution frame profiler
+               for C/C++ applications and games.
+
+
+================================================================
+ GENERAL UTILITIES
+================================================================
+
+uthash       - Header-only hash table and linked list macros
+               for plain C structs.
+klib         - Collection of lightweight generic C containers
+               and algorithms (hash maps, sorting, etc).
+etl          - Embedded Template Library, STL-like containers
+               that avoid dynamic memory allocation.
+argparse     - Command line argument parsing library for C++.
+CLI11        - Feature-rich command line parser for modern C++.
+
+
+================================================================
+ NOTES
+================================================================
+
+- If you are unsure about a particular package, please verify it directly on GitHub. You are solely responsible for any packages downloaded from catalog.json(fz pm catalog); we merely provide a convenient installation mechanism. There are you no hidden secrets or, worse, fraudulent content - all package data is current as of 2026. 
+
+THANKS FOR USING FZPKG
+
+================================================================
