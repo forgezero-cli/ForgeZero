@@ -80,6 +80,15 @@ func TestRemovePackageOutsideVendor(t *testing.T) {
 	}
 }
 
+func TestUpdateConfigRejectsTraversalPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	defer chdirTemp(t, tmpDir)()
+
+	if err := updateConfig(filepath.Join("..", "evil"), true); err == nil {
+		t.Fatal("expected traversal path error")
+	}
+}
+
 func TestUpdateConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	defer chdirTemp(t, tmpDir)()
