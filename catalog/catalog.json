@@ -1,289 +1,523 @@
 {
-
   "version": 2,
-
   "packages": [
-
     {
-
       "name": "esp-idf",
-
       "repo": "https://github.com/espressif/esp-idf",
-
       "tag": "v6.0.1",
-
       "category": "iot",
-
       "source_dir": "components"
-
     },
-
     {
-
       "name": "FreeRTOS",
-
       "repo": "https://github.com/FreeRTOS/FreeRTOS",
-
       "tag": "V202406.01-LTS",
-
       "category": "kernel",
-
       "source_dir": "FreeRTOS/Source"
-
     },
-
     {
-
-      "name": "lwip",
-
-      "repo": "https://github.com/lwip-tcpip/lwip",
-
-      "tag": "STABLE-2_2_1_RELEASE",
-
-      "category": "network",
-
+      "name": "Zephyr",
+      "repo": "https://github.com/zephyrproject-rtos/zephyr",
+      "tag": "v4.2.0",
+      "category": "kernel",
+      "source_dir": "kernel"
+    },
+    {
+      "name": "RT-Thread",
+      "repo": "https://github.com/RT-Thread/rt-thread",
+      "tag": "v5.2.1",
+      "category": "kernel",
       "source_dir": "src"
-
     },
-
     {
-
-      "name": "mbedtls",
-
-      "repo": "https://github.com/Mbed-TLS/mbedtls",
-
-      "tag": "mbedtls-3.6.4",
-
-      "category": "crypto",
-
-      "source_dir": "library"
-
+      "name": "NuttX",
+      "repo": "https://github.com/apache/nuttx",
+      "tag": "nuttx-12.9.0",
+      "category": "kernel",
+      "source_dir": "sched"
     },
-
     {
-
-      "name": "cJSON",
-
-      "repo": "https://github.com/DaveGamble/cJSON",
-
-      "tag": "v1.7.19",
-
-      "category": "json",
-
-      "source_dir": ""
-
-    },
-
-    {
-
-      "name": "tinyusb",
-
-      "repo": "https://github.com/hathach/tinyusb",
-
-      "tag": "0.18.0",
-
-      "category": "usb",
-
+      "name": "pico-sdk",
+      "repo": "https://github.com/raspberrypi/pico-sdk",
+      "tag": "2.1.1",
+      "category": "hal",
       "source_dir": "src"
-
     },
-
     {
-
-      "name": "lvgl",
-
-      "repo": "https://github.com/lvgl/lvgl",
-
-      "tag": "v9.3.0",
-
-      "category": "gui",
-
-      "source_dir": "src"
-
-    },
-
-    {
-
-      "name": "protobuf-c",
-
-      "repo": "https://github.com/protobuf-c/protobuf-c",
-
-      "tag": "v1.5.2",
-
-      "category": "serialization",
-
-      "source_dir": ""
-
-    },
-
-    {
-
-      "name": "nanopb",
-
-      "repo": "https://github.com/nanopb/nanopb",
-
-      "tag": "nanopb-0.4.9",
-
-      "category": "serialization",
-
-      "source_dir": ""
-
-    },
-
-    {
-
-      "name": "zlib",
-
-      "repo": "https://github.com/madler/zlib",
-
-      "tag": "v1.3.1",
-
-      "category": "compression",
-
-      "source_dir": ""
-
-    },
-
-    {
-
-      "name": "libpng",
-
-      "repo": "https://github.com/pnggroup/libpng",
-
-      "tag": "v1.6.50",
-
-      "category": "image",
-
-      "source_dir": ""
-
-    },
-
-    {
-
-      "name": "sqlite",
-
-      "repo": "https://github.com/sqlite/sqlite",
-
-      "tag": "version-3.50.0",
-
-      "category": "database",
-
-      "source_dir": ""
-
-    },
-
-    {
-
-      "name": "uthash",
-
-      "repo": "https://github.com/troydhanson/uthash",
-
-      "tag": "v2.3.0",
-
-      "category": "utils",
-
-      "source_dir": "src"
-
-    },
-
-    {
-
-      "name": "klib",
-
-      "repo": "https://github.com/attractivechaos/klib",
-
+      "name": "libopencm3",
+      "repo": "https://github.com/libopencm3/libopencm3",
       "tag": "master",
-
-      "category": "utils",
-
-      "source_dir": ""
-
-    },
-
-    {
-
-      "name": "libuv",
-
-      "repo": "https://github.com/libuv/libuv",
-
-      "tag": "v1.51.0",
-
-      "category": "async",
-
-      "source_dir": "src"
-
-    },
-
-    {
-
-      "name": "curl",
-
-      "repo": "https://github.com/curl/curl",
-
-      "tag": "curl-8_15_0",
-
-      "category": "network",
-
+      "category": "hal",
       "source_dir": "lib"
-
     },
-
     {
-
-      "name": "fmt",
-
-      "repo": "https://github.com/fmtlib/fmt",
-
-      "tag": "11.2.0",
-
-      "category": "format",
-
-      "source_dir": "include"
-
+      "name": "CMSIS_6",
+      "repo": "https://github.com/ARM-software/CMSIS_6",
+      "tag": "v6.2.0",
+      "category": "hal",
+      "source_dir": "CMSIS/Core/Include"
     },
-
     {
-
-      "name": "spdlog",
-
-      "repo": "https://github.com/gabime/spdlog",
-
-      "tag": "v1.15.3",
-
-      "category": "logging",
-
-      "source_dir": "include"
-
+      "name": "picolibc",
+      "repo": "https://github.com/picolibc/picolibc",
+      "tag": "1.8.9",
+      "category": "libc",
+      "source_dir": "newlib"
     },
-
     {
-
-      "name": "Catch2",
-
-      "repo": "https://github.com/catchorg/Catch2",
-
-      "tag": "v3.9.0",
-
-      "category": "testing",
-
+      "name": "musl",
+      "repo": "https://github.com/kraj/musl",
+      "tag": "v1.2.5",
+      "category": "libc",
       "source_dir": "src"
-
     },
-
     {
-
-      "name": "googletest",
-
-      "repo": "https://github.com/google/googletest",
-
-      "tag": "v1.17.0",
-
-      "category": "testing",
-
+      "name": "lwip",
+      "repo": "https://github.com/lwip-tcpip/lwip",
+      "tag": "STABLE-2_2_1_RELEASE",
+      "category": "network",
+      "source_dir": "src"
+    },
+    {
+      "name": "curl",
+      "repo": "https://github.com/curl/curl",
+      "tag": "curl-8_15_0",
+      "category": "network",
+      "source_dir": "lib"
+    },
+    {
+      "name": "mongoose",
+      "repo": "https://github.com/cesanta/mongoose",
+      "tag": "7.18",
+      "category": "network",
       "source_dir": ""
-
+    },
+    {
+      "name": "civetweb",
+      "repo": "https://github.com/civetweb/civetweb",
+      "tag": "v1.16",
+      "category": "network",
+      "source_dir": "src"
+    },
+    {
+      "name": "libevent",
+      "repo": "https://github.com/libevent/libevent",
+      "tag": "release-2.1.12-stable",
+      "category": "async",
+      "source_dir": ""
+    },
+    {
+      "name": "libuv",
+      "repo": "https://github.com/libuv/libuv",
+      "tag": "v1.51.0",
+      "category": "async",
+      "source_dir": "src"
+    },
+    {
+      "name": "libev",
+      "repo": "https://github.com/enki/libev",
+      "tag": "master",
+      "category": "async",
+      "source_dir": ""
+    },
+    {
+      "name": "concurrentqueue",
+      "repo": "https://github.com/cameron314/concurrentqueue",
+      "tag": "v1.0.4",
+      "category": "async",
+      "source_dir": ""
+    },
+    {
+      "name": "mbedtls",
+      "repo": "https://github.com/Mbed-TLS/mbedtls",
+      "tag": "mbedtls-3.6.4",
+      "category": "crypto",
+      "source_dir": "library"
+    },
+    {
+      "name": "wolfssl",
+      "repo": "https://github.com/wolfSSL/wolfssl",
+      "tag": "v5.8.0-stable",
+      "category": "crypto",
+      "source_dir": "src"
+    },
+    {
+      "name": "openssl",
+      "repo": "https://github.com/openssl/openssl",
+      "tag": "openssl-3.5.0",
+      "category": "crypto",
+      "source_dir": "crypto"
+    },
+    {
+      "name": "libsodium",
+      "repo": "https://github.com/jedisct1/libsodium",
+      "tag": "1.0.20-RELEASE",
+      "category": "crypto",
+      "source_dir": "src/libsodium"
+    },
+    {
+      "name": "tinyusb",
+      "repo": "https://github.com/hathach/tinyusb",
+      "tag": "0.18.0",
+      "category": "usb",
+      "source_dir": "src"
+    },
+    {
+      "name": "libusb",
+      "repo": "https://github.com/libusb/libusb",
+      "tag": "v1.0.28",
+      "category": "usb",
+      "source_dir": "libusb"
+    },
+    {
+      "name": "hidapi",
+      "repo": "https://github.com/libusb/hidapi",
+      "tag": "hidapi-0.14.0",
+      "category": "usb",
+      "source_dir": "src"
+    },
+    {
+      "name": "lvgl",
+      "repo": "https://github.com/lvgl/lvgl",
+      "tag": "v9.3.0",
+      "category": "gui",
+      "source_dir": "src"
+    },
+    {
+      "name": "freetype",
+      "repo": "https://github.com/freetype/freetype",
+      "tag": "VER-2-13-3",
+      "category": "gui",
+      "source_dir": "src"
+    },
+    {
+      "name": "harfbuzz",
+      "repo": "https://github.com/harfbuzz/harfbuzz",
+      "tag": "10.4.0",
+      "category": "gui",
+      "source_dir": "src"
+    },
+    {
+      "name": "protobuf-c",
+      "repo": "https://github.com/protobuf-c/protobuf-c",
+      "tag": "v1.5.2",
+      "category": "serialization",
+      "source_dir": ""
+    },
+    {
+      "name": "nanopb",
+      "repo": "https://github.com/nanopb/nanopb",
+      "tag": "nanopb-0.4.9",
+      "category": "serialization",
+      "source_dir": ""
+    },
+    {
+      "name": "protobuf",
+      "repo": "https://github.com/protocolbuffers/protobuf",
+      "tag": "v29.3",
+      "category": "serialization",
+      "source_dir": "src"
+    },
+    {
+      "name": "flatbuffers",
+      "repo": "https://github.com/google/flatbuffers",
+      "tag": "v25.2.10",
+      "category": "serialization",
+      "source_dir": "include"
+    },
+    {
+      "name": "msgpack-c",
+      "repo": "https://github.com/msgpack/msgpack-c",
+      "tag": "cpp-7.0.0",
+      "category": "serialization",
+      "source_dir": "include"
+    },
+    {
+      "name": "tinycbor",
+      "repo": "https://github.com/intel/tinycbor",
+      "tag": "v0.6.1",
+      "category": "serialization",
+      "source_dir": "src"
+    },
+    {
+      "name": "cJSON",
+      "repo": "https://github.com/DaveGamble/cJSON",
+      "tag": "v1.7.19",
+      "category": "json",
+      "source_dir": ""
+    },
+    {
+      "name": "yyjson",
+      "repo": "https://github.com/ibireme/yyjson",
+      "tag": "0.11.1",
+      "category": "json",
+      "source_dir": "src"
+    },
+    {
+      "name": "jsmn",
+      "repo": "https://github.com/zserge/jsmn",
+      "tag": "master",
+      "category": "json",
+      "source_dir": ""
+    },
+    {
+      "name": "tomlc99",
+      "repo": "https://github.com/cktan/tomlc99",
+      "tag": "master",
+      "category": "config",
+      "source_dir": ""
+    },
+    {
+      "name": "inih",
+      "repo": "https://github.com/benhoyt/inih",
+      "tag": "r59",
+      "category": "config",
+      "source_dir": ""
+    },
+    {
+      "name": "zlib",
+      "repo": "https://github.com/madler/zlib",
+      "tag": "v1.3.1",
+      "category": "compression",
+      "source_dir": ""
+    },
+    {
+      "name": "zstd",
+      "repo": "https://github.com/facebook/zstd",
+      "tag": "v1.5.6",
+      "category": "compression",
+      "source_dir": "lib"
+    },
+    {
+      "name": "lz4",
+      "repo": "https://github.com/lz4/lz4",
+      "tag": "v1.10.0",
+      "category": "compression",
+      "source_dir": "lib"
+    },
+    {
+      "name": "brotli",
+      "repo": "https://github.com/google/brotli",
+      "tag": "v1.1.0",
+      "category": "compression",
+      "source_dir": "c"
+    },
+    {
+      "name": "libpng",
+      "repo": "https://github.com/pnggroup/libpng",
+      "tag": "v1.6.50",
+      "category": "image",
+      "source_dir": ""
+    },
+    {
+      "name": "libjpeg-turbo",
+      "repo": "https://github.com/libjpeg-turbo/libjpeg-turbo",
+      "tag": "3.1.0",
+      "category": "image",
+      "source_dir": ""
+    },
+    {
+      "name": "stb",
+      "repo": "https://github.com/nothings/stb",
+      "tag": "master",
+      "category": "image",
+      "source_dir": ""
+    },
+    {
+      "name": "sqlite",
+      "repo": "https://github.com/sqlite/sqlite",
+      "tag": "version-3.50.0",
+      "category": "database",
+      "source_dir": ""
+    },
+    {
+      "name": "littlefs",
+      "repo": "https://github.com/littlefs-project/littlefs",
+      "tag": "v2.9.3",
+      "category": "filesystem",
+      "source_dir": ""
+    },
+    {
+      "name": "FatFs",
+      "repo": "https://github.com/abbrov/FatFs",
+      "tag": "master",
+      "category": "filesystem",
+      "source_dir": "source"
+    },
+    {
+      "name": "spiffs",
+      "repo": "https://github.com/pellepl/spiffs",
+      "tag": "master",
+      "category": "filesystem",
+      "source_dir": "src"
+    },
+    {
+      "name": "uthash",
+      "repo": "https://github.com/troydhanson/uthash",
+      "tag": "v2.3.0",
+      "category": "utils",
+      "source_dir": "src"
+    },
+    {
+      "name": "klib",
+      "repo": "https://github.com/attractivechaos/klib",
+      "tag": "master",
+      "category": "utils",
+      "source_dir": ""
+    },
+    {
+      "name": "etl",
+      "repo": "https://github.com/ETLCPP/etl",
+      "tag": "20.42.1",
+      "category": "utils",
+      "source_dir": "include"
+    },
+    {
+      "name": "fmt",
+      "repo": "https://github.com/fmtlib/fmt",
+      "tag": "11.2.0",
+      "category": "format",
+      "source_dir": "include"
+    },
+    {
+      "name": "spdlog",
+      "repo": "https://github.com/gabime/spdlog",
+      "tag": "v1.15.3",
+      "category": "logging",
+      "source_dir": "include"
+    },
+    {
+      "name": "Catch2",
+      "repo": "https://github.com/catchorg/Catch2",
+      "tag": "v3.9.0",
+      "category": "testing",
+      "source_dir": "src"
+    },
+    {
+      "name": "googletest",
+      "repo": "https://github.com/google/googletest",
+      "tag": "v1.17.0",
+      "category": "testing",
+      "source_dir": ""
+    },
+    {
+      "name": "Unity",
+      "repo": "https://github.com/ThrowTheSwitch/Unity",
+      "tag": "v2.6.1",
+      "category": "testing",
+      "source_dir": "src"
+    },
+    {
+      "name": "cmocka",
+      "repo": "https://github.com/clibs/cmocka",
+      "tag": "master",
+      "category": "testing",
+      "source_dir": "src"
+    },
+    {
+      "name": "doctest",
+      "repo": "https://github.com/doctest/doctest",
+      "tag": "v2.4.11",
+      "category": "testing",
+      "source_dir": "doctest"
+    },
+    {
+      "name": "benchmark",
+      "repo": "https://github.com/google/benchmark",
+      "tag": "v1.9.1",
+      "category": "testing",
+      "source_dir": "include"
+    },
+    {
+      "name": "OpenOCD",
+      "repo": "https://github.com/openocd-org/openocd",
+      "tag": "v0.12.0",
+      "category": "debugging",
+      "source_dir": "src"
+    },
+    {
+      "name": "tracy",
+      "repo": "https://github.com/wolfpld/tracy",
+      "tag": "v0.11.1",
+      "category": "debugging",
+      "source_dir": "public"
+    },
+    {
+      "name": "mosquitto",
+      "repo": "https://github.com/eclipse-mosquitto/mosquitto",
+      "tag": "v2.0.20",
+      "category": "messaging",
+      "source_dir": "src"
+    },
+    {
+      "name": "paho.mqtt.c",
+      "repo": "https://github.com/eclipse-paho/paho.mqtt.c",
+      "tag": "v1.3.14",
+      "category": "messaging",
+      "source_dir": "src"
+    },
+    {
+      "name": "libcoap",
+      "repo": "https://github.com/obgm/libcoap",
+      "tag": "v4.3.5",
+      "category": "messaging",
+      "source_dir": "src"
+    },
+    {
+      "name": "libzmq",
+      "repo": "https://github.com/zeromq/libzmq",
+      "tag": "v4.3.5",
+      "category": "messaging",
+      "source_dir": "src"
+    },
+    {
+      "name": "nng",
+      "repo": "https://github.com/nanomsg/nng",
+      "tag": "v1.10.1",
+      "category": "messaging",
+      "source_dir": "src"
+    },
+    {
+      "name": "grpc",
+      "repo": "https://github.com/grpc/grpc",
+      "tag": "v1.71.0",
+      "category": "rpc",
+      "source_dir": "src/core"
+    },
+    {
+      "name": "hiredis",
+      "repo": "https://github.com/redis/hiredis",
+      "tag": "v1.3.0",
+      "category": "database",
+      "source_dir": ""
+    },
+    {
+      "name": "libmodbus",
+      "repo": "https://github.com/stephane/libmodbus",
+      "tag": "v3.1.10",
+      "category": "industrial",
+      "source_dir": "src"
+    },
+    {
+      "name": "can-utils",
+      "repo": "https://github.com/linux-can/can-utils",
+      "tag": "master",
+      "category": "industrial",
+      "source_dir": ""
+    },
+    {
+      "name": "libgpiod",
+      "repo": "https://github.com/brgl/libgpiod",
+      "tag": "v2.2.1",
+      "category": "hal",
+      "source_dir": "lib"
+    },
+    {
+      "name": "pigpio",
+      "repo": "https://github.com/joan2937/pigpio",
+      "tag": "master",
+      "category": "hal",
+      "source_dir": ""
     }
-
   ]
-
 }
