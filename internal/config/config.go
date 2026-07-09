@@ -21,6 +21,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -68,7 +70,15 @@ func (m *CacheMode) UnmarshalYAML(node *yaml.Node) error {
 	if err := node.Decode(&s); err != nil {
 		return err
 	}
-	s = strings.ToLower(strings.TrimSpace(s))
+	return m.unmarshalValue(s)
+}
+
+func (m *CacheMode) UnmarshalText(text []byte) error {
+	return m.unmarshalValue(string(text))
+}
+
+func (m *CacheMode) unmarshalValue(value string) error {
+	s := strings.ToLower(strings.TrimSpace(value))
 	switch s {
 	case "", "disk":
 		*m = CacheModeDisk
@@ -86,6 +96,7 @@ func loadYAML(data []byte, cfg *Config) error {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return errors.New("cannot parse YAML: " + err.Error())
 	}
+	os.Stderr.WriteString("WARNING: YAML config format is deprecated. Please migrate to TOML.\n")
 	return nil
 }
 
@@ -109,19 +120,7 @@ func isTOMLPath(path string) bool {
 func (m *IsolationMode) UnmarshalYAML(node *yaml.Node) error {
 	var s string
 	if err := node.Decode(&s); err == nil {
-		s = strings.ToLower(strings.TrimSpace(s))
-		switch s {
-		case "", "none":
-			*m = IsolationNone
-			return nil
-		case "standard", "true":
-			*m = IsolationStandard
-			return nil
-		case "strict":
-			*m = IsolationStrict
-			return nil
-		}
-		return errors.New("invalid isolation: " + s)
+		return m.unmarshalValue(s)
 	}
 	var b bool
 	if err := node.Decode(&b); err == nil {
@@ -133,6 +132,25 @@ func (m *IsolationMode) UnmarshalYAML(node *yaml.Node) error {
 		return nil
 	}
 	return errors.New("invalid isolation value")
+}
+
+func (m *IsolationMode) UnmarshalText(text []byte) error {
+	return m.unmarshalValue(string(text))
+}
+
+func (m *IsolationMode) unmarshalValue(value string) error {
+	s := strings.ToLower(strings.TrimSpace(value))
+	switch s {
+	case "", "none":
+		*m = IsolationNone
+	case "standard", "true":
+		*m = IsolationStandard
+	case "strict":
+		*m = IsolationStrict
+	default:
+		return errors.New("invalid isolation: " + s)
+	}
+	return nil
 }
 
 type Flags struct {
@@ -175,6 +193,13 @@ type ISOConfig struct {
 	CustomArgs    []string `yaml:"custom_args" toml:"custom_args"`
 }
 
+type PreprocessConfig struct {
+	Enabled bool              `yaml:"enabled" toml:"enabled"`
+	Inputs  []string          `yaml:"inputs" toml:"inputs"`
+	Outputs []string          `yaml:"outputs" toml:"outputs"`
+	Defines map[string]string `yaml:"defines" toml:"defines"`
+}
+
 type Config struct {
 	Name    string `yaml:"name" toml:"name"`
 	Profile string `yaml:"profile" toml:"profile"`
@@ -211,9 +236,10 @@ type Config struct {
 		EnvAllow       []string          `yaml:"env_allow" toml:"env_allow"`
 		ToolPaths      map[string]string `yaml:"tool_paths" toml:"tool_paths"`
 	} `yaml:"toolchain_opts" toml:"toolchain_opts"`
-	Hooks      Hooks       `yaml:"hooks" toml:"hooks"`
-	BuildRules []BuildRule `yaml:"build_rules" toml:"build_rules"`
-	ISO        ISOConfig   `yaml:"iso" toml:"iso"`
+	Preprocess PreprocessConfig `yaml:"preprocess" toml:"preprocess"`
+	Hooks      Hooks            `yaml:"hooks" toml:"hooks"`
+	BuildRules []BuildRule      `yaml:"build_rules" toml:"build_rules"`
+	ISO        ISOConfig        `yaml:"iso" toml:"iso"`
 }
 
 func (c *Config) expand() {
@@ -304,6 +330,277 @@ func (c *Config) fillDefaults() {
 	if c.CacheMode == "" {
 		c.CacheMode = CacheModeDisk
 	}
+}
+
+func splitOverrideList(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(trimmed, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	})
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func (c *Config) ApplySetOverrides(overrides []string) error {
+	if c == nil {
+		return nil
+	}
+	for _, raw := range overrides {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			return errors.New("invalid override: " + entry)
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if strings.HasPrefix(key, "variables.") {
+			if c.Variables == nil {
+				c.Variables = make(map[string]string)
+			}
+			c.Variables[strings.TrimPrefix(key, "variables.")] = value
+			continue
+		}
+		if strings.HasPrefix(key, "toolchain_opts.") {
+			nested := strings.TrimPrefix(key, "toolchain_opts.")
+			switch nested {
+			case "search_priority":
+				c.ToolchainSettings.SearchPriority = splitOverrideList(value)
+			case "env_allow":
+				c.ToolchainSettings.EnvAllow = splitOverrideList(value)
+			default:
+				if strings.HasPrefix(nested, "tool_paths.") {
+					if c.ToolchainSettings.ToolPaths == nil {
+						c.ToolchainSettings.ToolPaths = make(map[string]string)
+					}
+					c.ToolchainSettings.ToolPaths[strings.TrimPrefix(nested, "tool_paths.")] = value
+				} else {
+					return errors.New("unsupported config override: " + key)
+				}
+			}
+			continue
+		}
+		if strings.HasPrefix(key, "hooks.") {
+			switch strings.TrimPrefix(key, "hooks.") {
+			case "on_failure":
+				c.Hooks.OnFailure = value
+			default:
+				return errors.New("unsupported config override: " + key)
+			}
+			continue
+		}
+		if strings.HasPrefix(key, "iso.") {
+			switch strings.TrimPrefix(key, "iso.") {
+			case "enabled":
+				parsed, err := strconv.ParseBool(value)
+				if err != nil {
+					return errors.New("invalid override for iso.enabled: " + err.Error())
+				}
+				c.ISO.Enabled = parsed
+			case "output":
+				c.ISO.Output = value
+			default:
+				return errors.New("unsupported config override: " + key)
+			}
+			continue
+		}
+		switch strings.ToLower(key) {
+		case "name":
+			c.Name = value
+		case "profile":
+			c.Profile = value
+		case "target":
+			c.Target = value
+		case "sysroot":
+			c.Sysroot = value
+		case "source_dir":
+			c.SourceDir = value
+			c.SourceDirs = nil
+			c.SourceFiles = nil
+			c.SourceFile = ""
+		case "source_dirs":
+			c.SourceDirs = splitOverrideList(value)
+			c.SourceDir = ""
+			c.SourceFiles = nil
+			c.SourceFile = ""
+		case "source_file":
+			c.SourceFile = value
+			c.SourceDirs = nil
+			c.SourceDir = ""
+			c.SourceFiles = nil
+		case "source_files":
+			c.SourceFiles = splitOverrideList(value)
+			c.SourceFile = ""
+			c.SourceDirs = nil
+			c.SourceDir = ""
+		case "output":
+			c.Output = value
+		case "out_obj":
+			c.OutObj = value
+		case "mode":
+			c.Mode = value
+		case "toolchain":
+			c.Toolchain = value
+		case "debug":
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				return errors.New("invalid override for debug: " + err.Error())
+			}
+			c.Debug = parsed
+		case "verbose":
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				return errors.New("invalid override for verbose: " + err.Error())
+			}
+			c.Verbose = parsed
+		case "keep_obj":
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				return errors.New("invalid override for keep_obj: " + err.Error())
+			}
+			c.KeepObj = parsed
+		case "no_cache":
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				return errors.New("invalid override for no_cache: " + err.Error())
+			}
+			c.NoCache = parsed
+		case "optimization_level", "opt_level":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return errors.New("invalid override for optimization_level: " + err.Error())
+			}
+			c.OptimizationLevel = parsed
+		case "cache_mode":
+			var mode CacheMode
+			if err := mode.UnmarshalText([]byte(value)); err != nil {
+				return err
+			}
+			c.CacheMode = mode
+		case "isolation":
+			var mode IsolationMode
+			if err := mode.UnmarshalText([]byte(value)); err != nil {
+				return err
+			}
+			c.Isolation = mode
+		case "ignore_file":
+			c.IgnoreFile = value
+		case "exclude":
+			c.Exclude = splitOverrideList(value)
+		case "include":
+			c.Include = splitOverrideList(value)
+		case "scripts":
+			c.Scripts = splitOverrideList(value)
+		case "libs":
+			c.Libs = splitOverrideList(value)
+		case "audit_ignore":
+			c.AuditIgnore = splitOverrideList(value)
+		case "flags.asm":
+			c.Flags.Asm = splitOverrideList(value)
+		case "flags.cc":
+			c.Flags.Cc = splitOverrideList(value)
+		case "flags.ld":
+			c.Flags.Ld = splitOverrideList(value)
+		default:
+			return errors.New("unsupported config override: " + key)
+		}
+	}
+	return nil
+}
+
+func GenerateConfigH(templatePath, outputPath string, cfg *Config) error {
+	if cfg == nil {
+		return errors.New("config is nil")
+	}
+	data, err := os.ReadFile(templatePath)
+	if err != nil {
+		return err
+	}
+	content := expandConfigTemplate(string(data), cfg)
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(outputPath, []byte(content), 0o644)
+}
+
+func expandConfigTemplate(content string, cfg *Config) string {
+	pattern := regexp.MustCompile(`\$\{([A-Za-z0-9_]+)\}`)
+	return pattern.ReplaceAllStringFunc(content, func(token string) string {
+		name := strings.TrimSuffix(strings.TrimPrefix(token, "${"), "}")
+		if value, ok := lookupConfigValue(cfg, name); ok {
+			return value
+		}
+		if env, ok := os.LookupEnv(name); ok {
+			return env
+		}
+		return token
+	})
+}
+
+func lookupConfigValue(cfg *Config, name string) (string, bool) {
+	if cfg == nil {
+		return "", false
+	}
+	switch strings.ToUpper(name) {
+	case "NAME":
+		return cfg.Name, true
+	case "PROFILE":
+		return cfg.Profile, true
+	case "TARGET":
+		return cfg.Target, true
+	case "SYSROOT":
+		return cfg.Sysroot, true
+	case "SOURCE_DIR":
+		return cfg.SourceDir, true
+	case "SOURCE_FILE":
+		return cfg.SourceFile, true
+	case "OUTPUT":
+		return cfg.Output, true
+	case "OUT_OBJ":
+		return cfg.OutObj, true
+	case "MODE":
+		return cfg.Mode, true
+	case "TOOLCHAIN":
+		return cfg.Toolchain, true
+	case "DEBUG":
+		return strconv.FormatBool(cfg.Debug), true
+	case "VERBOSE":
+		return strconv.FormatBool(cfg.Verbose), true
+	case "KEEP_OBJ":
+		return strconv.FormatBool(cfg.KeepObj), true
+	case "NO_CACHE":
+		return strconv.FormatBool(cfg.NoCache), true
+	case "CACHE_MODE":
+		return cfg.CacheMode.String(), true
+	case "OPTIMIZATION_LEVEL":
+		return strconv.Itoa(cfg.OptimizationLevel), true
+	case "ISOLATION":
+		return cfg.Isolation.String(), true
+	case "IGNORE_FILE":
+		return cfg.IgnoreFile, true
+	}
+	if cfg.Variables != nil {
+		if value, ok := cfg.Variables[name]; ok {
+			return value, true
+		}
+		if value, ok := cfg.Variables[strings.ToUpper(name)]; ok {
+			return value, true
+		}
+		if value, ok := cfg.Variables[strings.ToLower(name)]; ok {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 func mergeStrings(dst, src []string) []string {
@@ -770,8 +1067,8 @@ func FindConfigs() (system, user, local string) {
 	if err == nil {
 		userPaths := []string{
 			filepath.Join(home, ".config", "fz", "config.toml"),
-			filepath.Join(home, ".config", "fz", "config.yaml"),
 			filepath.Join(home, ".fz.toml"),
+			filepath.Join(home, ".config", "fz", "config.yaml"),
 			filepath.Join(home, ".fz.yaml"),
 		}
 		for _, p := range userPaths {
