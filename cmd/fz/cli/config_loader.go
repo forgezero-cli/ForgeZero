@@ -28,7 +28,12 @@ func LoadConfig(flags *Flags) (*config.Config, string, error) {
 	var cfg *config.Config
 	var err error
 
-	if flags.ConfigPath != "" {
+	if flags.ConfigFZPPath != "" {
+		cfg, err = config.LoadFZP(flags.ConfigFZPPath)
+		if err != nil {
+			return nil, "", err
+		}
+	} else if flags.ConfigPath != "" {
 		cfg, err = config.Load(flags.ConfigPath)
 		if err != nil {
 			return nil, "", err
@@ -36,6 +41,16 @@ func LoadConfig(flags *Flags) (*config.Config, string, error) {
 	} else {
 		cfg, err = config.LoadMerged("")
 		if err != nil {
+			return nil, "", err
+		}
+	}
+	if len(flags.SetOverrides) > 0 {
+		if err := cfg.ApplySetOverrides(flags.SetOverrides); err != nil {
+			return nil, "", err
+		}
+	}
+	if flags.VerifySignatures {
+		if err := cfg.Validate(); err != nil {
 			return nil, "", err
 		}
 	}
