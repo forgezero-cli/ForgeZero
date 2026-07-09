@@ -277,6 +277,26 @@ func TestBuildDirNoSupportedFiles(t *testing.T) {
 	}
 }
 
+func TestRunPreprocessGeneratesHeaderFromTemplate(t *testing.T) {
+	dir := t.TempDir()
+	templatePath := filepath.Join(dir, "config.h.in")
+	if err := os.WriteFile(templatePath, []byte("#define FZ_OUTPUT \"${OUTPUT}\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{Output: "release", Mode: "raw"}
+	outputRoot := filepath.Join(dir, ".fz_objs", "include")
+	if err := runPreprocessStep(cfg, []string{dir}, outputRoot, false); err != nil {
+		t.Fatalf("runPreprocessStep() error = %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(outputRoot, "config.h"))
+	if err != nil {
+		t.Fatalf("read generated header: %v", err)
+	}
+	if !strings.Contains(string(data), `#define FZ_OUTPUT "release"`) {
+		t.Fatalf("generated header content = %q", string(data))
+	}
+}
+
 func TestRAMCacheStoreAndRestore(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.asm")
