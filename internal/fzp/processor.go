@@ -160,6 +160,24 @@ func (p *Processor) ConvertToConfig(defs map[string]string) (map[string]string, 
 	return out, nil
 }
 
+func (p *Processor) expandMacros(value string) string {
+	if len(p.macros) == 0 {
+		return value 
+	}
+
+	parts := strings.Fields(value) 
+	if len(parts) == 1 && strings.HasPrefix(parts[0], "OUTPUT") {
+		if val, ok := p.macros[parts[0]]; ok {
+			return val 
+	}
+	}
+	for name, replacment := range p.macros {
+		value = strings.ReplaceAll(value, name, replacment)
+	}
+
+	return value 
+}
+
 func (p *Processor) handleDirective(line, currentPath string) (string, bool, error) {
 	if !strings.HasPrefix(line, "#") {
 		return line, true, nil
@@ -172,7 +190,7 @@ func (p *Processor) handleDirective(line, currentPath string) (string, bool, err
 		if len(parts) >= 2 {
 			name := parts[1]
 			value := strings.TrimSpace(strings.TrimPrefix(line, "#define "+name))
-			p.macros[name] = value
+			p.macros[name] = p.expandMacros(value)
 		}
 		return "", false, nil
 	}
