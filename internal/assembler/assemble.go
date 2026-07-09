@@ -42,6 +42,7 @@ var (
 	ZigRequested     bool
 	ZigEnabled       bool
 	CcFLagsParsed    []string
+	AdditionalIncludeDirs []string
 	ForceInternalAsm bool = true
 
 	UseNasm bool
@@ -60,6 +61,31 @@ func SetRunCommand(fn func(ctx context.Context, verbose bool, name string, args 
 		return
 	}
 	runCommand = fn
+}
+
+func SetAdditionalIncludeDirs(dirs []string) {
+	if len(dirs) == 0 {
+		AdditionalIncludeDirs = nil
+		return
+	}
+	seen := make(map[string]struct{}, len(dirs))
+	out := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		trimmed := strings.TrimSpace(dir)
+		if trimmed == "" {
+			continue
+		}
+		resolved := trimmed
+		if abs, err := filepath.Abs(trimmed); err == nil {
+			resolved = abs
+		}
+		if _, ok := seen[resolved]; ok {
+			continue
+		}
+		seen[resolved] = struct{}{}
+		out = append(out, resolved)
+	}
+	AdditionalIncludeDirs = out
 }
 
 func assembleGoAsm(ctx context.Context, src, obj string, verbose bool) error {
@@ -319,6 +345,11 @@ func compileC(ctx context.Context, src, obj string, verbose bool, compiler strin
 		}
 	})
 
+	if len(AdditionalIncludeDirs) > 0 {
+		for _, dir := range AdditionalIncludeDirs {
+			args = append(args, "-I"+dir)
+		}
+	}
 	if len(CcFLagsParsed) > 0 {
 		args = append(args, CcFLagsParsed...)
 	}
