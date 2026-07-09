@@ -14,6 +14,7 @@
  *   You should have received a copy of the GNU General Public License
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 package fzp
 
 import (
@@ -29,6 +30,7 @@ func TestFZPRealProjectBuild(t *testing.T) {
 	if err != nil {
 		t.Skip("fz not found in PATH, skipping integration test")
 	}
+
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "config.h.in"), []byte(`#define PACKAGE_NAME "fzp_test"
 #define VERSION_MAJOR 1
@@ -61,6 +63,7 @@ int main(void) {
 enabled = true
 inputs = ["config.h.in"]
 outputs = ["config.h"]
+output = "myapp"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
