@@ -17,7 +17,10 @@
 
 package variables
 
-import "strings"
+import (
+	"os"
+	"strings"
+)
 
 const escMarker = "\x01"
 
@@ -55,6 +58,11 @@ func expandOne(s string, vars map[string]string) string {
 					name := s[i+2 : j]
 					if val, ok := vars[name]; ok {
 						b.WriteString(val)
+						i = j + 1
+						continue
+					}
+					if env, ok := os.LookupEnv(name); ok {
+						b.WriteString(env)
 						i = j + 1
 						continue
 					}
