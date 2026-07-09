@@ -455,6 +455,13 @@ func parsePkgURL(raw string) (repo, tag string, err error) {
 }
 
 func updateConfig(pkgPath string, add bool) error {
+	if strings.TrimSpace(pkgPath) == "" {
+		return errors.New("package path is empty")
+	}
+	cleanPkgPath := filepath.Clean(pkgPath)
+	if strings.Contains(cleanPkgPath, "..") || strings.Contains(cleanPkgPath, "\\") {
+		return errors.New("invalid package path: " + pkgPath)
+	}
 	data, err := os.ReadFile(".fz.yaml")
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -475,7 +482,7 @@ func updateConfig(pkgPath string, add bool) error {
 	}
 	found := false
 	for i, d := range dirs {
-		if d == pkgPath {
+		if d == pkgPath || d == cleanPkgPath {
 			found = true
 			if !add {
 				dirs = append(dirs[:i], dirs[i+1:]...)
@@ -484,7 +491,7 @@ func updateConfig(pkgPath string, add bool) error {
 		}
 	}
 	if add && !found {
-		dirs = append(dirs, pkgPath)
+		dirs = append(dirs, cleanPkgPath)
 	}
 	cfg["source_dirs"] = dirs
 	newData, err := yaml.Marshal(cfg)
