@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## [6.1.0] – 2026-07-09
+
+### Added
+- **FZP (ForgeZero Preprocessor)** – built‑in preprocessor that handles `#define`, `#undef`, `#ifdef`, `#ifndef`, `#if`, `#else`, `#elif`, `#endif`, `#include`, `#error`, `#pragma once`. Automatically scans `*.h.in` templates and generates headers during a normal build.  
+  ([4f4ed42](https://github.com/forgezero-cli/ForgeZero/commit/4f4ed42), [bf82e89](https://github.com/forgezero-cli/ForgeZero/commit/bf82e89))
+- **`fzpkg` – secure package management** – packages are verified against a trusted‑key store. New sub‑commands: `fz pm verify`, `fz pm sign`, `fz pm keys`, `fz pm trust`.  
+  ([987fe3c](https://github.com/forgezero-cli/ForgeZero/commit/987fe3c), [b6b6124](https://github.com/forgezero-cli/ForgeZero/commit/b6b6124))
+- **CLI `--set` flag** – override any config field from the command line (repeatable).  
+  ([11bf94f](https://github.com/forgezero-cli/ForgeZero/commit/11bf94f))
+- **CLI `--config-fzp` flag** – explicitly load an FZP preprocessor configuration file.  
+  ([63174e3](https://github.com/forgezero-cli/ForgeZero/commit/63174e3))
+- **CLI `--verify-signatures` flag** – enable package signature verification during build.  
+  ([63174e3](https://github.com/forgezero-cli/ForgeZero/commit/63174e3))
+- **Automatic include dirs for generated headers** – `*.h.in` outputs are placed in `.fz_objs/include/` and added to the compiler’s `-I` paths.  
+  ([8c3615e](https://github.com/forgezero-cli/ForgeZero/commit/8c3615e), [c3151be](https://github.com/forgezero-cli/ForgeZero/commit/c3151be))
+- **Expanded variable expansion** – `$VAR` now resolves environment variables in config files.  
+  ([a42c5f9](https://github.com/forgezero-cli/ForgeZero/commit/a42c5f9))
+- **Security documentation** – added `SECURITY`, `FZP`, `FZPKG` guides.  
+  ([1af0791](https://github.com/forgezero-cli/ForgeZero/commit/1af0791), [de72289](https://github.com/forgezero-cli/ForgeZero/commit/de72289), [2672f61](https://github.com/forgezero-cli/ForgeZero/commit/2672f61))
+
+### Changed
+- **YAML configuration is now deprecated** – a warning is emitted when a YAML config is loaded; TOML is the recommended format.  
+  ([6d817d1](https://github.com/forgezero-cli/ForgeZero/commit/6d817d1), [df815b7](https://github.com/forgezero-cli/ForgeZero/commit/df815b7))
+- **Package manager (fz pm)** – replaced internal implementation with `fzpkg`, adding cryptographic trust and verification.  
+  ([b6b6124](https://github.com/forgezero-cli/ForgeZero/commit/b6b6124))
+- **Path sanitisation** – `pkgman` now rejects directory traversal and empty paths.  
+  ([6bf8ec0](https://github.com/forgezero-cli/ForgeZero/commit/6bf8ec0))
+
+### Fixed
+- **Integration test for FZP** – test now uses system `fz` binary and skips if not found, avoiding build failures.  
+  ([34b60c8](https://github.com/forgezero-cli/ForgeZero/commit/34b60c8), [9154a3c](https://github.com/forgezero-cli/ForgeZero/commit/9154a3c))
+- **Include resolution** – relative includes are resolved correctly, and include cycles are detected.  
+  ([4f4ed42](https://github.com/forgezero-cli/ForgeZero/commit/4f4ed42))
+
+### Documentation
+- Added `FZP`, `FZPKG`, `SECURITY` guides, updated `INDEX` and `TOML_CONFIG` to reflect deprecation of YAML.
+
+
 ## [6.0.0] – 2026-07-08
 
 ### Added
@@ -67,7 +105,6 @@
 - Added dependency `github.com/BurntSushi/toml` for TOML parsing.
 - Updated `go.mod` and `go.sum`.
 
----
 
 ## [5.3.1] – 2026-07-07
 
@@ -155,6 +192,7 @@
 - Bumped core version from **v5.3.0** to **v5.3.1**.  
   ([67d023a](https://github.com/forgezero-cli/ForgeZero/commit/67d023a))
 
+
 ---
 
 ### Full Commit List (in chronological order)
@@ -213,3 +251,26 @@ c184594 perf(builder): replace fmt errors with error codes and io_uring fallback
 b3c0e20 feat(config): add TOML support with caching and include directives
 b457ad5 test(config): add tests for TOML loading and caching
 94bd54a test(seal): remove obsolete test file
+63174e3 feat(cli): integrate FZP config loading and signature verification
+11bf94f feat(cli): add --config-fzp, --set, and --verify-signatures flags
+b6b6124 feat(pm): add verify, sign, keys, trust subcommands via fzpkg
+621af0d docs: add FZPKG and SECURITY entries to INDEX
+6d817d1 docs: mark YAML as deprecated, promote TOML as primary
+c3151be feat(assembler): add AdditionalIncludeDirs for generated headers
+fded515 test(assembler): add TestCompileCAddsAdditionalIncludeDirs
+8c3615e feat(builder): run preprocess step and set include dirs automatically
+ed6a6b1 test(builder): add TestRunPreprocessGeneratesHeaderFromTemplate
+df815b7 feat(config): add PreprocessConfig, deprecate YAML, support --set overrides
+2e5314a test(config): add tests for TOML enum, env vars, --set, generate config.h
+5c540dc feat(errors): add CodePreprocessFailed and CodeIncludeFailed
+6bf8ec0 fix(pkgman): sanitize package paths and prevent traversal
+d784483 test(pkgman): add TestUpdateConfigRejectsTraversalPath
+a42c5f9 feat(vars): expand environment variables in config expansion
+1af0791 docs: add FZP preprocessor documentation
+de72289 docs: add FZPKG package manager security docs
+2672f61 docs: add security model overview
+bf82e89 feat(config): add FZP config loading functions
+34b60c8 test(config): add FZP integration tests
+9154a3c test(config): add FZP unit tests
+4f4ed42 feat(fzp): add ForgeZero Preprocessor core (lexer, parser, processor)
+987fe3c feat(fzpkg): add package verification with trusted keys (verify, sign, trust)
