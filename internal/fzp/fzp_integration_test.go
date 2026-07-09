@@ -29,7 +29,6 @@ func TestFZPRealProjectBuild(t *testing.T) {
 	if err != nil {
 		t.Skip("fz not found in PATH, skipping integration test")
 	}
-
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "config.h.in"), []byte(`#define PACKAGE_NAME "fzp_test"
 #define VERSION_MAJOR 1
