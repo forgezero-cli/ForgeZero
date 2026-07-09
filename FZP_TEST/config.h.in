@@ -1,0 +1,17 @@
+#define PACKAGE_NAME "fzp_test"
+#define FZ_OUTPUT "${OUTPUT}"
+#define VERSION_MAJOR 1
+#define VERSION_MINOR 2
+#ifdef FEATURE_X
+#define HAS_FEATURE_X 1
+#else
+#define HAS_FEATURE_X 0
+#endif
+#include <stdio.h>
+#if defined(__linux__)
+#define PLATFORM "linux"
+#elif defined(_WIN32)
+#define PLATFORM "windows"
+#else
+#define PLATFORM "unknown"
+#endif

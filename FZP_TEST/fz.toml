@@ -1,0 +1,6 @@
+output = "TEST"
+
+[preprocess]
+enabled = false
+inputs = ["config.h.in"]
+outputs = ["config.h"]
