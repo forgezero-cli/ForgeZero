@@ -22,6 +22,7 @@ import (
 	"os"
 
 	"github.com/forgezero-cli/ForgeZero/cmd/fz/stdio"
+	"github.com/forgezero-cli/ForgeZero/internal/fzpkg"
 	"github.com/forgezero-cli/ForgeZero/internal/pkgman"
 )
 
@@ -42,7 +43,7 @@ func HandlePackageManager(ctx context.Context, args []string) {
 		if len(args) > 4 {
 			ver = args[4]
 		}
-		if err := pkgman.Add(ctx, pkgURL, ver); err != nil {
+		if err := fzpkg.Add(ctx, pkgURL, ver); err != nil {
 			stdio.WriteFmt(2, "error: %v\n", err)
 			os.Exit(1)
 		}
@@ -51,13 +52,13 @@ func HandlePackageManager(ctx context.Context, args []string) {
 			stdio.WriteFmt(1, "%s\n", "Usage: fz pm remove <repo-url>")
 			return
 		}
-		if err := pkgman.Remove(ctx, args[3]); err != nil {
+		if err := fzpkg.Remove(ctx, args[3]); err != nil {
 			stdio.WriteFmt(2, "error: %v\n", err)
 			os.Exit(1)
 		}
 	case "list":
 		if len(args) == 3 {
-			if err := pkgman.List(); err != nil {
+			if err := fzpkg.List(); err != nil {
 				stdio.WriteFmt(2, "error: %v\n", err)
 				os.Exit(1)
 			}
@@ -70,7 +71,7 @@ func HandlePackageManager(ctx context.Context, args []string) {
 			stdio.WriteFmt(1, "%s\n", "Usage: fz pm list [catalog]")
 		}
 	case "update":
-		if err := pkgman.Update(ctx); err != nil {
+		if err := fzpkg.Update(ctx); err != nil {
 			stdio.WriteFmt(2, "error: %v\n", err)
 			os.Exit(1)
 		}
@@ -93,7 +94,39 @@ func HandlePackageManager(ctx context.Context, args []string) {
 			stdio.WriteFmt(1, "%s\n", "Usage: fz pm install <catalog-package-name>")
 			return
 		}
-		if err := pkgman.InstallFromCatalog(ctx, args[3]); err != nil {
+		if err := fzpkg.InstallFromCatalog(ctx, args[3]); err != nil {
+			stdio.WriteFmt(2, "error: %v\n", err)
+			os.Exit(1)
+		}
+	case "verify":
+		if len(args) < 4 {
+			stdio.WriteFmt(1, "%s\n", "Usage: fz pm verify <package>")
+			return
+		}
+		if err := fzpkg.Verify(args[3]); err != nil {
+			stdio.WriteFmt(2, "error: %v\n", err)
+			os.Exit(1)
+		}
+	case "sign":
+		if len(args) < 4 {
+			stdio.WriteFmt(1, "%s\n", "Usage: fz pm sign <package>")
+			return
+		}
+		if err := fzpkg.Sign(args[3]); err != nil {
+			stdio.WriteFmt(2, "error: %v\n", err)
+			os.Exit(1)
+		}
+	case "keys":
+		if err := fzpkg.Keys(); err != nil {
+			stdio.WriteFmt(2, "error: %v\n", err)
+			os.Exit(1)
+		}
+	case "trust":
+		if len(args) < 4 {
+			stdio.WriteFmt(1, "%s\n", "Usage: fz pm trust <key>")
+			return
+		}
+		if err := fzpkg.Trust(args[3]); err != nil {
 			stdio.WriteFmt(2, "error: %v\n", err)
 			os.Exit(1)
 		}
