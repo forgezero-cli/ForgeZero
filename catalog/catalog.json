@@ -2,9 +2,23 @@
   "version": 2,
   "packages": [
     {
+      "name": "linux",
+      "repo": "https://github.com/torvalds/linux",
+      "tag": "v6.18.38",
+      "category": "kernel",
+      "source_dir": "kernel"
+    },
+    {
+      "name": "busybox",
+      "repo": "https://github.com/mirror/busybox",
+      "tag": "master",
+      "category": "kernel",
+      "source_dir": ""
+    },
+    {
       "name": "esp-idf",
       "repo": "https://github.com/espressif/esp-idf",
-      "tag": "v6.0.1",
+      "tag": "v6.0.2",
       "category": "iot",
       "source_dir": "components"
     },
@@ -18,9 +32,16 @@
     {
       "name": "Zephyr",
       "repo": "https://github.com/zephyrproject-rtos/zephyr",
-      "tag": "v4.2.0",
+      "tag": "v4.4.0",
       "category": "kernel",
       "source_dir": "kernel"
+    },
+    {
+      "name": "u-boot",
+      "repo": "https://github.com/u-boot/u-boot",
+      "tag": "v2026.07",
+      "category": "bootloader",
+      "source_dir": "boot"
     },
     {
       "name": "RT-Thread",
@@ -81,7 +102,7 @@
     {
       "name": "curl",
       "repo": "https://github.com/curl/curl",
-      "tag": "curl-8_15_0",
+      "tag": "curl-8_21_0",
       "category": "network",
       "source_dir": "lib"
     },
@@ -130,7 +151,7 @@
     {
       "name": "mbedtls",
       "repo": "https://github.com/Mbed-TLS/mbedtls",
-      "tag": "mbedtls-3.6.4",
+      "tag": "mbedtls-3.6.7",
       "category": "crypto",
       "source_dir": "library"
     },
@@ -144,7 +165,7 @@
     {
       "name": "openssl",
       "repo": "https://github.com/openssl/openssl",
-      "tag": "openssl-3.5.0",
+      "tag": "openssl-3.5.7",
       "category": "crypto",
       "source_dir": "crypto"
     },
@@ -326,7 +347,7 @@
     {
       "name": "sqlite",
       "repo": "https://github.com/sqlite/sqlite",
-      "tag": "version-3.50.0",
+      "tag": "version-3.53.3",
       "category": "database",
       "source_dir": ""
     },
@@ -517,6 +538,160 @@
       "repo": "https://github.com/joan2937/pigpio",
       "tag": "master",
       "category": "hal",
+      "source_dir": ""
+    },
+    {
+      "name": "liblog4c",
+      "repo": "https://github.com/rcgenova/log4c",
+      "tag": "master",
+      "category": "logging",
+      "source_dir": "src"
+    },
+    {
+      "name": "yaml",
+      "repo": "https://github.com/yaml/libyaml",
+      "tag": "0.2.5",
+      "category": "config",
+      "source_dir": "src"
+    },
+    {
+      "name": "argparse",
+      "repo": "https://github.com/p-ranav/argparse",
+      "tag": "v3.2",
+      "category": "utils",
+      "source_dir": "include"
+    },
+    {
+      "name": "CLI11",
+      "repo": "https://github.com/CLIUtils/CLI11",
+      "tag": "v2.5.0",
+      "category": "utils",
+      "source_dir": "include"
+    },
+    {
+      "name": "liboqs",
+      "repo": "https://github.com/open-quantum-safe/liboqs",
+      "tag": "0.14.0",
+      "category": "crypto",
+      "source_dir": "src"
+    },
+    {
+      "name": "kcp",
+      "repo": "https://github.com/skywind3000/kcp",
+      "tag": "master",
+      "category": "network",
+      "source_dir": ""
+    },
+    {
+      "name": "quiche",
+      "repo": "https://github.com/cloudflare/quiche",
+      "tag": "0.24.4",
+      "category": "network",
+      "source_dir": "src"
+    },
+    {
+      "name": "PortAudio",
+      "repo": "https://github.com/PortAudio/portaudio",
+      "tag": "v19.7.0",
+      "category": "audio",
+      "source_dir": "src"
+    },
+    {
+      "name": "libsndfile",
+      "repo": "https://github.com/libsndfile/libsndfile",
+      "tag": "1.2.2",
+      "category": "audio",
+      "source_dir": "src"
+    },
+    {
+      "name": "opus",
+      "repo": "https://github.com/xiph/opus",
+      "tag": "v1.5.2",
+      "category": "audio",
+      "source_dir": "src"
+    },
+    {
+      "name": "FFmpeg",
+      "repo": "https://github.com/FFmpeg/FFmpeg",
+      "tag": "n7.1.1",
+      "category": "video",
+      "source_dir": "libavcodec"
+    },
+    {
+      "name": "Eigen",
+      "repo": "https://gitlab.com/libeigen/eigen",
+      "tag": "3.4.0",
+      "category": "math",
+      "source_dir": "Eigen"
+    },
+    {
+      "name": "cglm",
+      "repo": "https://github.com/recp/cglm",
+      "tag": "v0.9.6",
+      "category": "math",
+      "source_dir": "include"
+    },
+    {
+      "name": "systemd",
+      "repo": "https://github.com/systemd/systemd",
+      "tag": "v258",
+      "category": "kernel",
+      "source_dir": "src"
+    },
+    {
+      "name": "dbus",
+      "repo": "https://github.com/freedesktop/dbus",
+      "tag": "dbus-1.16.2",
+      "category": "ipc",
+      "source_dir": "dbus"
+    },
+    {
+      "name": "libpcap",
+      "repo": "https://github.com/the-tcpdump-group/libpcap",
+      "tag": "libpcap-1.10.5",
+      "category": "network",
+      "source_dir": ""
+    },
+    {
+      "name": "spdk",
+      "repo": "https://github.com/spdk/spdk",
+      "tag": "v25.05",
+      "category": "storage",
+      "source_dir": "lib"
+    },
+    {
+      "name": "dpdk",
+      "repo": "https://github.com/DPDK/dpdk",
+      "tag": "v24.11",
+      "category": "network",
+      "source_dir": "lib"
+    },
+    {
+      "name": "userspace-rcu",
+      "repo": "https://github.com/urcu/userspace-rcu",
+      "tag": "v0.15.2",
+      "category": "async",
+      "source_dir": "src"
+    },
+    {
+      "name": "jemalloc",
+      "repo": "https://github.com/jemalloc/jemalloc",
+      "tag": "5.3.0",
+      "category": "memory",
+      "source_dir": "src"
+    },
+    {
+      "name": "mimalloc",
+      "repo": "https://github.com/microsoft/mimalloc",
+      "tag": "v2.2.4",
+      "category": "memory",
+      "source_dir": "src"
+    },
+    {
+      "name": "tlsf",
+      "repo": "https://github.com/mattconte/tlsf",
+      "tag": "master",
+      "category": "memory",
       "source_dir": ""
     }
   ]
