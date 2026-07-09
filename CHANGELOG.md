@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## [6.1.0] – 2026-07-09
+## [6.0.0] - 2026-07-09
 
 ### Added
 - **FZP (ForgeZero Preprocessor)** – built‑in preprocessor that handles `#define`, `#undef`, `#ifdef`, `#ifndef`, `#if`, `#else`, `#elif`, `#endif`, `#include`, `#error`, `#pragma once`. Automatically scans `*.h.in` templates and generates headers during a normal build.  
@@ -19,6 +19,12 @@
   ([a42c5f9](https://github.com/forgezero-cli/ForgeZero/commit/a42c5f9))
 - **Security documentation** – added `SECURITY`, `FZP`, `FZPKG` guides.  
   ([1af0791](https://github.com/forgezero-cli/ForgeZero/commit/1af0791), [de72289](https://github.com/forgezero-cli/ForgeZero/commit/de72289), [2672f61](https://github.com/forgezero-cli/ForgeZero/commit/2672f61))
+- **FZP macro expansion** – `#define` now expands macro values when `defines` are provided in `[preprocess]`; allows writing `#define FZ_OUTPUT OUTPUT` and getting `#define FZ_OUTPUT "myapp"` from `defines = { OUTPUT = "\"myapp\"" }`.  
+  ([493287c](https://github.com/forgezero-cli/ForgeZero/commit/493287c))
+- **Builder preprocessing fix** – preprocessor now correctly receives `defines` from the config, enabling macro substitution in generated headers.  
+  ([a16557b](https://github.com/forgezero-cli/ForgeZero/commit/a16557b))
+- **Integration test project** – added `FZP_TEST/` with a complete C project that verifies FZP preprocessing, including conditional blocks and macro substitution.  
+  ([9728a0a](https://github.com/forgezero-cli/ForgeZero/commit/9728a0a))
 
 ### Changed
 - **YAML configuration is now deprecated** – a warning is emitted when a YAML config is loaded; TOML is the recommended format.  
