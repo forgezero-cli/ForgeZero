@@ -19,7 +19,9 @@ The linked call-to-action text describes it as showing a 4.5x speedup.
 ```bash
 git clone https://github.com/forgezero-cli/ForgeZero
 cd ForgeZero
-go build -o fz ./cmd/fz
+bash build.sh 
+# Or just
+chmod +x build.sh && ./build.sh
 
 ./bench.sh   # edit NUM_MODULES in the script to change scale
 
