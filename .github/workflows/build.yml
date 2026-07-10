@@ -8,7 +8,7 @@ on:
 
 env:
   RUNS_ON: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
-  GO_VERSION: '1.25.0'
+  GO_VERSION: '1.26.5'
 
 jobs:
   test-and-cover:
