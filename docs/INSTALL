@@ -96,7 +96,7 @@ ARCH LINUX / MANJARO
 
   sudo pacman -S --noconfirm nasm gcc binutils clang git zig
   yay -S fasm     (AUR)
-  go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
+  yay -S forgezero
 
 ------------------------------------------------------------------------------
 OPENSUSE
