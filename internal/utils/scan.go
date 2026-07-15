@@ -193,7 +193,15 @@ func ScanDependencies(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	rootDir := filepath.Dir(resolved)
+	return ScanDependenciesRoot(resolved, filepath.Dir(resolved))
+}
+
+func ScanDependenciesRoot(path, rootDir string) ([]string, error) {
+	resolved, err := ResolveSecurePathCached(path)
+	if err != nil {
+		return nil, err
+	}
+	rootDir = filepath.Clean(rootDir)
 	stack := []string{resolved}
 	visited := make(map[uint64]struct{}, 64)
 	deps := make([]string, 0, 64)
