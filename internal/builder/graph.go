@@ -60,13 +60,13 @@ func depFilePath(src string) string {
 	return strings.TrimSuffix(src, filepath.Ext(src)) + ".d"
 }
 
-func compileDependencies(src string, knownSources map[string]int) ([]int, error) {
+func compileDependencies(src string, knownSources map[string]int, rootDir string) ([]int, error) {
 	if src == "" {
 		return nil, nil
 	}
 	deps, err := utils.ParseDepFilePath(depFilePath(src))
 	if err != nil {
-		deps, err = utils.ScanDependencies(src)
+		deps, err = utils.ScanDependenciesRoot(src, rootDir)
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +92,7 @@ func compileDependencies(src string, knownSources map[string]int) ([]int, error)
 	return unique, nil
 }
 
-func buildDependencyGraph(pairs []pair) ([][]int, error) {
+func buildDependencyGraph(pairs []pair, rootDir string) ([][]int, error) {
 	knownSources := make(map[string]int, len(pairs)*2)
 	for i, p := range pairs {
 		src := filepath.Clean(p.src)
@@ -103,7 +103,7 @@ func buildDependencyGraph(pairs []pair) ([][]int, error) {
 	}
 	graph := make([][]int, len(pairs))
 	for i, p := range pairs {
-		if deps, err := compileDependencies(p.src, knownSources); err != nil {
+		if deps, err := compileDependencies(p.src, knownSources, rootDir); err != nil {
 			return nil, err
 		} else {
 			graph[i] = deps
