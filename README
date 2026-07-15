@@ -11,20 +11,20 @@ Quick Start
 
 * Report a bug: https://github.com/forgezero-cli/ForgeZero/issues
 * Get the latest release: https://github.com/forgezero-cli/ForgeZero
-* Build ForgeZero: See docs/02-installation.md
-* Build your project with fz: See docs/03-quickstart-usage.md
+* Build ForgeZero: See INSTALL
+* Build your project with fz: See QUICKSTART
 
 Essential Documentation
 ------------------------
 
 All users should be familiar with:
 
-* Build modes & languages: docs/04-modes-languages.md
-* CLI reference: docs/05-cli-build-reference.md
-* Configuration file: docs/09-config-file-reference.md
+* Build modes & languages: LANGUAGES
+* CLI reference: CLI-REFERENCE
+* Configuration file: TOML_CONFIG
 * License: See LICENSE
 
-Full documentation index: docs/99-contents.md
+Full documentation index: INDEX
 
 
 Who Are You?
@@ -51,62 +51,62 @@ New User
 
 Start here:
 
-* Installation: docs/02-installation.md
-* Quick Start & Usage: docs/03-quickstart-usage.md
-* Exit Codes & Troubleshooting: docs/15-exit-codes-troubleshooting.md
+* Installation: INSTALL
+* Quick Start & Usage: QUICKSTART
+* Exit Codes & Troubleshooting: ERROR_HANDLING
 
 Assembly Developer
 -------------------
 
-* Build Modes & Extensions: docs/04-modes-languages.md
-* Assembler Backends: docs/10-backends-asm-linker-zig.md
-* CLI Build Reference: docs/05-cli-build-reference.md
+* Build Modes & Extensions: LANGUAGES
+* Assembler Backends: SPECS
+* CLI Build Reference: CLI-REFERENCE
 
 C / C++ / Objective-C Developer
 ---------------------------------
 
-* Language Guide: docs/06-c-cpp-objc.md
-* Build Modes & Extensions: docs/04-modes-languages.md
-* CLI Build Reference, Profiles & Linking: docs/05-cli-build-reference.md
-* Zig Backend: docs/10-backends-asm-linker-zig.md
+* Language Guide: LANGUAGES
+* Build Modes & Extensions: LANGUAGES
+* CLI Build Reference, Profiles & Linking: CLI-REFERENCE
+* Zig Backend: SPECS
 
 Gloria Developer
 ------------------
 
-* Gloria Language: docs/07-gloria-language.md
-* Build Modes & Extensions: docs/04-modes-languages.md
+* Gloria Language: LANGUAGES
+* Build Modes & Extensions: LANGUAGES
 
 Security Auditor
 ------------------
 
-* Supply Chain Security (SBOM + SAST): docs/11-supply-chain-security.md
-* Aegis Security Core: docs/91-internals-security-core.md
-* Virtual Filesystem Layer (Aegis): docs/90-internals-aegis.md
+* Supply Chain Security (SBOM + SAST): SECURITY
+* Aegis Security Core: INTERNALS
+* Virtual Filesystem Layer (Aegis): INTERNALS
 
 Release Engineer
 ------------------
 
-* Reproducible Builds, Verify, Bench: docs/12-reproducible-integrity-bench.md
-* Supply Chain Security: docs/11-supply-chain-security.md
+* Reproducible Builds, Verify, Bench: PERFORMANCE
+* Supply Chain Security: SECURITY
 
 Cross-Compilation / Embedded Engineer
 ----------------------------------------
 
-* Cross-Compilation Targets: docs/08-cross-compilation-targets.md
-* Configuration File Reference: docs/09-config-file-reference.md
+* Cross-Compilation Targets: WORKFLOW
+* Configuration File Reference: TOML_CONFIG
 
 WebAssembly Developer
 ------------------------
 
-* WASM & Web Targets: docs/13-wasm-web-targets.md
+* WASM & Web Targets: WORKFLOW
 
 Contributor
 -------------
 
-* Project Tools (init, contribute, LSP, update): docs/14-project-tools.md
-* Doctor, Platform Readiness, Testing Standards: docs/92-internals-doctor-platform-testing.md
-* HADES Engine, Contributing, License: docs/93-internals-hades-contributing-license.md
-* Roadmap: docs/16-roadmap.md
+* Project Tools (init, contribute, LSP, update): WORKFLOW
+* Doctor, Platform Readiness, Testing Standards: INTERNALS
+* HADES Engine, Contributing, License: INTERNALS
+* Roadmap: ARCHITECTURE
 
 
 Performance
@@ -131,7 +131,7 @@ Stress test, 5000 C files, AMD Ryzen 7 PRO 4750U (16 threads):
     fz            ~597 ms   (47.3x; 98% utilization across
                               16 threads; ~47 MB resident)
 
-Full benchmark methodology and reproduction steps: docs/01-overview-perf.md
+Full benchmark methodology and reproduction steps: PERFORMANCE
 
 
 Communication and Support
