@@ -55,7 +55,7 @@ func LoadConfig(flags *Flags) (*config.Config, string, error) {
 		}
 	}
 
-	srcPath, err := ValidateSourceFlags(flags)
+	srcPath, err := ValidateSourceFlags(flags, cfg)
 	if err != nil {
 		return nil, "", err
 	}
