@@ -1,5 +1,53 @@
 # CHANGELOG
 
+# UNRELEASED
+
+## [6.0.0] - 2026-07-15
+
+### Added
+- **Auto-dependency management** – `AutoBuildDeps` (default: true) automatically builds dependencies from `deps/` directory during build. Dependencies are built as static archives with ordering controlled by `configure.fz`.  
+  ([7087eec](https://github.com/forgezero-cli/ForgeZero/commit/7087eec), [1edd34c](https://github.com/forgezero-cli/ForgeZero/commit/1edd34c))
+- **`DepBuildConfig`** – per-dependency build settings: `enabled`, `skip_tests`, `outputs`, `include`, `environment`, `pre_build`, `post_build`, `exclude_files`, `only_files`.  
+  ([92b880a](https://github.com/forgezero-cli/ForgeZero/commit/92b880a))
+- **`AutoBuildConfig`** – global auto-build settings: `enabled`, `log_level`, `continue_on_error`, `build_order`, `default_skip_tests`, `default_environment`.  
+  ([92b880a](https://github.com/forgezero-cli/ForgeZero/commit/92b880a))
+- **`.fzignore` support** – files and directories can be excluded using `.fzignore` patterns, with priority loading from project root.  
+  ([62ca4ca](https://github.com/forgezero-cli/ForgeZero/commit/62ca4ca))
+- **Config-based source discovery** – source files and directories can be specified entirely in config (`source_file`, `source_dir`, `source_files`, `source_dirs`), eliminating the need for CLI flags.  
+  ([69bf7ff](https://github.com/forgezero-cli/ForgeZero/commit/69bf7ff), [4719780](https://github.com/forgezero-cli/ForgeZero/commit/4719780))
+- **Intelligent include filtering** – automatically skips source files that are included by other source files, preventing duplicate compilation.  
+  ([7087eec](https://github.com/forgezero-cli/ForgeZero/commit/7087eec))
+- **Dependency include discovery** – automatically detects and adds include paths from `deps/` structure, including `deps/*/include` and `deps/*/src` directories.  
+  ([7087eec](https://github.com/forgezero-cli/ForgeZero/commit/7087eec))
+- **Local config merging** – `fz.toml` and `.fz.toml` files in source directories are automatically merged with global config.  
+  ([7087eec](https://github.com/forgezero-cli/ForgeZero/commit/7087eec))
+- **Structured error types** – added `ConfigError` with detailed error codes for better error reporting (`ErrorInvalidConfig`, `ErrorParseTOML`, `ErrorCyclicInclude`, etc.).  
+  ([92b880a](https://github.com/forgezero-cli/ForgeZero/commit/92b880a), [1edd34c](https://github.com/forgezero-cli/ForgeZero/commit/1edd34c))
+- **`ScanDependenciesRoot`** – dependency scanning with explicit root directory for proper relative path resolution.  
+  ([b7928c0](https://github.com/forgezero-cli/ForgeZero/commit/b7928c0), [8dc55e1](https://github.com/forgezero-cli/ForgeZero/commit/8dc55e1))
+- **`NewDepBuilder`** – dedicated builder for automated dependency construction with logging and error handling.  
+  ([1edd34c](https://github.com/forgezero-cli/ForgeZero/commit/1edd34c))
+
+### Changed
+- **Build source discovery** – now prioritizes config-defined sources when CLI flags are omitted, with fallback to CLI flags.  
+  ([62ca4ca](https://github.com/forgezero-cli/ForgeZero/commit/62ca4ca), [69bf7ff](https://github.com/forgezero-cli/ForgeZero/commit/69bf7ff))
+- **Ignore file loading** – `.fzignore` is now loaded from project root first, with verbose logging for debugging.  
+  ([62ca4ca](https://github.com/forgezero-cli/ForgeZero/commit/62ca4ca))
+- **Config validation** – `ValidateSourceFlags` now accepts config parameter for source discovery from config.  
+  ([69bf7ff](https://github.com/forgezero-cli/ForgeZero/commit/69bf7ff), [4719780](https://github.com/forgezero-cli/ForgeZero/commit/4719780))
+- **Dependency graph** – `buildDependencyGraph` now accepts `rootDir` for proper dependency resolution.  
+  ([8dc55e1](https://github.com/forgezero-cli/ForgeZero/commit/8dc55e1))
+- **Error handling** – all config errors now use structured `ConfigError` types with codes instead of raw strings.  
+  ([92b880a](https://github.com/forgezero-cli/ForgeZero/commit/92b880a))
+
+### Fixed
+- **Obj directory creation** – `.fz_objs` directory is now created before dependency builds to prevent errors.  
+  ([7087eec](https://github.com/forgezero-cli/ForgeZero/commit/7087eec))
+- **Config include cycles** – cyclic includes are now properly detected and reported with `ErrorCyclicInclude`.  
+  ([92b880a](https://github.com/forgezero-cli/ForgeZero/commit/92b880a))
+- **Multi-format config** – config files without extension now try TOML then YAML fallback.  
+  ([92b880a](https://github.com/forgezero-cli/ForgeZero/commit/92b880a))
+
 ## [6.0.0] - 2026-07-09
 
 ### Added
@@ -25,6 +73,7 @@
   ([a16557b](https://github.com/forgezero-cli/ForgeZero/commit/a16557b))
 - **Integration test project** – added `FZP_TEST/` with a complete C project that verifies FZP preprocessing, including conditional blocks and macro substitution.  
   ([9728a0a](https://github.com/forgezero-cli/ForgeZero/commit/9728a0a))
+
 
 ### Changed
 - **YAML configuration is now deprecated** – a warning is emitted when a YAML config is loaded; TOML is the recommended format.  
@@ -110,7 +159,6 @@
 ### Build
 - Added dependency `github.com/BurntSushi/toml` for TOML parsing.
 - Updated `go.mod` and `go.sum`.
-
 
 ## [5.3.1] – 2026-07-07
 
@@ -280,3 +328,14 @@ bf82e89 feat(config): add FZP config loading functions
 9154a3c test(config): add FZP unit tests
 4f4ed42 feat(fzp): add ForgeZero Preprocessor core (lexer, parser, processor)
 987fe3c feat(fzpkg): add package verification with trusted keys (verify, sign, trust)
+97e36f1 chore: update .gitignore for build artifacts
+3f5e785 style: add newline at end of file
+62ca4ca feat: enhance build source discovery with config support
+69bf7ff feat: integrate config with source flag validation
+4719780 feat: support config-based source discovery in validation
+7087eec feat: comprehensive dependency management and auto-build system
+8dc55e1 feat: add rootDir support to dependency scanning
+92b880a feat: add configuration error types and dependency build settings
+5e88481 style: add copyright header to test file
+b7928c0 feat: add root directory support for dependency scanning
+1edd34c feat: add auto-dependency builder and error types
