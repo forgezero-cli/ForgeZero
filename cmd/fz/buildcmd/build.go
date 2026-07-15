@@ -37,10 +37,22 @@ func Build(ctx context.Context, buildCtx BuildContext, cfg *config.Config) Build
 	startTime := time.Now()
 	result := BuildResult{}
 
-	if buildCtx.SrcPath != "" {
-		result.SourceFiles = append(result.SourceFiles, buildCtx.SrcPath)
+	srcPath := buildCtx.SrcPath
+	dirPath := buildCtx.DirPath
+	if srcPath == "" && dirPath == "" && cfg != nil {
+		if cfg.SourceFile != "" {
+			srcPath = cfg.SourceFile
+		} else if cfg.SourceDir != "" {
+			dirPath = cfg.SourceDir
+		} else if len(cfg.SourceDirs) > 0 || len(cfg.SourceFiles) > 0 {
+			dirPath = "."
+		}
+	}
 
-		if err := utils.CheckFileExists(buildCtx.SrcPath); err != nil {
+	if srcPath != "" {
+		result.SourceFiles = append(result.SourceFiles, srcPath)
+
+		if err := utils.CheckFileExists(srcPath); err != nil {
 			result.Err = err
 			return result
 		}
@@ -111,13 +123,20 @@ func Build(ctx context.Context, buildCtx BuildContext, cfg *config.Config) Build
 		return result
 	}
 
-	if buildCtx.DirPath != "" {
+	if dirPath != "" {
 		if buildCtx.Format == "bin" {
 			result.Err = stdio.Errorf("-format bin is not supported for directory builds")
 			return result
 		}
 
-		dirs := []string{buildCtx.DirPath}
+		dirs := []string{dirPath}
+		if cfg != nil {
+			if len(cfg.SourceDirs) > 0 {
+				dirs = cfg.SourceDirs
+			} else if cfg.SourceDir != "" {
+				dirs = []string{cfg.SourceDir}
+			}
+		}
 
 		for _, d := range dirs {
 			info, err := os.Stat(d)
@@ -148,9 +167,30 @@ func Build(ctx context.Context, buildCtx BuildContext, cfg *config.Config) Build
 			libs = cfg.Libs
 
 			if cfg.IgnoreFile != "" {
-				if _, err := os.Stat(cfg.IgnoreFile); err == nil {
-					if ignoreMatcher, err = ignore.LoadIgnoreFile(cfg.IgnoreFile); err != nil && buildCtx.Verbose {
-						stdio.WriteFmt(1, "warning: cannot load ignore file %s: %v\n", cfg.IgnoreFile, err)
+				var candidate string
+				if len(dirs) > 0 {
+					candidate = filepath.Join(dirs[0], cfg.IgnoreFile)
+					if _, err := os.Stat(candidate); err == nil {
+						if buildCtx.Verbose {
+							stdio.WriteFmt(1, "Loading ignore file: %s\n", candidate)
+						}
+						if ignoreMatcher, err = ignore.LoadIgnoreFile(candidate); err != nil && buildCtx.Verbose {
+							stdio.WriteFmt(1, "warning: cannot load ignore file %s: %v\n", candidate, err)
+						} else if buildCtx.Verbose && ignoreMatcher != nil {
+							stdio.WriteFmt(1, "Successfully loaded ignore file: %s\n", candidate)
+						}
+					}
+				}
+				if ignoreMatcher == nil {
+					if _, err := os.Stat(cfg.IgnoreFile); err == nil {
+						if buildCtx.Verbose {
+							stdio.WriteFmt(1, "Loading ignore file: %s\n", cfg.IgnoreFile)
+						}
+						if ignoreMatcher, err = ignore.LoadIgnoreFile(cfg.IgnoreFile); err != nil && buildCtx.Verbose {
+							stdio.WriteFmt(1, "warning: cannot load ignore file %s: %v\n", cfg.IgnoreFile, err)
+						} else if buildCtx.Verbose && ignoreMatcher != nil {
+							stdio.WriteFmt(1, "Successfully loaded ignore file: %s\n", cfg.IgnoreFile)
+						}
 					}
 				}
 			}
