@@ -20,6 +20,7 @@ package builder
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -868,11 +869,69 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		objFiles[i] = p.obj
 	}
 
+	collectedDepLdFlags := make([]string, 0)
+
 	if len(depsArchives) > 0 {
 		if verbose {
 			os.Stdout.WriteString("Appending " + strconv.Itoa(len(depsArchives)) + " dependency archives: " + strings.Join(depsArchives, ", ") + "\n")
 		}
-		objFiles = append(objFiles, depsArchives...)
+		// ensure deps archives are safe to read: copy symlinks into obj dir and collect LDFLAGS
+		depsObjDir := filepath.Join(objDir, "deps")
+		_ = os.MkdirAll(depsObjDir, 0o755)
+		prepared := make([]string, 0, len(depsArchives))
+		for _, a := range depsArchives {
+			info, err := os.Lstat(a)
+			if err != nil {
+				// fallback: add as-is
+				prepared = append(prepared, a)
+				continue
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				target, err := os.Readlink(a)
+				if err != nil {
+					prepared = append(prepared, a)
+					continue
+				}
+				if !filepath.IsAbs(target) {
+					target = filepath.Join(filepath.Dir(a), target)
+				}
+				src := target
+				dst := filepath.Join(depsObjDir, filepath.Base(a))
+				// avoid clobbering existing file
+				if _, err := os.Stat(dst); err == nil {
+					// add numeric suffix
+					for i := 1; ; i++ {
+						try := dst + "." + strconv.Itoa(i)
+						if _, err := os.Stat(try); os.IsNotExist(err) {
+							dst = try
+							break
+						}
+					}
+				}
+				if in, err := os.Open(src); err == nil {
+					out, err := os.Create(dst)
+					if err == nil {
+						_, _ = io.Copy(out, in)
+						_ = out.Close()
+					}
+					_ = in.Close()
+					prepared = append(prepared, dst)
+					continue
+				}
+				prepared = append(prepared, a)
+				continue
+			}
+			prepared = append(prepared, a)
+		}
+
+		// Append prepared archives to object list
+		objFiles = append(objFiles, prepared...)
+	}
+
+	// If any per-dep LDFLAGS were collected, inject into linker for final link
+	oldGlobalLdFlags := linker.LdFlags
+	if len(collectedDepLdFlags) > 0 {
+		linker.LdFlags = strings.TrimSpace(oldGlobalLdFlags + " " + strings.Join(collectedDepLdFlags, " "))
 	}
 
 	if effectiveCache != cacheOff {
