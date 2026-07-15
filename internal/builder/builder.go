@@ -1,7 +1,7 @@
 /*
  *   Copyright (c) 2026 ForgeZero-cli
  *
- *   This program is free software: you can redistribute it and/or modify
+			if verbose {
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
@@ -13,7 +13,7 @@
  *
  *   You should have received a copy of the GNU General Public License
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
+*/
 
 package builder
 
@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/forgezero-cli/ForgeZero/internal/fzp"
@@ -30,6 +31,7 @@ import (
 	"github.com/forgezero-cli/ForgeZero/internal/assembler"
 	"github.com/forgezero-cli/ForgeZero/internal/config"
 	"github.com/forgezero-cli/ForgeZero/internal/drivers/scheduler"
+	"github.com/forgezero-cli/ForgeZero/internal/ignore"
 	"github.com/forgezero-cli/ForgeZero/internal/linker"
 	"github.com/forgezero-cli/ForgeZero/internal/seal"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
@@ -59,6 +61,127 @@ func matchExclude(path string, excludes []string) bool {
 	return false
 }
 
+func supportedSourceInclude(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".c", ".cpp", ".cc", ".cxx", ".m", ".mm", ".s", ".S", ".asm", ".fasm":
+		return true
+	}
+	return false
+}
+
+func findIncludedSourceFiles(srcFiles []string) map[string]struct{} {
+	included := make(map[string]struct{})
+	for _, src := range srcFiles {
+		ext := strings.ToLower(filepath.Ext(src))
+		if !supportedSourceInclude(ext) {
+			continue
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			continue
+		}
+		currentDir := filepath.Dir(src)
+		pos := 0
+		for {
+			idx := strings.Index(string(data[pos:]), "include")
+			if idx == -1 {
+				break
+			}
+			start := pos + idx
+			if start == 0 || data[start-1] != '#' {
+				pos = start + len("include")
+				continue
+			}
+			i := start + len("include")
+			for i < len(data) && (data[i] == ' ' || data[i] == '\t') {
+				i++
+			}
+			if i >= len(data) || data[i] != '"' {
+				pos = start + len("include")
+				continue
+			}
+			begin := i + 1
+			end := begin
+			for end < len(data) && data[end] != '"' {
+				end++
+			}
+			if end >= len(data) {
+				break
+			}
+			includePath := string(data[begin:end])
+			if supportedSourceInclude(strings.ToLower(filepath.Ext(includePath))) {
+				resolved := filepath.Clean(filepath.Join(currentDir, includePath))
+				if abs, err := filepath.Abs(resolved); err == nil {
+					resolved = abs
+				}
+				if info, err := os.Stat(resolved); err == nil && !info.IsDir() {
+					included[resolved] = struct{}{}
+				}
+			}
+			pos = end + 1
+		}
+	}
+	return included
+}
+
+func discoverDependencyIncludeDirs(rootDir string) []string {
+	var result []string
+	parent := filepath.Dir(rootDir)
+	if parent == rootDir {
+		return nil
+	}
+	addDir := func(path string) {
+		if path == "" {
+			return
+		}
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			for _, existing := range result {
+				if existing == path {
+					return
+				}
+			}
+			result = append(result, path)
+		}
+	}
+	addIfHasHeaders := func(path string) {
+		if path == "" {
+			return
+		}
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			ext := strings.ToLower(filepath.Ext(entry.Name()))
+			if ext == ".h" || ext == ".hpp" {
+				addDir(path)
+				return
+			}
+		}
+	}
+
+	addIfHasHeaders(parent)
+	depsDir := filepath.Join(parent, "deps")
+	if info, err := os.Stat(depsDir); err == nil && info.IsDir() {
+		entries, err := os.ReadDir(depsDir)
+		if err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				child := filepath.Join(depsDir, entry.Name())
+				addIfHasHeaders(child)
+				addIfHasHeaders(filepath.Join(child, "include"))
+				addIfHasHeaders(filepath.Join(child, "src"))
+			}
+		}
+	}
+	return result
+}
+
 func RunHooks(ctx context.Context, hooks []config.Hook) error {
 	for _, h := range hooks {
 		if h.Cmd == "" {
@@ -78,6 +201,24 @@ func RunHooks(ctx context.Context, hooks []config.Hook) error {
 
 func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int, buildType string) (*BuildResult, error) {
 	cfg := utils.ConfigFromContext(ctx)
+	if len(dirs) > 0 {
+		localPaths := []string{filepath.Join(dirs[0], "fz.toml"), filepath.Join(dirs[0], ".fz.toml")}
+		for _, lp := range localPaths {
+			if info, err := os.Stat(lp); err == nil && !info.IsDir() {
+				if localCfg, err := config.Load(lp); err == nil {
+					if cfg == nil {
+						cfg = localCfg
+					} else {
+						merged := *cfg
+						merged.Merge(localCfg)
+						cfg = &merged
+					}
+					break
+				}
+			}
+		}
+	}
+
 	if cfg != nil && len(cfg.Hooks.PreBuild) > 0 {
 		if err := RunHooks(ctx, cfg.Hooks.PreBuild); err != nil {
 			return nil, err
@@ -109,6 +250,21 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		return nil, err
 	}
 	rootDir = filepath.Clean(rootDir)
+	matcherPath := func(p string) string {
+		for _, d := range dirs {
+			if d == "" {
+				continue
+			}
+			if rel, err := filepath.Rel(d, p); err == nil {
+				if strings.HasPrefix(rel, "..") {
+					continue
+				}
+				return filepath.ToSlash(rel)
+			}
+		}
+		return filepath.ToSlash(p)
+	}
+
 	for _, dir := range dirs {
 		if err := utils.EnsureInsideRoot(rootDir, dir); err != nil {
 			return nil, err
@@ -144,17 +300,28 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 	}
 
 	var srcFiles []string
+	autoDiscoveredSources := false
 	if len(sourceFiles) > 0 {
 		srcFiles = append(srcFiles, sourceFiles...)
 	} else {
+		autoDiscoveredSources = true
 		for _, dir := range dirs {
 			err := utils.Walk(dir, func(path string, info os.FileInfo, err error) error {
 				if err != nil {
 					return err
 				}
+				if strings.Contains(filepath.Base(path), "cli_commands") && verbose {
+					os.Stdout.WriteString("DEBUG: Walking cli_commands path: " + path + "\n")
+				}
 				if info.IsDir() {
 					name := info.Name()
-					if name == ".git" || name == ".svn" || name == "node_modules" || matchExclude(path, exclude) {
+					shouldSkip := name == ".git" || name == ".svn" || name == "node_modules" || matchExclude(path, exclude)
+					if !shouldSkip && ignoreMatcher != nil {
+						if m, ok := ignoreMatcher.(*ignore.IgnoreMatcher); ok && m != nil {
+							shouldSkip = m.Match(matcherPath(path))
+						}
+					}
+					if shouldSkip {
 						if verbose {
 							os.Stdout.WriteString("Skipping directory tree: " + path + "\n")
 						}
@@ -162,7 +329,19 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 					}
 					return nil
 				}
-				if matchExclude(path, exclude) {
+				shouldExclude := matchExclude(path, exclude)
+				if !shouldExclude && ignoreMatcher != nil {
+					if m, ok := ignoreMatcher.(*ignore.IgnoreMatcher); ok && m != nil {
+						p := matcherPath(path)
+						shouldExclude = m.Match(p)
+						if verbose && shouldExclude {
+							os.Stdout.WriteString("Ignored by matcher: " + path + "\n")
+						} else if verbose && strings.Contains(filepath.Base(path), "cli_commands") {
+							os.Stdout.WriteString("NOT matched by ignore: " + path + "\n")
+						}
+					}
+				}
+				if shouldExclude {
 					if verbose {
 						os.Stdout.WriteString("Excluding file: " + path + "\n")
 					}
@@ -179,8 +358,45 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 			}
 		}
 	}
+	if autoDiscoveredSources && len(srcFiles) > 0 {
+		included := findIncludedSourceFiles(srcFiles)
+		if len(included) > 0 {
+			filtered := make([]string, 0, len(srcFiles))
+			for _, src := range srcFiles {
+				abs, err := filepath.Abs(src)
+				if err != nil {
+					filtered = append(filtered, src)
+					continue
+				}
+				if _, ok := included[filepath.Clean(abs)]; ok {
+					if verbose {
+						os.Stdout.WriteString("Skipping included source file: " + src + "\n")
+					}
+					continue
+				}
+				filtered = append(filtered, src)
+			}
+			srcFiles = filtered
+		}
+		if ignoreMatcher != nil {
+			if m, ok := ignoreMatcher.(*ignore.IgnoreMatcher); ok && m != nil {
+				filtered := make([]string, 0, len(srcFiles))
+				for _, src := range srcFiles {
+					if !m.Match(matcherPath(src)) {
+						filtered = append(filtered, src)
+					} else if verbose {
+						os.Stdout.WriteString("Ignoring file (from .fzignore): " + src + "\n")
+					}
+				}
+				srcFiles = filtered
+			}
+		}
+	}
 	objDir := joinPath(filepath.Dir(outBin), ".fz_objs")
 	generatedIncludeDir := joinPath(objDir, "include")
+	if err := utils.SecureMkdirAll(objDir); err != nil {
+		return nil, errors.New("cannot create obj dir: " + err.Error())
+	}
 	if err := utils.SecureMkdirAll(generatedIncludeDir); err != nil {
 		return nil, errors.New("cannot create generated include dir: " + err.Error())
 	}
@@ -189,6 +405,176 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		includeDirs = append(includeDirs, cfg.Include...)
 	}
 	includeDirs = append(includeDirs, includes...)
+	if cfg != nil && len(cfg.Libs) > 0 {
+		seen := make(map[string]struct{}, len(libs)+len(cfg.Libs))
+		out := make([]string, 0, len(libs)+len(cfg.Libs))
+		for _, l := range libs {
+			if l == "" {
+				continue
+			}
+			seen[l] = struct{}{}
+			out = append(out, l)
+		}
+		for _, l := range cfg.Libs {
+			if l == "" {
+				continue
+			}
+			if _, ok := seen[l]; ok {
+				continue
+			}
+			seen[l] = struct{}{}
+			out = append(out, l)
+		}
+		libs = out
+	}
+	if len(dirs) > 0 {
+		includeDirs = append(includeDirs, discoverDependencyIncludeDirs(dirs[0])...)
+	}
+
+	var globalAutoBuild *config.AutoBuildConfig
+	if len(dirs) > 0 {
+		cfgPath := filepath.Join(filepath.Dir(dirs[0]), "configure.fz")
+		if info, err := os.Stat(cfgPath); err == nil && !info.IsDir() {
+			if autoCfg, err := config.Load(cfgPath); err == nil && autoCfg != nil {
+				globalAutoBuild = &autoCfg.AutoBuild
+				if verbose {
+					os.Stdout.WriteString("Loaded configure.fz for auto-build settings\n")
+				}
+			}
+		}
+	}
+
+	var depsArchives []string
+	if cfg != nil && cfg.AutoBuildDeps {
+		depsDir := filepath.Join(filepath.Dir(dirs[0]), "deps")
+		if info, err := os.Stat(depsDir); err == nil && info.IsDir() {
+			depsObjDir := joinPath(objDir, "deps")
+			if err := utils.SecureMkdirAll(depsObjDir); err != nil {
+				return nil, errors.New("cannot create deps obj dir: " + err.Error())
+			}
+
+			buildOrder := make(map[string]int)
+			if globalAutoBuild != nil && len(globalAutoBuild.BuildOrder) > 0 {
+				for i, name := range globalAutoBuild.BuildOrder {
+					buildOrder[name] = i
+				}
+			}
+
+			entries, err := os.ReadDir(depsDir)
+			if err == nil {
+				type depEntry struct {
+					name  string
+					path  string
+					order int
+				}
+				var deps []depEntry
+				for _, entry := range entries {
+					if !entry.IsDir() {
+						continue
+					}
+					depName := entry.Name()
+					depPath := filepath.Join(depsDir, depName)
+					order := 1000
+					if o, ok := buildOrder[depName]; ok {
+						order = o
+					}
+					deps = append(deps, depEntry{name: depName, path: depPath, order: order})
+				}
+
+				for i := 0; i < len(deps); i++ {
+					for j := i + 1; j < len(deps); j++ {
+						if deps[j].order < deps[i].order {
+							deps[i], deps[j] = deps[j], deps[i]
+						}
+					}
+				}
+
+				for _, dep := range deps {
+					depPath := dep.path
+					depName := dep.name
+					outArchive := filepath.Join(depsObjDir, depName+".a")
+
+					fzCfgPath := filepath.Join(depPath, "fz.toml")
+					var localCfg *config.Config
+					if info, err := os.Stat(fzCfgPath); err == nil && !info.IsDir() {
+						var lerr error
+						localCfg, lerr = config.Load(fzCfgPath)
+						if lerr != nil {
+							if verbose {
+								os.Stdout.WriteString("Warning: failed to load " + fzCfgPath + ": " + lerr.Error() + "\n")
+							}
+							continue
+						}
+						if verbose {
+							enabledStr := "true"
+							if !localCfg.DepBuild.Enabled {
+								enabledStr = "false"
+							}
+							os.Stdout.WriteString("DEBUG: Loaded fz.toml for dep " + depName + ", DepBuild.Enabled=" + enabledStr + "\n")
+						}
+					}
+
+					if localCfg != nil {
+						builder := NewDepBuilder(ctx, depPath, depName, localCfg, globalAutoBuild, verbose)
+						
+						if !localCfg.DepBuild.Enabled {
+							builder.logf("warn", "Dependency disabled in fz.toml")
+							continue
+						}
+
+						excludePatterns := []string{"test", "tests", "test/*", "tests/*", "*/test/*", "*/tests/*"}
+						if !localCfg.DepBuild.SkipTests {
+							excludePatterns = nil
+						}
+
+						depIncludes := make([]string, 0)
+						if len(localCfg.Include) > 0 {
+							depIncludes = append(depIncludes, localCfg.Include...)
+						}
+						if len(localCfg.DepBuild.Include) > 0 {
+							depIncludes = append(depIncludes, localCfg.DepBuild.Include...)
+						}
+
+						var depSourceFiles []string
+						if len(localCfg.SourceFiles) > 0 {
+							depSourceFiles = make([]string, len(localCfg.SourceFiles))
+							for i, sf := range localCfg.SourceFiles {
+								depSourceFiles[i] = filepath.Join(depPath, sf)
+							}
+						}
+
+						_, err := BuildDir(ctx, []string{depPath}, outArchive, debug, verbose, mode, false, noCache, noSymbolCheck, sanitize, strict, excludePatterns, depSourceFiles, nil, depIncludes, nil, jobs, "static")
+						if err != nil {
+							builder.logf("error", "Build failed")
+							if globalAutoBuild == nil || !globalAutoBuild.ContinueOnError {
+								return nil, errors.New("failed to build dependency " + depPath + ": " + err.Error())
+							}
+							continue
+						}
+
+						if len(localCfg.DepBuild.Outputs) > 0 {
+							for _, o := range localCfg.DepBuild.Outputs {
+								outPath := o
+								if !filepath.IsAbs(outPath) {
+									outPath = filepath.Join(depPath, outPath)
+								}
+								if info, err := os.Stat(outPath); err == nil && !info.IsDir() {
+									depsArchives = append(depsArchives, outPath)
+								}
+							}
+							continue
+						}
+						depsArchives = append(depsArchives, outArchive)
+						continue
+					}
+
+					if verbose {
+						os.Stdout.WriteString("Skipping " + depName + ": no fz.toml found (create " + fzCfgPath + " to enable)\n")
+					}
+				}
+			}
+		}
+	}
 	assembler.SetAdditionalIncludeDirs(includeDirs)
 	defer assembler.SetAdditionalIncludeDirs(nil)
 	if err := runPreprocessStep(cfg, dirs, generatedIncludeDir, verbose); err != nil {
@@ -293,7 +679,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 
 	sort.Slice(pairs, func(i, j int) bool { return pairs[i].obj < pairs[j].obj })
 
-	depGraph, err := buildDependencyGraph(pairs)
+	depGraph, err := buildDependencyGraph(pairs, rootDir)
 	if err != nil && verbose {
 		os.Stdout.WriteString("Warning: could not build dependency graph: " + err.Error() + "; falling back to flat build\n")
 	}
@@ -426,6 +812,13 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 	objFiles := make([]string, len(pairs))
 	for i, p := range pairs {
 		objFiles[i] = p.obj
+	}
+
+	if len(depsArchives) > 0 {
+		if verbose {
+			os.Stdout.WriteString("Appending " + strconv.Itoa(len(depsArchives)) + " dependency archives: " + strings.Join(depsArchives, ", ") + "\n")
+		}
+		objFiles = append(objFiles, depsArchives...)
 	}
 
 	if effectiveCache != cacheOff {
