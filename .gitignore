@@ -1,4 +1,6 @@
 # After delete
+redis/
+RELEASE.md
 TODO
 INSTRUCTION.md
 keys.toml
