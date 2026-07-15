@@ -87,14 +87,14 @@ func (m *CacheMode) unmarshalValue(value string) error {
 	case "off":
 		*m = CacheModeOff
 	default:
-		return errors.New("invalid cache_mode: " + s)
+		return NewErrorDetail(ErrorInvalidCacheMode, s)
 	}
 	return nil
 }
 
 func loadYAML(data []byte, cfg *Config) error {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return errors.New("cannot parse YAML: " + err.Error())
+		return NewErrorDetail(ErrorParseYAML, err.Error())
 	}
 	os.Stderr.WriteString("WARNING: YAML config format is deprecated. Please migrate to TOML.\n")
 	return nil
@@ -102,7 +102,10 @@ func loadYAML(data []byte, cfg *Config) error {
 
 func loadTOML(data []byte, cfg *Config) error {
 	if err := toml.Unmarshal(data, cfg); err != nil {
-		return errors.New("cannot parse TOML: " + err.Error())
+		return NewErrorDetail(ErrorParseTOML, err.Error())
+	}
+	if !strings.Contains(string(data), "[dep_build]") {
+		cfg.DepBuild.Enabled = true
 	}
 	return nil
 }
@@ -131,7 +134,7 @@ func (m *IsolationMode) UnmarshalYAML(node *yaml.Node) error {
 		*m = IsolationNone
 		return nil
 	}
-	return errors.New("invalid isolation value")
+	return NewErrorDetail(ErrorInvalidIsolation, "invalid isolation value")
 }
 
 func (m *IsolationMode) UnmarshalText(text []byte) error {
@@ -148,7 +151,7 @@ func (m *IsolationMode) unmarshalValue(value string) error {
 	case "strict":
 		*m = IsolationStrict
 	default:
-		return errors.New("invalid isolation: " + s)
+		return NewErrorDetail(ErrorInvalidIsolation, s)
 	}
 	return nil
 }
@@ -200,6 +203,28 @@ type PreprocessConfig struct {
 	Defines map[string]string `yaml:"defines" toml:"defines"`
 }
 
+type DepBuildConfig struct {
+	Enabled      bool              `yaml:"enabled" toml:"enabled"`
+	SkipTests    bool              `yaml:"skip_tests" toml:"skip_tests"`
+	BuildTargets []string          `yaml:"build_targets" toml:"build_targets"`
+	Outputs      []string          `yaml:"outputs" toml:"outputs"`
+	Include      []string          `yaml:"include" toml:"include"`
+	Environment  map[string]string `yaml:"environment" toml:"environment"`
+	PreBuild     []string          `yaml:"pre_build" toml:"pre_build"`
+	PostBuild    []string          `yaml:"post_build" toml:"post_build"`
+	ExcludeFiles []string          `yaml:"exclude_files" toml:"exclude_files"`
+	OnlyFiles    []string          `yaml:"only_files" toml:"only_files"`
+}
+
+type AutoBuildConfig struct {
+	Enabled            bool              `yaml:"enabled" toml:"enabled"`
+	LogLevel           string            `yaml:"log_level" toml:"log_level"`
+	ContinueOnError    bool              `yaml:"continue_on_error" toml:"continue_on_error"`
+	BuildOrder         []string          `yaml:"build_order" toml:"build_order"`
+	DefaultSkipTests   bool              `yaml:"default_skip_tests" toml:"default_skip_tests"`
+	DefaultEnvironment map[string]string `yaml:"default_environment" toml:"default_environment"`
+}
+
 type Config struct {
 	Name    string `yaml:"name" toml:"name"`
 	Profile string `yaml:"profile" toml:"profile"`
@@ -224,6 +249,7 @@ type Config struct {
 	Include            []string          `yaml:"include" toml:"include"`
 	Scripts            []string          `yaml:"scripts" toml:"scripts"`
 	Libs               []string          `yaml:"libs" toml:"libs"`
+	AutoBuildDeps      bool              `yaml:"auto_build_deps" toml:"auto_build_deps"`
 	IgnoreFile         string            `yaml:"ignore_file" toml:"ignore_file"`
 	AuditIgnore        []string          `yaml:"audit_ignore" toml:"audit_ignore"`
 	ToolChecksums      map[string]string `yaml:"tool_checksums" toml:"tool_checksums"`
@@ -240,6 +266,8 @@ type Config struct {
 	Hooks      Hooks            `yaml:"hooks" toml:"hooks"`
 	BuildRules []BuildRule      `yaml:"build_rules" toml:"build_rules"`
 	ISO        ISOConfig        `yaml:"iso" toml:"iso"`
+	DepBuild   DepBuildConfig   `yaml:"dep_build" toml:"dep_build"`
+	AutoBuild  AutoBuildConfig  `yaml:"auto_build" toml:"auto_build"`
 }
 
 func (c *Config) expand() {
@@ -318,6 +346,9 @@ func (c *Config) fillDefaults() {
 	if c.Profile == "" {
 		c.Profile = "balanced"
 	}
+	if !c.AutoBuildDeps {
+		c.AutoBuildDeps = true
+	}
 	if c.Toolchain == "" {
 		c.Toolchain = "auto"
 	}
@@ -360,7 +391,7 @@ func (c *Config) ApplySetOverrides(overrides []string) error {
 		}
 		key, value, ok := strings.Cut(entry, "=")
 		if !ok {
-			return errors.New("invalid override: " + entry)
+			return NewErrorDetail(ErrorInvalidOverride, entry)
 		}
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
@@ -385,7 +416,7 @@ func (c *Config) ApplySetOverrides(overrides []string) error {
 					}
 					c.ToolchainSettings.ToolPaths[strings.TrimPrefix(nested, "tool_paths.")] = value
 				} else {
-					return errors.New("unsupported config override: " + key)
+					return NewErrorDetail(ErrorUnsupportedOverride, key)
 				}
 			}
 			continue
@@ -395,7 +426,7 @@ func (c *Config) ApplySetOverrides(overrides []string) error {
 			case "on_failure":
 				c.Hooks.OnFailure = value
 			default:
-				return errors.New("unsupported config override: " + key)
+				return NewErrorDetail(ErrorUnsupportedOverride, key)
 			}
 			continue
 		}
@@ -404,13 +435,13 @@ func (c *Config) ApplySetOverrides(overrides []string) error {
 			case "enabled":
 				parsed, err := strconv.ParseBool(value)
 				if err != nil {
-					return errors.New("invalid override for iso.enabled: " + err.Error())
+					return NewErrorCause(ErrorInvalidOverride, "iso.enabled", err)
 				}
 				c.ISO.Enabled = parsed
 			case "output":
 				c.ISO.Output = value
 			default:
-				return errors.New("unsupported config override: " + key)
+				return NewErrorDetail(ErrorUnsupportedOverride, key)
 			}
 			continue
 		}
@@ -454,31 +485,31 @@ func (c *Config) ApplySetOverrides(overrides []string) error {
 		case "debug":
 			parsed, err := strconv.ParseBool(value)
 			if err != nil {
-				return errors.New("invalid override for debug: " + err.Error())
+				return NewErrorDetail(ErrorInvalidOverride, "debug: "+err.Error())
 			}
 			c.Debug = parsed
 		case "verbose":
 			parsed, err := strconv.ParseBool(value)
 			if err != nil {
-				return errors.New("invalid override for verbose: " + err.Error())
+				return NewErrorDetail(ErrorInvalidOverride, "verbose: "+err.Error())
 			}
 			c.Verbose = parsed
 		case "keep_obj":
 			parsed, err := strconv.ParseBool(value)
 			if err != nil {
-				return errors.New("invalid override for keep_obj: " + err.Error())
+				return NewErrorDetail(ErrorInvalidOverride, "keep_obj: "+err.Error())
 			}
 			c.KeepObj = parsed
 		case "no_cache":
 			parsed, err := strconv.ParseBool(value)
 			if err != nil {
-				return errors.New("invalid override for no_cache: " + err.Error())
+				return NewErrorDetail(ErrorInvalidOverride, "no_cache: "+err.Error())
 			}
 			c.NoCache = parsed
 		case "optimization_level", "opt_level":
 			parsed, err := strconv.Atoi(value)
 			if err != nil {
-				return errors.New("invalid override for optimization_level: " + err.Error())
+				return NewErrorDetail(ErrorInvalidOverride, "optimization_level: "+err.Error())
 			}
 			c.OptimizationLevel = parsed
 		case "cache_mode":
@@ -512,7 +543,7 @@ func (c *Config) ApplySetOverrides(overrides []string) error {
 		case "flags.ld":
 			c.Flags.Ld = splitOverrideList(value)
 		default:
-			return errors.New("unsupported config override: " + key)
+			return NewErrorDetail(ErrorUnsupportedOverride, key)
 		}
 	}
 	return nil
@@ -520,7 +551,7 @@ func (c *Config) ApplySetOverrides(overrides []string) error {
 
 func GenerateConfigH(templatePath, outputPath string, cfg *Config) error {
 	if cfg == nil {
-		return errors.New("config is nil")
+		return NewErrorDetail(ErrorInvalidConfig, "config is nil")
 	}
 	data, err := os.ReadFile(templatePath)
 	if err != nil {
@@ -648,14 +679,14 @@ func mergeStringMap(dst, src map[string]string) map[string]string {
 func Load(path string) (*Config, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
-		return nil, errors.New("cannot stat config file " + path + ": " + err.Error())
+		return nil, NewErrorDetail(ErrorFileStat, path+": "+err.Error())
 	}
 	if cfg, ok := loadConfigCache(path, fi); ok {
 		return cfg, nil
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, errors.New("cannot read config file " + path + ": " + err.Error())
+		return nil, NewErrorDetail(ErrorFileRead, path+": "+err.Error())
 	}
 	var cfg Config
 	if err := loadConfigData(path, data, &cfg, make(map[string]struct{})); err != nil {
@@ -673,13 +704,23 @@ func loadConfigData(path string, data []byte, cfg *Config, seen map[string]struc
 	if cfg == nil {
 		return nil
 	}
-	if isTOMLPath(path) {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".toml":
 		if err := loadTOML(data, cfg); err != nil {
 			return err
 		}
-	} else {
+	case ".yaml", ".yml":
 		if err := loadYAML(data, cfg); err != nil {
 			return err
+		}
+	default:
+		if err := loadTOML(data, cfg); err == nil {
+			break
+		} else if err := loadYAML(data, cfg); err == nil {
+			break
+		} else {
+			return NewErrorDetail(ErrorParseTOML, "unknown config format")
 		}
 	}
 	return resolveConfigIncludes(path, cfg, seen)
@@ -701,7 +742,7 @@ func resolveConfigIncludes(path string, cfg *Config, seen map[string]struct{}) e
 		seen = make(map[string]struct{})
 	}
 	if _, ok := seen[absPath]; ok {
-		return errors.New("cyclic config include: " + absPath)
+		return NewErrorDetail(ErrorCyclicInclude, absPath)
 	}
 	seen[absPath] = struct{}{}
 	defer delete(seen, absPath)
@@ -731,7 +772,7 @@ func resolveConfigIncludes(path string, cfg *Config, seen map[string]struct{}) e
 		}
 		data, err := os.ReadFile(childPath)
 		if err != nil {
-			return errors.New("cannot read included config file " + childPath + ": " + err.Error())
+			return NewErrorDetail(ErrorIncludeRead, childPath+": "+err.Error())
 		}
 		var childCfg Config
 		if err := loadConfigData(childPath, data, &childCfg, seen); err != nil {
@@ -753,32 +794,32 @@ func (c *Config) Validate() error {
 	}
 	c.fillDefaults()
 	if c.SourceDir != "" && len(c.SourceDirs) > 0 {
-		return errors.New("cannot set both source_dir and source_dirs")
+		return NewError(ErrorInvalidSourceConfig)
 	}
 	if c.SourceFile != "" && len(c.SourceFiles) > 0 {
-		return errors.New("cannot set both source_file and source_files")
+		return NewError(ErrorInvalidSourceConfig)
 	}
 	if c.Mode != "auto" && c.Mode != "c" && c.Mode != "raw" {
-		return errors.New("invalid mode: " + c.Mode)
+		return NewErrorDetail(ErrorInvalidMode, c.Mode)
 	}
 	c.Profile = strings.TrimSpace(strings.ToLower(c.Profile))
 	if c.Profile != "balanced" && c.Profile != "powered" && c.Profile != "performance" {
-		return errors.New("invalid profile: " + c.Profile)
+		return NewErrorDetail(ErrorInvalidProfile, c.Profile)
 	}
 	c.Toolchain = strings.TrimSpace(strings.ToLower(c.Toolchain))
 	if _, ok := supportedToolchains[c.Toolchain]; !ok {
-		return errors.New("invalid toolchain: " + c.Toolchain)
+		return NewErrorDetail(ErrorInvalidToolchain, c.Toolchain)
 	}
 	c.Target = strings.TrimSpace(c.Target)
 	switch c.Isolation {
 	case IsolationNone, IsolationStandard, IsolationStrict:
 	default:
-		return errors.New("invalid isolation: " + string(c.Isolation))
+		return NewErrorDetail(ErrorInvalidIsolation, string(c.Isolation))
 	}
 	switch c.CacheMode {
 	case CacheModeDisk, CacheModeRAM, CacheModeOff, "":
 	default:
-		return errors.New("invalid cache_mode: " + string(c.CacheMode))
+		return NewErrorDetail(ErrorInvalidCacheMode, string(c.CacheMode))
 	}
 	if c.NoCache {
 		c.CacheMode = CacheModeOff
@@ -790,15 +831,15 @@ func (c *Config) Validate() error {
 		outputs := make(map[string]struct{}, len(c.BuildRules)*2)
 		for _, rule := range c.BuildRules {
 			if rule.Action == "" {
-				return errors.New("build rule action is required")
+				return NewError(ErrorBuildRuleActionRequired)
 			}
 			if len(rule.Outputs) == 0 {
-				return errors.New("build rule outputs are required")
+				return NewError(ErrorBuildRuleOutputsRequired)
 			}
 			for _, out := range rule.Outputs {
 				key := filepath.Clean(out)
 				if _, ok := outputs[key]; ok {
-					return errors.New("duplicate build rule output: " + out)
+					return NewErrorDetail(ErrorDuplicateBuildRuleOutput, out)
 				}
 				outputs[key] = struct{}{}
 			}
@@ -1220,7 +1261,7 @@ func GenerateFromScan(root string) (*Config, error) {
 	}
 
 	if len(sourceDirs) == 0 {
-		return nil, errors.New("no source files found")
+		return nil, NewErrorDetail(ErrorMissingSource, "scan found no source files")
 	}
 
 	cfg := &Config{
