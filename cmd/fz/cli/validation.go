@@ -115,7 +115,7 @@ func ValidateAll(flags *Flags) bool {
 	return true
 }
 
-func ValidateSourceFlags(flags *Flags) (string, error) {
+func ValidateSourceFlags(flags *Flags, cfg *config.Config) (string, error) {
 	srcProvided := 0
 	var srcPath string
 
@@ -136,6 +136,11 @@ func ValidateSourceFlags(flags *Flags) (string, error) {
 	}
 
 	if srcProvided == 0 {
+		if cfg != nil {
+			if cfg.SourceFile != "" || cfg.SourceDir != "" || len(cfg.SourceDirs) > 0 || len(cfg.SourceFiles) > 0 {
+				return "", nil
+			}
+		}
 		return "", stdio.Errorf("missing source: use -asm, -cc, -dir, or config")
 	}
 
