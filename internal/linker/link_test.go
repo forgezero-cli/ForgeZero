@@ -32,7 +32,6 @@ import (
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
-
 type MockRunner struct {
 	RunFunc func(ctx context.Context, verbose bool, name string, args ...string) (string, error)
 }
@@ -1511,6 +1510,53 @@ func TestLinkMultipleInvalidMode(t *testing.T) {
 	}
 }
 
+func TestLinkMultipleParallelWithArchiveFallback(t *testing.T) {
+	dir := t.TempDir()
+	objs := make([]string, 0, 25)
+	for i := 0; i < 24; i++ {
+		obj := filepath.Join(dir, fmt.Sprintf("obj%02d.o", i))
+		if err := os.WriteFile(obj, []byte("dummy"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		objs = append(objs, obj)
+	}
+	archive := filepath.Join(dir, "libfoo.a")
+	if err := os.WriteFile(archive, []byte("archive"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	objs = append(objs, archive)
+
+	oldRunner := runner
+	oldCheckTool := utils.CheckToolFunc
+	oldZigRequested := ZigRequested
+	oldZigEnabled := ZigEnabled
+	defer func() {
+		runner = oldRunner
+		utils.CheckToolFunc = oldCheckTool
+		ZigRequested = oldZigRequested
+		ZigEnabled = oldZigEnabled
+	}()
+
+	var calls []string
+	utils.CheckToolFunc = func(name string) error { return nil }
+	ZigRequested = false
+	ZigEnabled = false
+	runner = &MockRunner{RunFunc: func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return "", nil
+	}}
+
+	if err := LinkMultipleParallel(context.Background(), objs, filepath.Join(dir, "out"), false, "c", true, false, false, nil, 4); err != nil {
+		t.Fatalf("expected archive fallback link to succeed: %v", err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("expected single-stage link call when archive present, got %d", len(calls))
+	}
+	if !strings.HasPrefix(calls[0], "gcc ") {
+		t.Fatalf("unexpected linker call: %s", calls[0])
+	}
+}
+
 func TestLinkMultipleParallelPartitions(t *testing.T) {
 	t.Skip("skipping parallel link test due to environment constraints")
 	// FIXME please:
@@ -1522,7 +1568,7 @@ func TestLinkMultipleParallelPartitions(t *testing.T) {
 	// }
 	// objs := make([]string, 0, 32)
 	// dir := t.TempDir()
-// for i := 0; i < 32; i++ {
+	// for i := 0; i < 32; i++ {
 	// 	obj := filepath.Join(dir, fmt.Sprintf("obj%02d.o", i))
 	// 	if err := os.WriteFile(obj, []byte("dummy"), 0o644); err != nil {
 	// 		t.Fatal(err)

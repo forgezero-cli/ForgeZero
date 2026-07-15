@@ -24,16 +24,18 @@ import (
 	"unsafe"
 )
 
-type NumaCounters struct{
+type NumaCounters struct {
 	shards []atomic.Int64
-	n int
+	n      int
 }
 
 func newNumaShards() int {
 	dirs, err := os.ReadDir("/sys/devices/system/node/")
 	if err != nil || len(dirs) == 0 {
 		p := runtime.GOMAXPROCS(0)
-		if p <= 0 { p = 1 }
+		if p <= 0 {
+			p = 1
+		}
 		return p
 	}
 	count := 0
@@ -44,7 +46,9 @@ func newNumaShards() int {
 	}
 	if count == 0 {
 		p := runtime.GOMAXPROCS(0)
-		if p <= 0 { p = 1 }
+		if p <= 0 {
+			p = 1
+		}
 		return p
 	}
 	return count
@@ -52,7 +56,7 @@ func newNumaShards() int {
 
 func NewNumaCounters() *NumaCounters {
 	n := newNumaShards()
-	c := &NumaCounters{n:n}
+	c := &NumaCounters{n: n}
 	c.shards = make([]atomic.Int64, n)
 	return c
 }

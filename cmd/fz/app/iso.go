@@ -21,7 +21,7 @@ import (
 	"github.com/forgezero-cli/ForgeZero/cmd/fz/cli"
 	"github.com/forgezero-cli/ForgeZero/internal/config"
 	"github.com/forgezero-cli/ForgeZero/internal/iso/core"
-)   
+)
 
 func ISORequested(flags *cli.Flags, cfg *config.Config) bool {
 	if flags != nil && flags.ISO.Enabled {

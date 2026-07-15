@@ -23,8 +23,6 @@ import (
 	"errors"
 )
 
-
-
 type registerInfo struct {
 	code     byte
 	rexIndex byte
@@ -37,7 +35,6 @@ type modRMRegRM struct {
 	rm    byte
 	rex   byte
 }
-
 
 func parseRegister(tok []byte) (byte, int, bool) {
 	if len(tok) == 0 {
@@ -129,7 +126,7 @@ func parseRegister(tok []byte) (byte, int, bool) {
 	n := len(name)
 	if n >= 2 && name[0] == 'r' {
 		if name[1] >= '0' && name[1] <= '9' {
-			idx := int(name[1]-'0')
+			idx := int(name[1] - '0')
 			pos := 2
 			if idx >= 10 {
 				return 0, 0, false
@@ -173,7 +170,7 @@ func parseRegister(tok []byte) (byte, int, bool) {
 	if len(name) == 3 && name[0] == 'r' && name[1] == '1' && name[2] >= '0' && name[2] <= '5' {
 	}
 	if (len(name) == 2 || len(name) == 3 || len(name) == 4) && name[0] == 'r' && name[1] == '1' {
-		idx := int((name[2]-'0') + 10)
+		idx := int((name[2] - '0') + 10)
 		if idx < 10 || idx > 15 {
 			return 0, 0, false
 		}
@@ -194,7 +191,7 @@ func parseRegister(tok []byte) (byte, int, bool) {
 		return codeFromBase(byte(idx), width)
 	}
 	if bytesHasPrefix(name, []byte("r8")) && (len(name) == 3 && (name[2] == 'b' || name[2] == 'w' || name[2] == 'd')) {
-	
+
 	}
 	return 0, 0, false
 }
@@ -222,7 +219,6 @@ func bytesHasPrefix(a, prefix []byte) bool {
 	}
 	return true
 }
-
 
 type operandType int
 

@@ -27,69 +27,69 @@ import (
 )
 
 const (
-    maxResponseFileBytes = 32 * 1024
-    maxResponseFileArg   = 8192
+	maxResponseFileBytes = 32 * 1024
+	maxResponseFileArg   = 8192
 )
 
 func shouldUseResponseFile(args []string) bool {
-    if len(args) > 128 {
-        return true
-    }
-    total := 0
-    for _, arg := range args {
-        if len(arg) > maxResponseFileArg {
-            return true
-        }
-        total += len(arg) + 1
-        if total > maxResponseFileBytes {
-            return true
-        }
-    }
-    return false
+	if len(args) > 128 {
+		return true
+	}
+	total := 0
+	for _, arg := range args {
+		if len(arg) > maxResponseFileArg {
+			return true
+		}
+		total += len(arg) + 1
+		if total > maxResponseFileBytes {
+			return true
+		}
+	}
+	return false
 }
 
 func createResponseFile(args []string) (string, error) {
-    f, err := os.CreateTemp("", "fz_link_args_*.rsp")
-    if err != nil {
-        return "", err
-    }
-    name := f.Name()
-    if err := f.Chmod(utils.FilePerm); err != nil {
-        f.Close()
-        os.Remove(name)
-        return "", err
-    }
-    writer := bufio.NewWriterSize(f, 64*1024)
-    for _, arg := range args {
-        if strings.ContainsAny(arg, "\n\r\x00") {
-            f.Close()
-            os.Remove(name)
-            return "", errors.New("invalid argument for response file")
-        }
-        if err := utils.ValidateCLIArg(arg); err != nil {
-            f.Close()
-            os.Remove(name)
-            return "", errors.New("invalid argument for response file: " + err.Error())
-        }
-        if _, err := writer.WriteString(arg); err != nil {
-            f.Close()
-            os.Remove(name)
-            return "", err
-        }
-        if err := writer.WriteByte('\n'); err != nil {
-            f.Close()
-            os.Remove(name)
-            return "", err
-        }
-    }
-    if err := writer.Flush(); err != nil {
-        f.Close()
-        os.Remove(name)
-        return "", err
-    }
-    if err := f.Close(); err != nil {
-        os.Remove(name)
-        return "", err
-    }
-    return name, nil
+	f, err := os.CreateTemp("", "fz_link_args_*.rsp")
+	if err != nil {
+		return "", err
+	}
+	name := f.Name()
+	if err := f.Chmod(utils.FilePerm); err != nil {
+		f.Close()
+		os.Remove(name)
+		return "", err
+	}
+	writer := bufio.NewWriterSize(f, 64*1024)
+	for _, arg := range args {
+		if strings.ContainsAny(arg, "\n\r\x00") {
+			f.Close()
+			os.Remove(name)
+			return "", errors.New("invalid argument for response file")
+		}
+		if err := utils.ValidateCLIArg(arg); err != nil {
+			f.Close()
+			os.Remove(name)
+			return "", errors.New("invalid argument for response file: " + err.Error())
+		}
+		if _, err := writer.WriteString(arg); err != nil {
+			f.Close()
+			os.Remove(name)
+			return "", err
+		}
+		if err := writer.WriteByte('\n'); err != nil {
+			f.Close()
+			os.Remove(name)
+			return "", err
+		}
+	}
+	if err := writer.Flush(); err != nil {
+		f.Close()
+		os.Remove(name)
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(name)
+		return "", err
+	}
+	return name, nil
 }

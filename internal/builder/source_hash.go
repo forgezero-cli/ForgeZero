@@ -71,4 +71,3 @@ func refreshSourceHashes(dirs []string) error {
 	}
 	return nil
 }
-

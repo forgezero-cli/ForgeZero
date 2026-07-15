@@ -26,8 +26,6 @@ import (
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
-
-
 func TestPCHSetPCHIncludeArgsZeroAlloc(t *testing.T) {
 	assembler.ResetPCH()
 	before := make([]string, 0, 0)
@@ -72,7 +70,6 @@ func TestPreBuildHooksExecuteBeforeCompileAndRefreshUpdatesCache(t *testing.T) {
 	order := make([]int, 3)
 	pos := 0
 
-
 	compilerTask := func(ctx context.Context) error {
 		order[pos] = 2
 		pos++
@@ -114,4 +111,3 @@ func TestPreBuildHooksExecuteBeforeCompileAndRefreshUpdatesCache(t *testing.T) {
 		t.Fatalf("unexpected order %v", order)
 	}
 }
-

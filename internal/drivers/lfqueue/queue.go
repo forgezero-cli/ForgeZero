@@ -27,7 +27,7 @@ type node struct {
 	next atomic.Pointer[node]
 }
 
-type Queue struct{
+type Queue struct {
 	head atomic.Pointer[node]
 	tail atomic.Pointer[node]
 }

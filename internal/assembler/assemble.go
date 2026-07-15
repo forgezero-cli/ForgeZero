@@ -34,16 +34,16 @@ import (
 )
 
 var (
-	OutputFormat     = "elf64"
-	Target           = "x86_64-linux-gnu"
-	AsmFlags         []string
-	ForceFASM        bool
-	CcFlags          string
-	ZigRequested     bool
-	ZigEnabled       bool
-	CcFLagsParsed    []string
+	OutputFormat          = "elf64"
+	Target                = "x86_64-linux-gnu"
+	AsmFlags              []string
+	ForceFASM             bool
+	CcFlags               string
+	ZigRequested          bool
+	ZigEnabled            bool
+	CcFLagsParsed         []string
 	AdditionalIncludeDirs []string
-	ForceInternalAsm bool = true
+	ForceInternalAsm      bool = true
 
 	UseNasm bool
 
@@ -227,7 +227,7 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 		}
 	}
 
-if useNasmFlag := flag.Lookup("use-nasm"); useNasmFlag != nil {
+	if useNasmFlag := flag.Lookup("use-nasm"); useNasmFlag != nil {
 		UseNasm = useNasmFlag.Value.String() == "true"
 	}
 	ForceInternalAsm = !UseNasm
@@ -267,7 +267,7 @@ if useNasmFlag := flag.Lookup("use-nasm"); useNasmFlag != nil {
 			return errors.New("cannot assemble .asm files for wasm target")
 		}
 
-	if strings.HasSuffix(src, ".asm") && UseNasm {
+		if strings.HasSuffix(src, ".asm") && UseNasm {
 
 			return assembleWithNasm(ctx, src, obj, debug, verbose)
 		}
@@ -406,4 +406,3 @@ func assembleRawBinary(src, obj string) error {
 func isWasmTarget() bool {
 	return strings.Contains(Target, "wasm") || strings.Contains(Target, "wasm32")
 }
-

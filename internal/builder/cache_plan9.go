@@ -54,6 +54,3 @@ func cacheEntryPathPlan9Fallback(dir, key string) string {
 	pb.appendString(key)
 	return pb.String()
 }
-
-
-

@@ -19,33 +19,33 @@ package assembler
 
 import "sync"
 
-type Encoder struct{
-    buf []byte
+type Encoder struct {
+	buf []byte
 }
 
 var encPool = sync.Pool{
-    New: func() any {
-        b := make([]byte, 0, 256)
-        return &Encoder{buf: b}
-    },
+	New: func() any {
+		b := make([]byte, 0, 256)
+		return &Encoder{buf: b}
+	},
 }
 
 func GetEncoder() *Encoder {
-    e := encPool.Get().(*Encoder)
-    e.buf = e.buf[:0]
-    return e
+	e := encPool.Get().(*Encoder)
+	e.buf = e.buf[:0]
+	return e
 }
 
 func PutEncoder(e *Encoder) {
-    encPool.Put(e)
+	encPool.Put(e)
 }
 
 func (e *Encoder) WriteByte(b byte) {
-    e.buf = append(e.buf, b)
+	e.buf = append(e.buf, b)
 }
 
 func (e *Encoder) Write(p []byte) {
-    e.buf = append(e.buf, p...)
+	e.buf = append(e.buf, p...)
 }
 
 func (e *Encoder) Bytes() []byte { return e.buf }

@@ -61,7 +61,6 @@ func runWithDuration(d time.Duration, fn func() error) error {
 	_ = pid
 	errCh := make(chan error, 1)
 
-
 	go func() {
 		errCh <- fn()
 	}()
@@ -87,4 +86,3 @@ func IsTimeout(err error) bool {
 	}
 	return errors.Is(err, syscall.ETIMEDOUT)
 }
-

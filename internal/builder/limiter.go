@@ -28,82 +28,82 @@ import (
 const compileWorkerMemMB = 1024
 
 func AdjustJobs(requested int) int {
-    if requested <= 0 {
-        requested = 1
-    }
-    available := availableMemMB()
-    if available == 0 {
-        if requested > runtime.NumCPU() {
-            requested = runtime.NumCPU()
-        }
-        return requested
-    }
-    maxWorkers := int(available / compileWorkerMemMB)
-    if maxWorkers < 1 {
-        maxWorkers = 1
-    }
-    if requested > maxWorkers {
-        requested = maxWorkers
-    }
-    if requested > runtime.NumCPU() {
-        requested = runtime.NumCPU()
-    }
-    return requested
+	if requested <= 0 {
+		requested = 1
+	}
+	available := availableMemMB()
+	if available == 0 {
+		if requested > runtime.NumCPU() {
+			requested = runtime.NumCPU()
+		}
+		return requested
+	}
+	maxWorkers := int(available / compileWorkerMemMB)
+	if maxWorkers < 1 {
+		maxWorkers = 1
+	}
+	if requested > maxWorkers {
+		requested = maxWorkers
+	}
+	if requested > runtime.NumCPU() {
+		requested = runtime.NumCPU()
+	}
+	return requested
 }
 
 func availableMemMB() uint64 {
-    data, err := os.ReadFile("/proc/meminfo")
-    if err != nil {
-        return 0
-    }
-    available, free := parseMemInfo(data)
-    if available > 0 {
-        return available / 1024
-    }
-    return free / 1024
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0
+	}
+	available, free := parseMemInfo(data)
+	if available > 0 {
+		return available / 1024
+	}
+	return free / 1024
 }
 
 func parseMemInfo(data []byte) (uint64, uint64) {
-    available := uint64(0)
-    free := uint64(0)
-    scanner := bytes.NewReader(data)
-    for {
-        line, err := readLine(scanner)
-        if err != nil {
-            break
-        }
-        fields := strings.Fields(string(line))
-        if len(fields) < 2 {
-            continue
-        }
-        key := strings.TrimSuffix(fields[0], ":")
-        value, parseErr := strconv.ParseUint(fields[1], 10, 64)
-        if parseErr != nil {
-            continue
-        }
-        switch key {
-        case "MemAvailable":
-            available = value
-        case "MemFree":
-            free = value
-        }
-    }
-    return available, free
+	available := uint64(0)
+	free := uint64(0)
+	scanner := bytes.NewReader(data)
+	for {
+		line, err := readLine(scanner)
+		if err != nil {
+			break
+		}
+		fields := strings.Fields(string(line))
+		if len(fields) < 2 {
+			continue
+		}
+		key := strings.TrimSuffix(fields[0], ":")
+		value, parseErr := strconv.ParseUint(fields[1], 10, 64)
+		if parseErr != nil {
+			continue
+		}
+		switch key {
+		case "MemAvailable":
+			available = value
+		case "MemFree":
+			free = value
+		}
+	}
+	return available, free
 }
 
 func readLine(r *bytes.Reader) ([]byte, error) {
-    buf := make([]byte, 0, 128)
-    for {
-        b, err := r.ReadByte()
-        if err != nil {
-            if len(buf) == 0 {
-                return nil, err
-            }
-            return buf, nil
-        }
-        if b == '\n' {
-            return buf, nil
-        }
-        buf = append(buf, b)
-    }
+	buf := make([]byte, 0, 128)
+	for {
+		b, err := r.ReadByte()
+		if err != nil {
+			if len(buf) == 0 {
+				return nil, err
+			}
+			return buf, nil
+		}
+		if b == '\n' {
+			return buf, nil
+		}
+		buf = append(buf, b)
+	}
 }

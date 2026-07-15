@@ -128,8 +128,8 @@ func (t *tokenizer) next() token {
 }
 
 type parser struct {
-	tok   []token
-	pos   int
+	tok    []token
+	pos    int
 	macros map[string]macro
 }
 

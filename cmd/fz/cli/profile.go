@@ -19,8 +19,8 @@ package cli
 
 import (
 	"flag"
-	"runtime"
 	"github.com/forgezero-cli/ForgeZero/internal/profiles"
+	"runtime"
 )
 
 func SetupProfile(flags *Flags) {
@@ -30,13 +30,13 @@ func SetupProfile(flags *Flags) {
 			profileProvided = true
 		}
 	})
-	
+
 	if !profileProvided {
 		if saved, err := profiles.ReadSavedProfile(""); err == nil && saved != "" {
 			flags.ProfileFlag = saved
 		}
 	}
-	
+
 	p := profiles.ParseUserProfile(flags.ProfileFlag)
 	flags.ProfileFlag = p.Name
 	maxProcs := p.DefaultJobs()
@@ -44,11 +44,11 @@ func SetupProfile(flags *Flags) {
 		maxProcs = 1
 	}
 	runtime.GOMAXPROCS(maxProcs)
-	
+
 	if flags.Jobs < 0 {
 		flags.Jobs = 1
 	}
-	
+
 	if profileProvided {
 		_ = profiles.SaveProfile("", flags.ProfileFlag)
 	}

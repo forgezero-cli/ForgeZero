@@ -120,7 +120,6 @@ var knownVulnerabilities = []auditRule{
 	{Name: "cmake", Keywords: []string{"cmake"}, Summary: "cmake had a CVE for arbitrary code execution.", URL: "https://cmake.org/"},
 }
 
-
 var configRiskKeywords = []string{
 	"curl",
 	"wget",
@@ -165,11 +164,10 @@ var secretRules = []secretRule{
 	{ID: "rubygems-token", Pattern: regexp.MustCompile(`(?i)[0-9a-fA-F]{32,}`), Summary: "RubyGems API key found."},
 	{ID: "azure-connection-string", Pattern: regexp.MustCompile(`(?i)DefaultEndpointsProtocol=[^;]+;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]+`), Summary: "Azure storage connection string with account key found."},
 	{ID: "azure-service-bus", Pattern: regexp.MustCompile(`(?i)Endpoint=sb://[^;]+;SharedAccessKeyName=[^;]+;SharedAccessKey=[^;]+`), Summary: "Azure Service Bus connection string with shared access key found."},
-	{ID: "twitter-bearer", Pattern: regexp.MustCompile(`(?i)AAAAAAAAAAAAAAAAAAAA[0-9A-Za-z%]{80,}`), Summary: "Twitter Bearer token found."}, 
+	{ID: "twitter-bearer", Pattern: regexp.MustCompile(`(?i)AAAAAAAAAAAAAAAAAAAA[0-9A-Za-z%]{80,}`), Summary: "Twitter Bearer token found."},
 	{ID: "discord-webhook", Pattern: regexp.MustCompile(`(?i)https://discord\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+`), Summary: "Discord webhook URL found."},
 	{ID: "slack-webhook", Pattern: regexp.MustCompile(`(?i)https://hooks\.slack\.com/services/[A-Z0-9]+/[A-Z0-9]+/[A-Za-z0-9]+`), Summary: "Slack webhook URL found."},
 }
-
 
 var licenseRules = []licenseRule{
 	{Name: "AGPL", Keywords: []string{"agpl"}, Summary: "AGPL license detected - incompatible with many proprietary distribution models.", URL: "https://www.gnu.org/licenses/agpl-3.0.html"},
@@ -193,7 +191,6 @@ var licenseRules = []licenseRule{
 	{Name: "CDDL", Keywords: []string{"common development and distribution license", "cddl"}, Summary: "CDDL - weak copyleft with patent grant.", URL: "https://opensource.org/licenses/CDDL-1.0"},
 	{Name: "Mulan", Keywords: []string{"mulan ps", "mulan public license"}, Summary: "Mulan Public License - Chinese open source license.", URL: "https://license.coscl.org.cn/MulanPSL2/"},
 }
-
 
 var licenseFileNames = map[string]bool{
 	"license":     true,

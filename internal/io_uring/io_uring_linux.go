@@ -31,13 +31,13 @@ import (
 )
 
 const (
-	ioUringSetupEntries = 256
+	ioUringSetupEntries    = 256
 	IORING_ENTER_GETEVENTS = 1
-	IORING_OFF_SQ_RING = 0
-	IORING_OFF_CQ_RING = 0x8000000
-	IORING_OFF_SQES = 0x10000000
-	IORING_OP_READ = 22
-	IORING_OP_WRITE = 23
+	IORING_OFF_SQ_RING     = 0
+	IORING_OFF_CQ_RING     = 0x8000000
+	IORING_OFF_SQES        = 0x10000000
+	IORING_OP_READ         = 22
+	IORING_OP_WRITE        = 23
 )
 
 type ioUringSqringOffsets struct {
@@ -310,7 +310,7 @@ func popCqe() (*ioUringCqe, error) {
 	if head == *cqTail {
 		return nil, os.ErrInvalid
 	}
-	cqe := &cqes[head & *cqRingMask]
+	cqe := &cqes[head&*cqRingMask]
 	*cqHead = head + 1
 	return cqe, nil
 }

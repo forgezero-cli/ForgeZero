@@ -32,14 +32,14 @@ type dagNode struct {
 }
 
 type DAGScheduler struct {
-	pool      *Scheduler
-	nodes     []dagNode
-	ready     *intRingQueue
-	running   atomic.Bool
-	errOnce   sync.Once
-	err       error
-	pending   atomic.Int64
-	cancel    context.CancelFunc
+	pool    *Scheduler
+	nodes   []dagNode
+	ready   *intRingQueue
+	running atomic.Bool
+	errOnce sync.Once
+	err     error
+	pending atomic.Int64
+	cancel  context.CancelFunc
 }
 
 func NewDAGScheduler(workerPoolSize int, nodeCapacity int) *DAGScheduler {

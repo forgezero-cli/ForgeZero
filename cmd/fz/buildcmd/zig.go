@@ -26,14 +26,14 @@ import (
 
 func SetupZig(cfg *config.Config, toolchain string) {
 	autoEnableZig := true
-	
+
 	if cfg != nil && (cfg.Toolchain == "gcc" || cfg.Toolchain == "clang") {
 		autoEnableZig = false
 	}
 	if toolchain == "gcc" || toolchain == "clang" {
 		autoEnableZig = false
 	}
-	
+
 	if cfg != nil && cfg.Toolchain == "zig" || toolchain == "zig" {
 		assembler.ZigEnabled = true
 		linker.ZigEnabled = true

@@ -224,8 +224,11 @@ func ScanDependenciesRoot(path, rootDir string) ([]string, error) {
 		}
 		for _, inc := range includes {
 			if !pathWithinRoot(rootDir, inc) {
-				warnOutsideRoot(inc)
-				continue
+				parent := filepath.Dir(rootDir)
+				if parent == rootDir || !pathWithinRoot(parent, inc) {
+					warnOutsideRoot(inc)
+					continue
+				}
 			}
 			hi := hashPath(inc)
 			if _, ok := visited[hi]; ok {

@@ -516,7 +516,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 
 					if localCfg != nil {
 						builder := NewDepBuilder(ctx, depPath, depName, localCfg, globalAutoBuild, verbose)
-						
+
 						if !localCfg.DepBuild.Enabled {
 							builder.logf("warn", "Dependency disabled in fz.toml")
 							continue
@@ -534,6 +534,23 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 						if len(localCfg.DepBuild.Include) > 0 {
 							depIncludes = append(depIncludes, localCfg.DepBuild.Include...)
 						}
+						for i, inc := range depIncludes {
+							if inc == "" {
+								continue
+							}
+							if !filepath.IsAbs(inc) {
+								abs := filepath.Join(depPath, inc)
+								if a, err := filepath.Abs(abs); err == nil {
+									depIncludes[i] = a
+								} else {
+									depIncludes[i] = abs
+								}
+							} else {
+								if a, err := filepath.Abs(inc); err == nil {
+									depIncludes[i] = a
+								}
+							}
+						}
 
 						var depSourceFiles []string
 						if len(localCfg.SourceFiles) > 0 {
@@ -543,7 +560,44 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 							}
 						}
 
+						oldCcFlags := assembler.CcFlags
+						oldLdFlags := linker.LdFlags
+						envMap := make(map[string]string)
+						if globalAutoBuild != nil && len(globalAutoBuild.DefaultEnvironment) > 0 {
+							for k, v := range globalAutoBuild.DefaultEnvironment {
+								envMap[k] = v
+							}
+						}
+						if localCfg != nil && len(localCfg.DepBuild.Environment) > 0 {
+							for k, v := range localCfg.DepBuild.Environment {
+								envMap[k] = v
+							}
+						}
+						if v, ok := envMap["CFLAGS"]; ok {
+							assembler.CcFlags = v
+							if strings.TrimSpace(v) == "" {
+								assembler.CcFLagsParsed = nil
+							} else {
+								assembler.CcFLagsParsed = strings.Fields(v)
+							}
+						}
+						if v, ok := envMap["LDFLAGS"]; ok {
+							linker.LdFlags = v
+						}
+						if verbose {
+							os.Stdout.WriteString("DEBUG: depIncludes for " + depName + ":\n")
+							for _, d := range depIncludes {
+								os.Stdout.WriteString("  " + d + "\n")
+							}
+						}
 						_, err := BuildDir(ctx, []string{depPath}, outArchive, debug, verbose, mode, false, noCache, noSymbolCheck, sanitize, strict, excludePatterns, depSourceFiles, nil, depIncludes, nil, jobs, "static")
+						assembler.CcFlags = oldCcFlags
+						if strings.TrimSpace(oldCcFlags) == "" {
+							assembler.CcFLagsParsed = nil
+						} else {
+							assembler.CcFLagsParsed = strings.Fields(oldCcFlags)
+						}
+						linker.LdFlags = oldLdFlags
 						if err != nil {
 							builder.logf("error", "Build failed")
 							if globalAutoBuild == nil || !globalAutoBuild.ContinueOnError {

@@ -54,4 +54,3 @@ func TestRunDurationTimeout_Timeout(t *testing.T) {
 		t.Fatalf("expected timeout")
 	}
 }
-

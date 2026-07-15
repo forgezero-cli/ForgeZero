@@ -42,5 +42,3 @@ func buildCacheKeyPlan9(hash string, debug bool, mode string) string {
 func cacheEntryPathPlan9(dir, key string) string {
 	return cacheEntryPathPlan9Fallback(dir, key)
 }
-
-

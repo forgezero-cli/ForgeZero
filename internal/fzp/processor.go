@@ -162,20 +162,20 @@ func (p *Processor) ConvertToConfig(defs map[string]string) (map[string]string, 
 
 func (p *Processor) expandMacros(value string) string {
 	if len(p.macros) == 0 {
-		return value 
+		return value
 	}
 
-	parts := strings.Fields(value) 
+	parts := strings.Fields(value)
 	if len(parts) == 1 && strings.HasPrefix(parts[0], "OUTPUT") {
 		if val, ok := p.macros[parts[0]]; ok {
-			return val 
-	}
+			return val
+		}
 	}
 	for name, replacment := range p.macros {
 		value = strings.ReplaceAll(value, name, replacment)
 	}
 
-	return value 
+	return value
 }
 
 func (p *Processor) handleDirective(line, currentPath string) (string, bool, error) {

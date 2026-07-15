@@ -20,14 +20,14 @@ package assembler
 import "testing"
 
 func TestEncoderZeroAllocs(t *testing.T) {
-    allocs := testing.AllocsPerRun(100, func() {
-        e := GetEncoder()
-        e.WriteByte(0x90)
-        e.Write([]byte{0x90, 0x90})
-        _ = e.Bytes()
-        PutEncoder(e)
-    })
-    if allocs != 0 {
-        t.Fatalf("expected 0 allocations, got %f", allocs)
-    }
+	allocs := testing.AllocsPerRun(100, func() {
+		e := GetEncoder()
+		e.WriteByte(0x90)
+		e.Write([]byte{0x90, 0x90})
+		_ = e.Bytes()
+		PutEncoder(e)
+	})
+	if allocs != 0 {
+		t.Fatalf("expected 0 allocations, got %f", allocs)
+	}
 }

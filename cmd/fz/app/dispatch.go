@@ -381,4 +381,7 @@ func SetupAssemblerAndLinker(flags *cli.Flags) {
 	}
 	linker.LdScript = flags.LdScript
 	linker.TextAddr = flags.TextAddr
+	if flags.Toolchain != "" {
+		linker.SetPreferredLinker(flags.Toolchain)
+	}
 }

@@ -18,8 +18,8 @@
 package buildcmd
 
 import (
-	"github.com/forgezero-cli/ForgeZero/cmd/fz/stdio"
 	"bytes"
+	"github.com/forgezero-cli/ForgeZero/cmd/fz/stdio"
 	"os"
 	"os/exec"
 	"path/filepath"

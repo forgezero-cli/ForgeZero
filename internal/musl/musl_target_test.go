@@ -27,14 +27,14 @@ import (
 	"testing"
 )
 
-	func TestToolchainPrepareSuccess(t *testing.T) {
+func TestToolchainPrepareSuccess(t *testing.T) {
 
 	fs.WalkDir(muslAssets, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err 
+			return err
 		}
 		t.Logf("Embed file found: %s (isDir: %t)", path, d.IsDir())
-		return nil 
+		return nil
 	})
 
 	tc := NewToolchain("x86_64")

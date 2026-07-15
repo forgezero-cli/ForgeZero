@@ -27,34 +27,34 @@ import (
 )
 
 type ioUringParams struct {
-	sqEntries    uint32
-	cqEntries    uint32
-	flags        uint32
-	wqFd         int32
-	resv         [3]uint32
-	sqOff        ioUringSqringOffsets
-	cqOff        ioUringCqringOffsets
+	sqEntries uint32
+	cqEntries uint32
+	flags     uint32
+	wqFd      int32
+	resv      [3]uint32
+	sqOff     ioUringSqringOffsets
+	cqOff     ioUringCqringOffsets
 }
 
 type ioUringSqringOffsets struct {
-	off                   uint32
-	head                  uint32
-	tail                  uint32
-	sqRingMask            uint32
-	sqEntries             uint32
-	flags                 uint32
-	oeFlags               uint32
-	reserved              uint64
+	off        uint32
+	head       uint32
+	tail       uint32
+	sqRingMask uint32
+	sqEntries  uint32
+	flags      uint32
+	oeFlags    uint32
+	reserved   uint64
 }
 
 type ioUringCqringOffsets struct {
-	off                   uint32
-	head                  uint32
-	tail                  uint32
-	cqRingMask            uint32
-	nent                  uint32
-	overflow              uint32
-	cqes                  uint64
+	off        uint32
+	head       uint32
+	tail       uint32
+	cqRingMask uint32
+	nent       uint32
+	overflow   uint32
+	cqes       uint64
 }
 
 func IsIOUringSupported() bool {

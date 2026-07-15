@@ -81,12 +81,12 @@ var ramCacheHits *utils.NumaCounters
 var ramCacheMisses *utils.NumaCounters
 
 type cacheTask struct {
-	src       string
-	obj       string
-	cacheDir  string
-	debug     bool
-	verbose   bool
-	mode      string
+	src      string
+	obj      string
+	cacheDir string
+	debug    bool
+	verbose  bool
+	mode     string
 }
 
 var cacheWriteCh chan cacheTask

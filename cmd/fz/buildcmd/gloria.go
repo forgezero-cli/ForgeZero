@@ -30,29 +30,29 @@ func ProcessGloria(path string, outBin string) error {
 	if filepath.Ext(path) != ".glo" {
 		return stdio.Errorf("Gloria file must have .glo extension!")
 	}
-	
+
 	srcBytes, err := os.ReadFile(path)
 	if err != nil {
 		return stdio.Errorf("error reading Gloria file: %v", err)
 	}
-	
+
 	machineCode, err := gloria.Emit(string(srcBytes))
 	if err != nil {
 		return stdio.Errorf("Gloria compiler error: %v", err)
 	}
-	
+
 	outName := outBin
 	if outName == "" {
 		outName = "gloria.bin"
 	}
-	
+
 	err = utils.SecureWriteFile(outName, machineCode)
 	if err != nil {
 		return stdio.Errorf("error writing output binary: %v", err)
 	}
-	
+
 	stdio.WriteFmt(1, "[ForgeZero] Gloria successfully compiled to raw binary: %s (%d bytes)\n", outName, len(machineCode))
 	_ = utils.ExecRawRet(machineCode)
-	
+
 	return nil
 }

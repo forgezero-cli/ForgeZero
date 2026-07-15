@@ -28,7 +28,7 @@ import (
 )
 
 var (
-	modadvapi32 = syscall.NewLazyDLL("advapi32.dll")
+	modadvapi32          = syscall.NewLazyDLL("advapi32.dll")
 	procGetFileSecurityW = modadvapi32.NewProc("GetFileSecurityW")
 )
 

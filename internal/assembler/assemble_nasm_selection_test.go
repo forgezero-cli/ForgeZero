@@ -81,4 +81,3 @@ func TestAsm_UseNasmRoutesToNasm(t *testing.T) {
 		t.Fatal("nasm was not invoked, expected NASM routing when UseNasm=true")
 	}
 }
-

@@ -33,20 +33,20 @@ var VersionCore = "unknown"
 var BuildDate = "unknown"
 
 func VersionText() string {
-    var b strings.Builder
-    b.Grow(180)
-    b.WriteString("ForgeZero 2.0 (core ")
-    b.WriteString(VersionCore)
-    b.WriteString(") [")
-    b.WriteString(VersionCodename)
-    b.WriteString("] built on ")
-    b.WriteString(BuildDate)
-    b.WriteString(" (")
-    b.WriteString(runtime.GOOS)
-    b.WriteByte('/')
-    b.WriteString(runtime.GOARCH)
-    b.WriteString(") · GPLv3 · (c) ForgeZero-cli")
-    return b.String()
+	var b strings.Builder
+	b.Grow(180)
+	b.WriteString("ForgeZero 2.0 (core ")
+	b.WriteString(VersionCore)
+	b.WriteString(") [")
+	b.WriteString(VersionCodename)
+	b.WriteString("] built on ")
+	b.WriteString(BuildDate)
+	b.WriteString(" (")
+	b.WriteString(runtime.GOOS)
+	b.WriteByte('/')
+	b.WriteString(runtime.GOARCH)
+	b.WriteString(") · GPLv3 · (c) ForgeZero-cli")
+	return b.String()
 }
 func OutputVersion() {
 	stdio.WriteStdout(VersionText())

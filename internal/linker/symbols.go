@@ -41,8 +41,6 @@ type SymbolInfo struct {
 	Bound string
 }
 
-
-
 var (
 	detectedTool     string
 	detectedToolOnce sync.Once
@@ -262,7 +260,6 @@ func readSymbolsWithNm(ctx context.Context, objPath string, verbose bool) ([]Sym
 	return parseNmOutputBytes(objPath, out), nil
 }
 
-
 func readSymbolsWithObjdump(ctx context.Context, objPath string, verbose bool) ([]SymbolInfo, error) {
 	out, err := utils.RunCommandOutput(ctx, "objdump", "-t", objPath)
 	if err != nil {
@@ -288,7 +285,6 @@ func readSymbolsWithReadelf(ctx context.Context, objPath string, verbose bool) (
 	}
 	return parseReadelfOutputBytes(objPath, out), nil
 }
-
 
 func parseNmOutput(objPath, text string) []SymbolInfo {
 	return parseNmOutputBytes(objPath, []byte(text))
@@ -362,9 +358,6 @@ func parseNmOutputBytes(objPath string, data []byte) []SymbolInfo {
 	}
 	return syms
 }
-
-
-
 
 func parseObjdumpOutput(objPath, text string) []SymbolInfo {
 	return parseObjdumpOutputBytes(objPath, []byte(text))
@@ -443,7 +436,6 @@ func parseObjdumpOutputBytes(objPath string, data []byte) []SymbolInfo {
 	return syms
 }
 
-
 func parseReadelfOutput(objPath, text string) []SymbolInfo {
 	return parseReadelfOutputBytes(objPath, []byte(text))
 }
@@ -515,5 +507,3 @@ func parseReadelfOutputBytes(objPath string, data []byte) []SymbolInfo {
 	}
 	return syms
 }
-
-

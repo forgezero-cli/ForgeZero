@@ -25,6 +25,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/forgezero-cli/ForgeZero/internal/drivers/scheduler"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
@@ -40,6 +41,15 @@ type LinkTarget struct {
 	Objs []string
 }
 
+func isArchiveFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".a", ".lib", ".so", ".dylib":
+		return true
+	}
+	return false
+}
+
 func LinkMultipleParallel(ctx context.Context, objFiles []string, bin string, verbose bool, mode string, noSymbolCheck bool, sanitize bool, strict bool, libs []string, jobs int) error {
 	if shouldSkipLinker() {
 		if len(objFiles) != 1 {
@@ -53,6 +63,14 @@ func LinkMultipleParallel(ctx context.Context, objFiles []string, bin string, ve
 	sort.Strings(objFiles)
 	if err := validateLinkInputs(ctx, objFiles, bin, noSymbolCheck, verbose); err != nil {
 		return err
+	}
+	for _, obj := range objFiles {
+		if isArchiveFile(obj) {
+			if verbose {
+				os.Stdout.WriteString("Archive library detected; falling back to single-stage link\n")
+			}
+			return linkMultipleSingle(ctx, objFiles, bin, verbose, mode, sanitize, strict, libs)
+		}
 	}
 	if jobs <= 0 {
 		jobs = 1
@@ -155,6 +173,21 @@ func linkMultipleSingle(ctx context.Context, objFiles []string, bin string, verb
 		}
 		linkErr = linkWithLd(ctx, objFiles, bin, verbose, libs)
 	case "c":
+
+		hasArchive := false
+		for _, o := range objFiles {
+			if isArchiveFile(o) {
+				hasArchive = true
+				break
+			}
+		}
+		if hasArchive {
+			if linkErr = utils.CheckTool(gccForTarget()); linkErr != nil {
+				return linkErr
+			}
+			linkErr = linkWithGcc(ctx, objFiles, bin, verbose, false, sanitize, strict, libs)
+			break
+		}
 		if useZig() {
 			linkErr = linkWithZig(ctx, objFiles, bin, verbose, Target, sanitize, strict, libs)
 			break

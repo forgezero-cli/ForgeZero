@@ -102,4 +102,3 @@ func cacheEntryPathPlan9(dir, key string) string {
 	pathBuffer_appendStringPlan9(&pb, key)
 	return pb.String()
 }
-

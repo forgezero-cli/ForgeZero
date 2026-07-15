@@ -50,6 +50,10 @@ var (
 	AutoBuild    bool
 )
 
+// PreferredLinker may be set by CLI/config to force a specific linker.
+// Valid values: "", "auto", "zig", "gcc", "clang", "ld", "lld", "mold".
+var PreferredLinker string
+
 var (
 	linkerOnce      sync.Once
 	preferredLinker string
@@ -63,7 +67,7 @@ var (
 		".asm": true, ".nasm": true,
 		".fasm": true,
 	}
-	targetInfo atomic.Value // stores *targetInfoState
+	targetInfo   atomic.Value // stores *targetInfoState
 	flagInitOnce sync.Once
 	toolchainVal string
 	muslVal      string
@@ -71,7 +75,7 @@ var (
 
 var ErrSkip = errors.New("skip this linker attempt")
 
-type targetInfoState struct{
+type targetInfoState struct {
 	target string
 	isWasm bool
 	isArm  bool
@@ -158,6 +162,11 @@ func useZig() bool {
 	return ZigEnabled
 }
 
+// SetPreferredLinker sets the user-specified linker preference.
+func SetPreferredLinker(s string) {
+	PreferredLinker = strings.ToLower(strings.TrimSpace(s))
+}
+
 func isWasmTarget() bool {
 	w, _, _ := getTargetInfo()
 	return w
@@ -180,7 +189,6 @@ func initFlags() {
 		}
 	})
 }
-
 
 func runLinkerCommand(ctx context.Context, verbose bool, name string, args []string) (string, error) {
 	if name == "" {

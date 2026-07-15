@@ -200,7 +200,7 @@ func (db *DepBuilder) Build(outArchive string, excludePatterns []string, jobs in
 	db.logf("info", "Collecting sources from: "+db.depPath)
 
 	srcDirs := []string{filepath.Join(db.depPath, "src"), filepath.Join(db.depPath, "lib")}
-	
+
 	hasSourceDir := false
 	for _, srcDir := range srcDirs {
 		if info, err := os.Stat(srcDir); err == nil && info.IsDir() {

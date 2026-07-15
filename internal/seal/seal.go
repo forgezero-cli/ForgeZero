@@ -35,7 +35,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-
 var sealed bool
 var combinedSeal [32]byte
 var allowed sync.Map // map[string]struct{}
@@ -45,7 +44,6 @@ var stateMu sync.RWMutex
 var globalState [32]byte
 var decoy atomic.Bool
 var machineIDPath = "/etc/machine-id"
-
 
 func init() {
 	buf, err := syscall.Mmap(-1, 0, 1<<20, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)

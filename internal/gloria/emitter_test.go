@@ -21,8 +21,8 @@
 package gloria
 
 import (
-"golang.org/x/sys/unix"
 	"bytes"
+	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"syscall"

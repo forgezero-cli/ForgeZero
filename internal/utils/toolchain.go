@@ -19,8 +19,8 @@ package utils
 
 import (
 	"context"
-	"flag"
 	"errors"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"

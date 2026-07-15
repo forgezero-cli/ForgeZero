@@ -100,7 +100,7 @@ func main() {
 	if err := os.WriteFile(srcPath, []byte(src), 0644); err != nil {
 		t.Fatalf("write mock source: %v", err)
 	}
-	
+
 	cmd := exec.Command("go", "build", "-o", destPath, srcPath)
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -168,7 +168,7 @@ func main() {
 	if err := os.WriteFile(srcPath, []byte(src), 0644); err != nil {
 		t.Fatalf("write mock source: %v", err)
 	}
-	
+
 	cmd := exec.Command("go", "build", "-o", destPath, srcPath)
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -180,7 +180,7 @@ func TestEnterpriseIsolation(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go compiler not available")
 	}
-	
+
 	dir := t.TempDir()
 	_, err := writeDummySource(dir)
 	if err != nil {
@@ -202,7 +202,7 @@ func TestEnterpriseIsolation(t *testing.T) {
 	}
 	nasmPath := filepath.Join(toolBin, "nasm")
 	ldPath := filepath.Join(toolBin, "ld")
-	
+
 	buildMockAssembler(t, nasmPath)
 	buildMockLinker(t, ldPath)
 

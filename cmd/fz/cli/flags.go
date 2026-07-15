@@ -24,7 +24,7 @@ import (
 
 func SetupFlags() *Flags {
 	f := &Flags{}
-	
+
 	flag.BoolVar(&f.Watch, "watch", false, "")
 	flag.BoolVar(&f.Sanitize, "sanitize", true, "")
 	flag.BoolVar(&f.NoSanitize, "no-sanitize", false, "")
@@ -48,6 +48,7 @@ func SetupFlags() *Flags {
 	flag.BoolVar(&f.LibMode, "lib", false, "build static library (archive)")
 	flag.StringVar(&f.Target, "target", "x86_64-linux-gnu", "target triple")
 	flag.StringVar(&f.Toolchain, "toolchain", "auto", "toolchain to use: auto or zig")
+	flag.StringVar(&f.Toolchain, "linker", "", "force linker: auto, zig, gcc, clang, ld, lld, mold (overrides auto)")
 	flag.StringVar(&f.Isolation, "isolation", "none", "isolation level: none, standard, strict")
 	flag.BoolVar(&f.GenCompileCommands, "compile-commands", false, "generate compile_commands.json for LSP and exit")
 	flag.BoolVar(&f.Shared, "shared", false, "build shared library instead of executable")
@@ -92,79 +93,78 @@ func SetupFlags() *Flags {
 	flag.BoolVar(&f.IsoHybrid, "iso-hybrid", false, "make the generated ISO hybrid (BIOS+USB bootable)")
 	flag.BoolVar(&f.RollBackFlag, "rollback", false, "rollback version to old or stable(down to 1-2)")
 	flag.StringVar(&f.RollBackToFlag, "rollback-to", "", "rollback-to needs version(e.g fz --rollback-to 5.1.0)")
-	
+
 	flag.Usage = func() {
 		os.Stderr.WriteString("Run " + os.Args[0] + " -help for full usage.\n")
 		os.Exit(2)
 	}
 
 	flag.Parse()
-	
+
 	return f
 }
 
 type Flags struct {
-	Watch               bool
-	Sanitize            bool
-	NoSanitize          bool
-	Strict              bool
-	JSONOutput          bool
-	ShowVersion         bool
-	ShortVersion        bool
-	ShowHelp            bool
-	ShowMan             bool
-	Format              string
-	InitMode            bool
-	LdScript            string
-	TextAddr            string
-	ShellMode           bool
-	Jobs                int
-	UpdateMode          bool
-	ContributeMode      bool
-	BuildType           string
-	LibMode             bool
-	Target              string
-	Toolchain           string
-	Isolation           string
-	GenCompileCommands  bool
-	Shared              bool
-	CcFlags             string
-	LdFlags             string
-	ForceFASM           bool
-	UseNasm             bool
+	Watch              bool
+	Sanitize           bool
+	NoSanitize         bool
+	Strict             bool
+	JSONOutput         bool
+	ShowVersion        bool
+	ShortVersion       bool
+	ShowHelp           bool
+	ShowMan            bool
+	Format             string
+	InitMode           bool
+	LdScript           string
+	TextAddr           string
+	ShellMode          bool
+	Jobs               int
+	UpdateMode         bool
+	ContributeMode     bool
+	BuildType          string
+	LibMode            bool
+	Target             string
+	Toolchain          string
+	Isolation          string
+	GenCompileCommands bool
+	Shared             bool
+	CcFlags            string
+	LdFlags            string
+	ForceFASM          bool
+	UseNasm            bool
 
-	RawFlag             bool
-	ForceLdFlag         bool
-	AsmPath             string
-	CcPath              string
-	DirPath             string
-	OutBin              string
-	OutObj              string
-	Mode                string
-	Debug               bool
-	Verbose             bool
-	KeepObj             bool
-	NoCache             bool
-	NoSymbolCheck       bool
-	VerifySignatures    bool
-	ConfigPath          string
-	ConfigFZPPath       string
-	SetOverrides        []string
-	PluginPath          string
-	Clean               bool
-	GloriaPath          string
-	AutoBuild           bool
-	MuslOpt             string
-	ProfileFlag         string
-	AlexMode            bool
-	PyzeroFlag          bool
-	OldReverseFile      string
-	ISO                 ISOFlag
-	IsoOut              string
-	IsoHybrid           bool
-	SourcePath          string
+	RawFlag          bool
+	ForceLdFlag      bool
+	AsmPath          string
+	CcPath           string
+	DirPath          string
+	OutBin           string
+	OutObj           string
+	Mode             string
+	Debug            bool
+	Verbose          bool
+	KeepObj          bool
+	NoCache          bool
+	NoSymbolCheck    bool
+	VerifySignatures bool
+	ConfigPath       string
+	ConfigFZPPath    string
+	SetOverrides     []string
+	PluginPath       string
+	Clean            bool
+	GloriaPath       string
+	AutoBuild        bool
+	MuslOpt          string
+	ProfileFlag      string
+	AlexMode         bool
+	PyzeroFlag       bool
+	OldReverseFile   string
+	ISO              ISOFlag
+	IsoOut           string
+	IsoHybrid        bool
+	SourcePath       string
 
-	RollBackFlag 		  bool 	 // fz --rollback 
-	RollBackToFlag   string // fz --rollback-to <version>
+	RollBackFlag   bool   // fz --rollback
+	RollBackToFlag string // fz --rollback-to <version>
 }
-

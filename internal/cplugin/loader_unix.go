@@ -1,4 +1,3 @@
-
 //go:build (freebsd || openbsd || netbsd || dragonfly || linux || darwin) && cgo
 // +build freebsd openbsd netbsd dragonfly linux darwin
 // +build cgo
