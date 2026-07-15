@@ -41,14 +41,14 @@ func SetupFlags() *Flags {
 	flag.StringVar(&f.LdScript, "T", "", "linker script file (passed to ld via -T)")
 	flag.StringVar(&f.TextAddr, "Ttext", "", "set text segment address (passed to ld)")
 	flag.BoolVar(&f.ShellMode, "shell", false, "run interactive shell")
-	flag.IntVar(&f.Jobs, "j", 1, "number of parallel jobs (0 = auto = CPU cores)")
+	flag.IntVar(&f.Jobs, "j", 0, "number of parallel jobs (0 = auto = CPU cores)")
 	flag.BoolVar(&f.UpdateMode, "update", false, "update fz to the latest version")
 	flag.BoolVar(&f.ContributeMode, "contribute", false, "generate CONTRIBUTING_USER.md and run contribute guidance")
 	flag.StringVar(&f.BuildType, "type", "executable", "build type: executable (default) or static")
 	flag.BoolVar(&f.LibMode, "lib", false, "build static library (archive)")
 	flag.StringVar(&f.Target, "target", "x86_64-linux-gnu", "target triple")
 	flag.StringVar(&f.Toolchain, "toolchain", "auto", "toolchain to use: auto or zig")
-	flag.StringVar(&f.Toolchain, "linker", "", "force linker: auto, zig, gcc, clang, ld, lld, mold (overrides auto)")
+	flag.StringVar(&f.Linker, "linker", "", "force linker: auto, zig, gcc, clang, ld, lld, mold (overrides auto)")
 	flag.StringVar(&f.Isolation, "isolation", "none", "isolation level: none, standard, strict")
 	flag.BoolVar(&f.GenCompileCommands, "compile-commands", false, "generate compile_commands.json for LSP and exit")
 	flag.BoolVar(&f.Shared, "shared", false, "build shared library instead of executable")
@@ -126,6 +126,7 @@ type Flags struct {
 	LibMode            bool
 	Target             string
 	Toolchain          string
+	Linker             string
 	Isolation          string
 	GenCompileCommands bool
 	Shared             bool

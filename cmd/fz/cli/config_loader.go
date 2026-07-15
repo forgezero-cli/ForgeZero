@@ -94,6 +94,10 @@ func ApplyConfigToFlags(cfg *config.Config, flags *Flags) {
 
 	utils.SetToolchainPolicy(cfg.Toolchain)
 
+	if cfg.Linker != "" {
+		flags.Linker = cfg.Linker
+	}
+
 	if flags.Verbose && !flags.JSONOutput {
 		stdio.WriteFmt(1, "Profile: %s\n", flags.ProfileFlag)
 		stdio.WriteFmt(1, "Loaded config from %s\n", func() string {

@@ -50,8 +50,6 @@ var (
 	AutoBuild    bool
 )
 
-// PreferredLinker may be set by CLI/config to force a specific linker.
-// Valid values: "", "auto", "zig", "gcc", "clang", "ld", "lld", "mold".
 var PreferredLinker string
 
 var (
@@ -162,7 +160,6 @@ func useZig() bool {
 	return ZigEnabled
 }
 
-// SetPreferredLinker sets the user-specified linker preference.
 func SetPreferredLinker(s string) {
 	PreferredLinker = strings.ToLower(strings.TrimSpace(s))
 }

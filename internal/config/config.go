@@ -239,6 +239,7 @@ type Config struct {
 	OutObj             string            `yaml:"out_obj" toml:"out_obj"`
 	Mode               string            `yaml:"mode" toml:"mode"`
 	Toolchain          string            `yaml:"toolchain" toml:"toolchain"`
+	Linker             string            `yaml:"linker" toml:"linker"`
 	Debug              bool              `yaml:"debug" toml:"debug"`
 	Verbose            bool              `yaml:"verbose" toml:"verbose"`
 	KeepObj            bool              `yaml:"keep_obj" toml:"keep_obj"`
