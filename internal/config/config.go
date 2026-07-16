@@ -251,6 +251,8 @@ type Config struct {
 	Scripts            []string          `yaml:"scripts" toml:"scripts"`
 	Libs               []string          `yaml:"libs" toml:"libs"`
 	AutoBuildDeps      bool              `yaml:"auto_build_deps" toml:"auto_build_deps"`
+	ParseMakefile      bool              `yaml:"parse_makefile" toml:"parse_makefile"`
+	ConfigOnly         bool              `yaml:"config_only" toml:"config_only"`
 	IgnoreFile         string            `yaml:"ignore_file" toml:"ignore_file"`
 	AuditIgnore        []string          `yaml:"audit_ignore" toml:"audit_ignore"`
 	ToolChecksums      map[string]string `yaml:"tool_checksums" toml:"tool_checksums"`
@@ -981,6 +983,12 @@ func (c *Config) Merge(other *Config) {
 	}
 	if other.Isolation != "" {
 		c.Isolation = other.Isolation
+	}
+	if other.ParseMakefile {
+		c.ParseMakefile = true
+	}
+	if other.ConfigOnly {
+		c.ConfigOnly = true
 	}
 	if len(other.Exclude) > 0 {
 		c.Exclude = mergeStrings(c.Exclude, other.Exclude)
