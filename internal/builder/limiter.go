@@ -25,7 +25,14 @@ import (
 	"strings"
 )
 
-const compileWorkerMemMB = 1024
+var compileWorkerMemMB = func() uint64 {
+	if v := os.Getenv("FZ_COMPILE_WORKER_MEM_MB"); v != "" {
+		if iv, err := strconv.ParseUint(v, 10, 64); err == nil && iv > 0 {
+			return iv
+		}
+	}
+	return 1024
+}()
 
 func AdjustJobs(requested int) int {
 	if requested <= 0 {
