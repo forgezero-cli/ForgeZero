@@ -28,6 +28,7 @@ import (
 	"github.com/forgezero-cli/ForgeZero/cmd/fz/stdio"
 	"github.com/forgezero-cli/ForgeZero/cmd/fz/subcmd"
 	"github.com/forgezero-cli/ForgeZero/internal/assembler"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
 	initpkg "github.com/forgezero-cli/ForgeZero/internal/init"
 	"github.com/forgezero-cli/ForgeZero/internal/linker"
 	"github.com/forgezero-cli/ForgeZero/internal/scripts"
@@ -228,6 +229,19 @@ func main() {
 		BuildType:     flags.BuildType,
 		JSONOutput:    flags.JSONOutput,
 		MuslCtx:       muslCtx,
+	}
+
+	if flags.ParseMakefile {
+		if cfg == nil {
+			cfg = &config.Config{}
+		}
+		cfg.ParseMakefile = true
+	}
+	if flags.ConfigOnly {
+		if cfg == nil {
+			cfg = &config.Config{}
+		}
+		cfg.ConfigOnly = true
 	}
 
 	result := buildcmd.Build(ctx, buildCtx, cfg)
