@@ -1,7 +1,7 @@
 /*
  *   Copyright (c) 2026 ForgeZero-cli
  *
-			if verbose {
+ *   This program is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
@@ -13,7 +13,7 @@
  *
  *   You should have received a copy of the GNU General Public License
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
+ */
 
 package builder
 
@@ -70,6 +70,117 @@ func supportedSourceInclude(ext string) bool {
 	return false
 }
 
+func targetOSFromTriple(target string) string {
+	t := strings.ToLower(strings.TrimSpace(target))
+	if t == "" {
+		return ""
+	}
+	switch {
+	case strings.Contains(t, "windows"):
+		return "windows"
+	case strings.Contains(t, "darwin") || strings.Contains(t, "apple"):
+		return "darwin"
+	case strings.Contains(t, "freebsd"):
+		return "freebsd"
+	case strings.Contains(t, "netbsd"):
+		return "netbsd"
+	case strings.Contains(t, "openbsd"):
+		return "openbsd"
+	case strings.Contains(t, "android"):
+		return "android"
+	case strings.Contains(t, "solaris") || strings.Contains(t, "illumos") || strings.Contains(t, "sunos"):
+		return "solaris"
+	case strings.Contains(t, "linux"):
+		return "linux"
+	case strings.Contains(t, "wasi") || strings.Contains(t, "wasm"):
+		return "wasm"
+	default:
+		return ""
+	}
+}
+
+func configSpecifiesBuild(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	if cfg.ConfigOnly || cfg.ParseMakefile {
+		return true
+	}
+	if cfg.SourceFile != "" || cfg.SourceDir != "" || len(cfg.SourceDirs) > 0 {
+		return true
+	}
+	if len(cfg.SourceFiles) > 0 || len(cfg.BuildRules) > 0 {
+		return true
+	}
+	return false
+}
+
+func skipPlatformSource(path, targetOS string) bool {
+	normalized := strings.ToLower(filepath.ToSlash(path))
+
+	if strings.Contains(normalized, "ngx_linux_") {
+		return targetOS != "linux"
+	}
+	if strings.Contains(normalized, "ngx_darwin_") {
+		return targetOS != "darwin"
+	}
+	if strings.Contains(normalized, "ngx_freebsd_") {
+		return targetOS != "freebsd"
+	}
+	if strings.Contains(normalized, "ngx_openbsd_") {
+		return targetOS != "openbsd"
+	}
+	if strings.Contains(normalized, "ngx_netbsd_") {
+		return targetOS != "netbsd"
+	}
+	if strings.Contains(normalized, "ngx_solaris_") || strings.Contains(normalized, "ngx_sunos_") {
+		return targetOS != "solaris"
+	}
+	if strings.Contains(normalized, "/os/win32/") || strings.Contains(normalized, "/win32/") || strings.Contains(normalized, "/windows/") || strings.Contains(normalized, "ngx_win32_") {
+		return targetOS != "windows"
+	}
+	if strings.Contains(normalized, "/os/unix/") || strings.Contains(normalized, "/unix/") || strings.Contains(normalized, "/posix/") {
+		return targetOS == "windows"
+	}
+	if strings.Contains(normalized, "/os/darwin/") || strings.Contains(normalized, "/darwin/") || strings.Contains(normalized, "/macos/") || strings.Contains(normalized, "/osx/") {
+		return targetOS != "darwin"
+	}
+	if strings.Contains(normalized, "/freebsd/") {
+		return targetOS != "freebsd"
+	}
+	if strings.Contains(normalized, "/netbsd/") {
+		return targetOS != "netbsd"
+	}
+	if strings.Contains(normalized, "/openbsd/") {
+		return targetOS != "openbsd"
+	}
+	if strings.Contains(normalized, "/android/") {
+		return targetOS != "android"
+	}
+	if strings.Contains(normalized, "/solaris/") || strings.Contains(normalized, "/sunos/") || strings.Contains(normalized, "/illumos/") {
+		return targetOS != "solaris"
+	}
+	if strings.Contains(normalized, "/wasi/") {
+		return targetOS != "wasm"
+	}
+	return false
+}
+
+func filterPlatformSpecificSources(srcFiles []string, target string) []string {
+	targetOS := targetOSFromTriple(target)
+	if targetOS == "" {
+		return srcFiles
+	}
+	filtered := make([]string, 0, len(srcFiles))
+	for _, src := range srcFiles {
+		if skipPlatformSource(src, targetOS) {
+			continue
+		}
+		filtered = append(filtered, src)
+	}
+	return filtered
+}
+
 func findIncludedSourceFiles(srcFiles []string) map[string]struct{} {
 	included := make(map[string]struct{})
 	for _, src := range srcFiles {
@@ -97,6 +208,7 @@ func findIncludedSourceFiles(srcFiles []string) map[string]struct{} {
 			for i < len(data) && (data[i] == ' ' || data[i] == '\t') {
 				i++
 			}
+
 			if i >= len(data) || data[i] != '"' {
 				pos = start + len("include")
 				continue
@@ -183,6 +295,52 @@ func discoverDependencyIncludeDirs(rootDir string) []string {
 	return result
 }
 
+func isHeaderFile(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	return ext == ".h" || ext == ".hpp"
+}
+
+func discoverSourceIncludeDirs(rootDir string) []string {
+	srcDir := filepath.Join(rootDir, "src")
+	if info, err := os.Stat(srcDir); err != nil || !info.IsDir() {
+		return nil
+	}
+
+	var result []string
+	addDir := func(path string) {
+		if path == "" {
+			return
+		}
+		for _, existing := range result {
+			if existing == path {
+				return
+			}
+		}
+		result = append(result, path)
+	}
+
+	_ = filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || !info.IsDir() {
+			return nil
+		}
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return nil
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			if isHeaderFile(entry.Name()) {
+				addDir(path)
+				break
+			}
+		}
+		return nil
+	})
+	return result
+}
+
 func RunHooks(ctx context.Context, hooks []config.Hook) error {
 	for _, h := range hooks {
 		if h.Cmd == "" {
@@ -241,7 +399,18 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 
 func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int, buildType string) (*BuildResult, error) {
 	ApplyHostDetection(cfg)
+	localCfgLoaded := false
+	if len(dirs) > 0 {
+		localPaths := []string{filepath.Join(dirs[0], "fz.toml"), filepath.Join(dirs[0], ".fz.toml")}
+		for _, lp := range localPaths {
+			if info, err := os.Stat(lp); err == nil && !info.IsDir() {
+				localCfgLoaded = true
+				break
+			}
+		}
+	}
 	jobs = AdjustJobs(jobs)
+	collectedDepLdFlags := make([]string, 0)
 
 	if len(dirs) == 0 {
 		dirs = []string{"."}
@@ -296,70 +465,159 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		return nil, errors.New("cannot create output directory: " + err.Error())
 	}
 
+	if len(dirs) > 0 {
+		cfgPath := filepath.Join(dirs[0], "configure.fz")
+		if info, err := os.Stat(cfgPath); err == nil && !info.IsDir() {
+			data, _ := os.ReadFile(cfgPath)
+			proc := fzp.NewProcessor(fzp.Options{RootDir: dirs[0]})
+			if defs, err := proc.ParseDefinitions(string(data)); err == nil {
+				if cfg == nil {
+					cfg = &config.Config{}
+				}
+				output := cfg.Output
+				if v, ok := defs["OUTPUT"]; ok && v != "" {
+					output = v
+				}
+				if output == "" {
+					output = outBin
+				}
+				action := "make"
+				if v, ok := defs["ACTION"]; ok && strings.TrimSpace(v) != "" {
+					action = v
+				} else if v, ok := defs["MAKECMD"]; ok && strings.TrimSpace(v) != "" {
+					action = v
+				}
+				rule := config.BuildRule{
+					Name:    "configure.fz:build",
+					Action:  action,
+					Inputs:  nil,
+					Outputs: []string{output},
+				}
+				cfg.BuildRules = append([]config.BuildRule{rule}, cfg.BuildRules...)
+			}
+		}
+	}
+
 	if cfg != nil && len(cfg.BuildRules) > 0 {
 		return runBuildRules(ctx, cfg, verbose, jobs)
 	}
 
+	if !localCfgLoaded {
+		defaultEx := []string{"t/*", "test/*", "tests/*", "unit-tests/*", "tools/*", "examples/*"}
+		exclude = append(exclude, defaultEx...)
+	}
+
 	var srcFiles []string
 	autoDiscoveredSources := false
+
 	if len(sourceFiles) > 0 {
 		srcFiles = append(srcFiles, sourceFiles...)
-	} else {
-		autoDiscoveredSources = true
-		for _, dir := range dirs {
-			err := utils.Walk(dir, func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					return err
+	} else if len(dirs) > 0 {
+		if localCfgLoaded && cfg != nil && len(cfg.SourceFiles) > 0 {
+			for _, sf := range cfg.SourceFiles {
+				if !filepath.IsAbs(sf) {
+					srcFiles = append(srcFiles, filepath.Join(dirs[0], sf))
+				} else {
+					srcFiles = append(srcFiles, sf)
 				}
-				if strings.Contains(filepath.Base(path), "cli_commands") && verbose {
-					os.Stdout.WriteString("DEBUG: Walking cli_commands path: " + path + "\n")
+			}
+		}
+
+		if cfg != nil && cfg.ConfigOnly && len(srcFiles) == 0 {
+			return nil, errors.New("config-only mode requires SourceFiles or BuildRules in fz.toml or configure.fz")
+		}
+
+		if cfg != nil && cfg.ParseMakefile && !cfg.ConfigOnly {
+			if discoveredSources, err := discoverMakefileSources(dirs[0]); err == nil && len(discoveredSources) > 0 {
+				srcFiles = append(srcFiles, discoveredSources...)
+				autoDiscoveredSources = true
+			}
+		}
+
+		if len(srcFiles) == 0 {
+			autoDiscoveredSources = true
+			walkRoots := dirs
+			if !localCfgLoaded {
+				walkRoots = []string{}
+				for _, d := range dirs {
+					walkRoots = append(walkRoots, d)
+					cands := []string{"src", "include", "lib", "cmd", filepath.Join("src", "core")}
+					for _, s := range cands {
+						p := filepath.Join(d, s)
+						if info, err := os.Stat(p); err == nil && info.IsDir() {
+							walkRoots = append(walkRoots, p)
+						}
+					}
 				}
-				if info.IsDir() {
-					name := info.Name()
-					shouldSkip := name == ".git" || name == ".svn" || name == "node_modules" || matchExclude(path, exclude)
-					if !shouldSkip && ignoreMatcher != nil {
+			}
+			for _, dir := range walkRoots {
+				err := utils.Walk(dir, func(path string, info os.FileInfo, err error) error {
+					if err != nil {
+						return err
+					}
+					if info.IsDir() {
+						name := info.Name()
+						shouldSkip := name == ".git" || name == ".svn" || name == "node_modules" || matchExclude(path, exclude)
+						if !localCfgLoaded {
+							if name == "t" || name == "test" || name == "tests" || name == "unit-tests" || name == "tools" || name == "examples" || name == "po" || name == "trace2" {
+								shouldSkip = true
+							}
+						}
+						if !shouldSkip && ignoreMatcher != nil {
+							if m, ok := ignoreMatcher.(*ignore.IgnoreMatcher); ok && m != nil {
+								shouldSkip = m.Match(matcherPath(path))
+							}
+						}
+						if shouldSkip {
+							if verbose {
+								os.Stdout.WriteString("Skipping directory tree: " + path + "\n")
+							}
+							return filepath.SkipDir
+						}
+						return nil
+					}
+					shouldExclude := matchExclude(path, exclude)
+					if !shouldExclude && ignoreMatcher != nil {
 						if m, ok := ignoreMatcher.(*ignore.IgnoreMatcher); ok && m != nil {
-							shouldSkip = m.Match(matcherPath(path))
+							p := matcherPath(path)
+							shouldExclude = m.Match(p)
+							if verbose && shouldExclude {
+								os.Stdout.WriteString("Ignored by matcher: " + path + "\n")
+							} else if verbose && strings.Contains(filepath.Base(path), "cli_commands") {
+								os.Stdout.WriteString("NOT matched by ignore: " + path + "\n")
+							}
 						}
 					}
-					if shouldSkip {
+					if shouldExclude {
 						if verbose {
-							os.Stdout.WriteString("Skipping directory tree: " + path + "\n")
+							os.Stdout.WriteString("Excluding file: " + path + "\n")
 						}
-						return filepath.SkipDir
+						return nil
+					}
+					ext := strings.ToLower(filepath.Ext(path))
+					if utils.SupportedExtension(ext) {
+						srcFiles = append(srcFiles, path)
 					}
 					return nil
+				})
+				if err != nil {
+					return nil, errors.New("walk error in " + dir + ": " + err.Error())
 				}
-				shouldExclude := matchExclude(path, exclude)
-				if !shouldExclude && ignoreMatcher != nil {
-					if m, ok := ignoreMatcher.(*ignore.IgnoreMatcher); ok && m != nil {
-						p := matcherPath(path)
-						shouldExclude = m.Match(p)
-						if verbose && shouldExclude {
-							os.Stdout.WriteString("Ignored by matcher: " + path + "\n")
-						} else if verbose && strings.Contains(filepath.Base(path), "cli_commands") {
-							os.Stdout.WriteString("NOT matched by ignore: " + path + "\n")
-						}
-					}
-				}
-				if shouldExclude {
-					if verbose {
-						os.Stdout.WriteString("Excluding file: " + path + "\n")
-					}
-					return nil
-				}
-				ext := strings.ToLower(filepath.Ext(path))
-				if utils.SupportedExtension(ext) {
-					srcFiles = append(srcFiles, path)
-				}
-				return nil
-			})
-			if err != nil {
-				return nil, errors.New("walk error in " + dir + ": " + err.Error())
 			}
 		}
 	}
+
 	if autoDiscoveredSources && len(srcFiles) > 0 {
+		if cfg != nil {
+			target := cfg.Target
+			if target == "" {
+				target = assembler.Target
+			}
+			filtered := filterPlatformSpecificSources(srcFiles, target)
+			if len(filtered) != len(srcFiles) {
+				srcFiles = filtered
+			}
+		}
 		included := findIncludedSourceFiles(srcFiles)
 		if len(included) > 0 {
 			filtered := make([]string, 0, len(srcFiles))
@@ -393,6 +651,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 			}
 		}
 	}
+
 	objDir := joinPath(filepath.Dir(outBin), ".fz_objs")
 	generatedIncludeDir := joinPath(objDir, "include")
 	if err := utils.SecureMkdirAll(objDir); err != nil {
@@ -430,6 +689,57 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 	}
 	if len(dirs) > 0 {
 		includeDirs = append(includeDirs, discoverDependencyIncludeDirs(dirs[0])...)
+	}
+
+	if len(dirs) > 0 {
+		cand := []string{filepath.Join(dirs[0], "objs"), filepath.Join(dirs[0], "auto")}
+		for _, c := range cand {
+			if info, err := os.Stat(c); err == nil && info.IsDir() {
+				if a, err := filepath.Abs(c); err == nil {
+					includeDirs = append(includeDirs, a)
+				} else {
+					includeDirs = append(includeDirs, c)
+				}
+			}
+		}
+	}
+
+	if len(dirs) > 0 {
+		cands := []string{dirs[0], filepath.Join(dirs[0], "src"), filepath.Join(dirs[0], "src", "core")}
+		for _, c := range cands {
+			if info, err := os.Stat(c); err == nil && info.IsDir() {
+				if a, err := filepath.Abs(c); err == nil {
+					includeDirs = append(includeDirs, a)
+				} else {
+					includeDirs = append(includeDirs, c)
+				}
+			}
+		}
+	}
+
+	if len(dirs) > 0 && cfg != nil && cfg.ParseMakefile {
+		discoveredIncludes, discoveredCflags, discoveredLdflags := discoverMakefileSettings(dirs[0])
+		if len(discoveredIncludes) > 0 {
+			includeDirs = append(includeDirs, discoveredIncludes...)
+		}
+		if len(discoverSourceIncludeDirs(dirs[0])) > 0 {
+			includeDirs = append(includeDirs, discoverSourceIncludeDirs(dirs[0])...)
+		}
+		if strings.TrimSpace(discoveredCflags) != "" {
+			if assembler.CcFlags == "" {
+				assembler.CcFlags = discoveredCflags
+			} else {
+				assembler.CcFlags = joinFlags(assembler.CcFlags, discoveredCflags)
+			}
+			assembler.CcFLagsParsed = strings.Fields(assembler.CcFlags)
+		}
+		if strings.TrimSpace(discoveredLdflags) != "" {
+			if linker.LdFlags == "" {
+				linker.LdFlags = discoveredLdflags
+			} else {
+				linker.LdFlags = joinFlags(linker.LdFlags, discoveredLdflags)
+			}
+		}
 	}
 
 	var globalAutoBuild *config.AutoBuildConfig
@@ -584,6 +894,9 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 						}
 						if v, ok := envMap["LDFLAGS"]; ok {
 							linker.LdFlags = v
+							if strings.TrimSpace(v) != "" {
+								collectedDepLdFlags = append(collectedDepLdFlags, v)
+							}
 						}
 						if verbose {
 							os.Stdout.WriteString("DEBUG: depIncludes for " + depName + ":\n")
@@ -869,20 +1182,16 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		objFiles[i] = p.obj
 	}
 
-	collectedDepLdFlags := make([]string, 0)
-
 	if len(depsArchives) > 0 {
 		if verbose {
 			os.Stdout.WriteString("Appending " + strconv.Itoa(len(depsArchives)) + " dependency archives: " + strings.Join(depsArchives, ", ") + "\n")
 		}
-		// ensure deps archives are safe to read: copy symlinks into obj dir and collect LDFLAGS
 		depsObjDir := filepath.Join(objDir, "deps")
 		_ = os.MkdirAll(depsObjDir, 0o755)
 		prepared := make([]string, 0, len(depsArchives))
 		for _, a := range depsArchives {
 			info, err := os.Lstat(a)
 			if err != nil {
-				// fallback: add as-is
 				prepared = append(prepared, a)
 				continue
 			}
@@ -897,9 +1206,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 				}
 				src := target
 				dst := filepath.Join(depsObjDir, filepath.Base(a))
-				// avoid clobbering existing file
 				if _, err := os.Stat(dst); err == nil {
-					// add numeric suffix
 					for i := 1; ; i++ {
 						try := dst + "." + strconv.Itoa(i)
 						if _, err := os.Stat(try); os.IsNotExist(err) {
@@ -924,11 +1231,9 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 			prepared = append(prepared, a)
 		}
 
-		// Append prepared archives to object list
 		objFiles = append(objFiles, prepared...)
 	}
 
-	// If any per-dep LDFLAGS were collected, inject into linker for final link
 	oldGlobalLdFlags := linker.LdFlags
 	if len(collectedDepLdFlags) > 0 {
 		linker.LdFlags = strings.TrimSpace(oldGlobalLdFlags + " " + strings.Join(collectedDepLdFlags, " "))
