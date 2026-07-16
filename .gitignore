@@ -1,4 +1,6 @@
 # After delete
+nginx
+git
 redis/
 RELEASE.md
 TODO
@@ -57,6 +59,7 @@ cmake_bench/
 super.sh
 .venv
 // After remove
+.fz_objs/
 CONTRIBUTING_USER.md
 blake3.manifest
 .fzignore
