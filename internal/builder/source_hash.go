@@ -41,6 +41,15 @@ func refreshSourceHashes(dirs []string) error {
 			if d.IsDir() {
 				return nil
 			}
+			if d.Type()&os.ModeSymlink != 0 {
+				fi, serr := os.Stat(path)
+				if serr != nil {
+					return serr
+				}
+				if fi.IsDir() {
+					return nil
+				}
+			}
 			f, err := os.Open(path)
 			if err != nil {
 				return err
