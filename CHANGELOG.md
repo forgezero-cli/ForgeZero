@@ -2,6 +2,34 @@
 
 # UNRELEASED
 
+## [6.0.0] - 2026-07-16
+
+### Added
+- **`--config-only` CLI flag** – restricts build configuration to explicit `fz.toml`/`configure.fz` settings, skipping auto-discovery and Makefile parsing for better control in complex build environments.  
+  ([5d2fed1](https://github.com/forgezero-cli/ForgeZero/commit/5d2fed1), [5d5519c](https://github.com/forgezero-cli/ForgeZero/commit/5d5519c), [0569c1d](https://github.com/forgezero-cli/ForgeZero/commit/0569c1d))
+- **`configure.fz` support** – build rules can now be defined via `configure.fz` files with `OUTPUT`, `ACTION`, and `MAKECMD` variables, providing a lightweight alternative to full TOML configuration.  
+  ([0569c1d](https://github.com/forgezero-cli/ForgeZero/commit/0569c1d))
+- **Makefile parsing** – experimental Makefile parsing for source discovery via `--parse-makefile` flag, enabling incremental migration from Makefile-based projects.  
+  ([b0bf0bd](https://github.com/forgezero-cli/ForgeZero/commit/b0bf0bd))
+- **`FZ_COMPILE_WORKER_MEM_MB` environment variable** – allows overriding the compile worker memory limit (default 1024MB) for fine-tuned resource control.  
+  ([0215d95](https://github.com/forgezero-cli/ForgeZero/commit/0215d95))
+
+### Changed
+- **Config propagation** – `ParseMakefile` setting from config now properly propagates to CLI flags during config loading.  
+  ([f668ac6](https://github.com/forgezero-cli/ForgeZero/commit/f668ac6))
+- **Symlink handling** – source hash calculation now skips symlinks that point to directories, preventing hash errors.  
+  ([967e5e3](https://github.com/forgezero-cli/ForgeZero/commit/967e5e3))
+- **State display** – removed duplicate `Debug` output line in `cmdShow` for cleaner output.  
+  ([6f1ea0d](https://github.com/forgezero-cli/ForgeZero/commit/6f1ea0d))
+
+### Fixed
+- **Config-only validation** – config-only mode now properly errors when no `SourceFiles` or `BuildRules` are provided, preventing ambiguous builds.  
+  ([f8fd775](https://github.com/forgezero-cli/ForgeZero/commit/f8fd775))
+
+### Build
+- Removed binary files (`dump.rdb`, `fz`, `redis-server`) from repository.  
+  ([394d90c](https://github.com/forgezero-cli/ForgeZero/commit/394d90c), [795dd80](https://github.com/forgezero-cli/ForgeZero/commit/795dd80), [b0bf0bd](https://github.com/forgezero-cli/ForgeZero/commit/b0bf0bd))
+
 ## [6.0.0] - 2026-07-15
 
 ### Added
@@ -339,3 +367,16 @@ bf82e89 feat(config): add FZP config loading functions
 5e88481 style: add copyright header to test file
 b7928c0 feat: add root directory support for dependency scanning
 1edd34c feat: add auto-dependency builder and error types
+5d2fed1 feat: add ConfigOnly flag to CLI
+5d5519c feat: propagate ConfigOnly flag to config
+0569c1d feat: add configure.fz support and config-only mode
+5d51d85 feat: add ConfigOnly field to Config struct
+f668ac6 feat: propagate ParseMakefile from config to flags
+f8fd775 test: add config-only mode test
+0215d95 feat: add FZ_COMPILE_WORKER_MEM_MB env var
+967e5e3 fix: improve symlink handling in source_hash
+6f1ea0d chore: remove duplicate Debug output in cmdShow
+b0bf0bd feat: add Makefile parsing for source discovery
+8c1a1f0 test: add Makefile parsing tests
+795dd80 chore: remove fz binary
+d65d2e7 chore: add build tags and fix imports in parse_mk.go
