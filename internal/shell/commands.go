@@ -146,7 +146,6 @@ func cmdShow(state *BuildState) {
 	os.Stdout.WriteString("Strict: " + boolStr(state.Strict) + "\n")
 	os.Stdout.WriteString("Sanitize: " + boolStr(state.Sanitize) + "\n")
 	os.Stdout.WriteString("Verbose: " + boolStr(state.Verbose) + "\n")
-	os.Stdout.WriteString("Debug: " + boolStr(state.Debug) + "\n")
 	os.Stdout.WriteString("NoCache: " + boolStr(state.NoCache) + "\n")
 	os.Stdout.WriteString("NoSymbolCheck: " + boolStr(state.NoSymbolCheck) + "\n")
 	os.Stdout.WriteString("KeepObj: " + boolStr(state.KeepObj) + "\n")
