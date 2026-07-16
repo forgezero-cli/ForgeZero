@@ -28,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func writeASM(t *testing.T, dir, name, content string) string {
@@ -184,6 +185,17 @@ func TestCleanDir(t *testing.T) {
 	}
 	if _, err := os.Stat(objFile); !os.IsNotExist(err) {
 		t.Error(".o file not removed")
+	}
+}
+
+func TestBuildDirConfigOnlyRequiresConfig(t *testing.T) {
+	dir := t.TempDir()
+	outBin := filepath.Join(t.TempDir(), "app")
+	cfg := &config.Config{ConfigOnly: true}
+	ctx := utils.ContextWithConfig(context.Background(), cfg)
+	_, err := BuildDir(ctx, []string{dir}, outBin, false, true, "raw", false, true, false, true, false, nil, nil, nil, nil, nil, 1, "executable")
+	if err == nil || !strings.Contains(err.Error(), "config-only") {
+		t.Fatalf("expected config-only error, got: %v", err)
 	}
 }
 
