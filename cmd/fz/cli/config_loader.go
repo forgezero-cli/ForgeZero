@@ -97,6 +97,9 @@ func ApplyConfigToFlags(cfg *config.Config, flags *Flags) {
 	if cfg.Linker != "" {
 		flags.Linker = cfg.Linker
 	}
+	if cfg.ParseMakefile {
+		flags.ParseMakefile = true
+	}
 
 	if flags.Verbose && !flags.JSONOutput {
 		stdio.WriteFmt(1, "Profile: %s\n", flags.ProfileFlag)
