@@ -1,143 +1,149 @@
-ForgeZero
-=========
+Building Redis with ForgeZero (Ulta-Fast Example)
 
-ForgeZero is a zero-overhead build tool for assembly, C, C++, Objective-C,
-and Gloria. It wraps NASM, GAS, FASM, GCC, Clang, Zig, and LD behind a
-single command-line interface, and provides fast, allocation-free builds
-without Makefiles or configuration.
+This example demonstations how to compile the Redis database using ForgeZero in a fraction of the time compared to tradinitional build systems like `make`.
 
-Quick Start
------------
+Install ForgeZero:
 
-* Report a bug: https://github.com/forgezero-cli/ForgeZero/issues
-* Get the latest release: https://github.com/forgezero-cli/ForgeZero
-* Build ForgeZero: See INSTALL
-* Build your project with fz: See QUICKSTART
+OPTIONAL TOOLS (USED INTERNALLY)
+------------------------------------------------------------------------------
 
-Essential Documentation
-------------------------
+  nm          Pre-link duplicate symbol check, primary
+  objdump     Fallback for symbol check
+  readelf     Second fallback for symbol check
+  git         Required for fz pm add
+  zig         Required for -zig backend
+  emcc        Required for wasm32-emscripten target
+  hyperfine   Benchmarking (fz bench and bench.sh), optional
 
-All users should be familiar with:
+  Go 1.21 or later is required only to build fz from source.
 
-* Build modes & languages: LANGUAGES
-* CLI reference: CLI-REFERENCE
-* Configuration file: TOML_CONFIG
-* License: See LICENSE
+------------------------------------------------------------------------------
+DEBIAN / UBUNTU
+------------------------------------------------------------------------------
 
-Full documentation index: INDEX
+  sudo apt update
+  sudo apt install -y nasm gcc binutils git
+  sudo apt install -y clang
+  sudo apt install -y gcc-arm-linux-gnueabihf
+  sudo apt install -y gcc-aarch64-linux-gnu
+  sudo apt install -y gcc-riscv64-linux-gnu
 
+  Zig, optional:
+    wget https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+    tar -xf zig-linux-x86_64-0.13.0.tar.xz
+    sudo mv zig-linux-x86_64-0.13.0 /opt/zig
+    echo export PATH="$PATH:/opt/zig" >> ~/.bashrc
 
-Who Are You?
-============
+  FASM, optional:
+    wget https://flatassembler.net/fasm-1.73.32.tgz
+    tar -xzf fasm-1.73.32.tgz
+    sudo cp fasm/fasm /usr/local/bin/
+    chmod +x /usr/local/bin/fasm
 
-Find your role below:
+  Install fz:
+    go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
+    echo export PATH="$PATH:$(go env GOPATH)/bin" >> ~/.bashrc
+    fz -v
 
-* New User - Building a project with fz for the first time
-* Assembly Developer - Writing NASM, GAS, or FASM sources
-* C / C++ / Objective-C Developer - Building with GCC, Clang, or Zig
-* Gloria Developer - Writing and compiling Gloria sources
-* Security Auditor - SBOM generation and SAST review
-* Release Engineer - Reproducible and verifiable builds
-* Cross-Compilation / Embedded Engineer - Targeting non-host platforms
-* WebAssembly Developer - Building WASM targets
-* Contributor - Extending or fixing ForgeZero itself
+------------------------------------------------------------------------------
+FEDORA / RHEL / CENTOS
+------------------------------------------------------------------------------
 
+  Fedora:
+    sudo dnf install -y nasm gcc binutils clang git
 
-For Specific Users
-===================
+  RHEL / CentOS, nasm requires EPEL:
+    sudo dnf install -y epel-release
+    sudo dnf install -y nasm gcc binutils clang git
 
-New User
---------
+  go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 
-Start here:
+------------------------------------------------------------------------------
+ARCH LINUX / MANJARO
+------------------------------------------------------------------------------
 
-* Installation: INSTALL
-* Quick Start & Usage: QUICKSTART
-* Exit Codes & Troubleshooting: ERROR_HANDLING
+  sudo pacman -S --noconfirm nasm gcc binutils clang git zig
+  yay -S fasm     (AUR)
+  yay -S forgezero
 
-Assembly Developer
--------------------
+------------------------------------------------------------------------------
+OPENSUSE
+------------------------------------------------------------------------------
 
-* Build Modes & Extensions: LANGUAGES
-* Assembler Backends: SPECS
-* CLI Build Reference: CLI-REFERENCE
+  sudo zypper install -y nasm gcc binutils clang git
+  go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 
-C / C++ / Objective-C Developer
----------------------------------
+------------------------------------------------------------------------------
+MACOS
+------------------------------------------------------------------------------
 
-* Language Guide: LANGUAGES
-* Build Modes & Extensions: LANGUAGES
-* CLI Build Reference, Profiles & Linking: CLI-REFERENCE
-* Zig Backend: SPECS
+  Support is in progress per source. The following setup covers most
+  current use cases.
 
-Gloria Developer
-------------------
+    /bin/bash -c "$(curl -fsSL
+      https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    brew install nasm gcc go git zig
+    go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
+    echo export PATH="$PATH:$(go env GOPATH)/bin" >> ~/.zshrc
+    fz -v
 
-* Gloria Language: LANGUAGES
-* Build Modes & Extensions: LANGUAGES
+  Note: the Darwin syscall layer is stubbed. Builds succeed; runtime
+  behavior is stated as untested. Objective-C on macOS requires Xcode
+  Command Line Tools (xcode-select --install).
 
-Security Auditor
-------------------
+------------------------------------------------------------------------------
+WINDOWS
+------------------------------------------------------------------------------
 
-* Supply Chain Security (SBOM + SAST): SECURITY
-* Aegis Security Core: INTERNALS
-* Virtual Filesystem Layer (Aegis): INTERNALS
+  Option A, WSL2, recommended:
+    wsl --install
+    (restart, open Ubuntu, follow the Debian/Ubuntu section above)
 
-Release Engineer
-------------------
+  Option B, native Windows, experimental, via MSYS2:
+    1. Install MSYS2 from msys2.org. In the MSYS2 MinGW 64-bit shell:
+         pacman -Syu
+         pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils
+         pacman -S mingw-w64-x86_64-clang git
+    2. Install NASM for Windows from nasm.us.
+    3. Add to PATH: msys64 mingw64 bin, the NASM install directory,
+       and the go bin directory.
+    4. Install Go from go.dev/dl.
+    5. go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 
-* Reproducible Builds, Verify, Bench: PERFORMANCE
-* Supply Chain Security: SECURITY
+  Known limitation: -sanitize and -strict require a Windows Clang
+  build with AddressSanitizer support; not covered by plain MSYS2.
 
-Cross-Compilation / Embedded Engineer
-----------------------------------------
+  Run fz doctor immediately after install to confirm PATH and
+  directory permissions.
 
-* Cross-Compilation Targets: WORKFLOW
-* Configuration File Reference: TOML_CONFIG
+------------------------------------------------------------------------------
+BUILD FROM SOURCE, ALL PLATFORMS
+------------------------------------------------------------------------------
 
-WebAssembly Developer
-------------------------
+  git clone https://github.com/forgezero-cli/ForgeZero.git
+  cd ForgeZero
+  go build -o fz ./cmd/fz/main.go        (Linux / macOS)
+  go build -o fz.exe ./cmd/fz/main.go    (Windows)
 
-* WASM & Web Targets: WORKFLOW
+  go test ./...
+  go test ./internal/... -cover
 
-Contributor
--------------
+  sudo mv fz /usr/local/bin/                         (Linux / macOS)
+  Move-Item fz.exe C:\Windows\System32\fz.exe         (Windows, Admin)
 
-* Project Tools (init, contribute, LSP, update): WORKFLOW
-* Doctor, Platform Readiness, Testing Standards: INTERNALS
-* HADES Engine, Contributing, License: INTERNALS
-* Roadmap: ARCHITECTURE
+------------------------------------------------------------------------------
+GO INSTALL, SHORTEST PATH
+------------------------------------------------------------------------------
 
+  go install github.com/forgezero-cli/ForgeZero/cmd/fz@latest
 
-Performance
-===========
+  fz -v         short version string
+  fz --version  full platform / build metadata block
 
-Measured against `nasm -f elf64 && ld` and `make -j4`, via hyperfine
-(warmup 3, >= 10 runs). Test system: Intel Core i5-10310U (4C/8T,
-1.7 GHz base), Arch Linux, NVMe SSD.
+Clone Redis source:
 
-    modules     fz              make -j4          speedup
-    -------     --------------  ----------------  -------
-    20          19.3 +- 1.2 ms  45.4  +- 2.3  ms   2.35x
-    50          31.1 +- 1.3 ms  85.0  +- 2.1  ms   2.73x
-    100         57.0 +- 5.3 ms  185.5 +- 7.7  ms   3.25x
-    150         73.1 +- 4.3 ms  229.3 +- 3.6  ms   3.14x
-    200         82.2 +- 4.2 ms  291.1 +- 11.2 ms   3.54x
-    400         223.1 +- 9.8 ms 1105.0 +- 24.1 ms  4.95x
+`git clone https://github.com/redis/redis.git 
+cd redis 
 
-Stress test, 5000 C files, AMD Ryzen 7 PRO 4750U (16 threads):
+And check REDIS_BUILD source files for next steps
 
-    ninja -j16    ~28.9 s
-    fz            ~597 ms   (47.3x; 98% utilization across
-                              16 threads; ~47 MB resident)
-
-Full benchmark methodology and reproduction steps: PERFORMANCE
-
-
-Communication and Support
-==========================
-
-* Issues: https://github.com/forgezero-cli/ForgeZero/issues
-* Source: https://github.com/forgezero-cli/ForgeZero
-* Author: alexvoste <https://github.com/alexvoste>
-* License: GPLv3 - see LICENSE

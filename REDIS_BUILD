@@ -1,0 +1,53 @@
+Using .fz.toml for redis/src. You need add fz.toml in redis/src dir.
+
+Example:
+# ForgeZero configuration for Redis server build
+output = "redis-server"
+
+include = [
+    "deps/libc/include",
+    "deps/lua/src",
+    "deps/hiredis",
+    "deps/jemalloc/include"
+]
+
+libs = ["m"]
+
+
+Also add fz.toml in redis/deps/hiredis for compiling dependencies. Example:
+
+name = "hiredis"
+source_files = [
+  "hiredis.c",
+  "net.c", 
+  "read.c",
+  "sds.c",
+  "sockcompat.c",
+  "ssl.c",
+  "async.c",
+  "alloc.c",
+  "dict.c"
+]
+
+[dep_build]
+enabled = true
+skip_tests = true
+
+NEXT STEP:
+
+using ForgeZero :)
+
+fz -dir redis/src -out redis-server -mode c
+
+For check time:
+
+time fz -dir redis/src -out redis-server -mode c
+
+optional with performance options:
+
+fz -p performance -dir redis/src -out redis-server -mode -c -j $(nproc) 
+
+If you want using your toolchain(like gcc, clang, zig) then write so:
+
+fz -dir redis/src -out redis-server -toolchain clang -mode -c 
+
