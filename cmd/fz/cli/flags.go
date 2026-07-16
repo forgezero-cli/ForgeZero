@@ -82,6 +82,8 @@ func SetupFlags() *Flags {
 	flag.BoolVar(&f.Clean, "clean", false, "remove all build artifacts (.fz_objs, .fz_cache, binaries)")
 	flag.StringVar(&f.GloriaPath, "gloria", "", "path to .glo file")
 	flag.BoolVar(&f.AutoBuild, "autoBuild", false, "auto build project")
+	flag.BoolVar(&f.ParseMakefile, "parse-makefile", false, "enable Makefile parsing for source discovery (opt-in)")
+	flag.BoolVar(&f.ConfigOnly, "config-only", false, "use only fz.toml/configure.fz; skip auto-discovery and Makefile parsing")
 	flag.StringVar(&f.MuslOpt, "musl", "", "use static musl toolchain(e.g -musl=riscv64")
 	flag.StringVar(&f.ProfileFlag, "profile", "balanced", "build profile for hardware")
 	flag.StringVar(&f.ProfileFlag, "p", "balanced", "build profile (shorthand)")
@@ -165,6 +167,8 @@ type Flags struct {
 	IsoOut           string
 	IsoHybrid        bool
 	SourcePath       string
+	ParseMakefile    bool
+	ConfigOnly       bool
 
 	RollBackFlag   bool   // fz --rollback
 	RollBackToFlag string // fz --rollback-to <version>
