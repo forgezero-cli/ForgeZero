@@ -19,6 +19,8 @@ package scheduler
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -63,5 +65,49 @@ func TestDAGSchedulerReturnsCycleError(t *testing.T) {
 	_, err := sched.Submit(AcquireTask(func(arg uintptr, extra uintptr) error { return nil }, 0, 0), []int{1})
 	if err == nil {
 		t.Fatal("expected invalid dependency error")
+	}
+}
+
+func TestDAGSchedulerInvalidDependencyDoesNotLeakNode(t *testing.T) {
+	sched := NewDAGScheduler(1, 4)
+	a, err := sched.Submit(AcquireTask(func(arg uintptr, extra uintptr) error { return nil }, 0, 0), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = sched.Submit(AcquireTask(func(arg uintptr, extra uintptr) error { return nil }, 0, 0), []int{1})
+	if err == nil {
+		t.Fatal("expected invalid dependency error")
+	}
+	b, err := sched.Submit(AcquireTask(func(arg uintptr, extra uintptr) error { return nil }, 0, 0), []int{a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b != 1 {
+		t.Fatalf("expected second task index 1, got %d", b)
+	}
+}
+
+func TestDAGSchedulerTaskErrorStopsDependents(t *testing.T) {
+	sched := NewDAGScheduler(2, 4)
+	root, err := sched.Submit(AcquireTask(func(arg uintptr, extra uintptr) error {
+		return errors.New("task failed")
+	}, 0, 0), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ran atomic.Int64
+	_, err = sched.Submit(AcquireTask(func(arg uintptr, extra uintptr) error {
+		ran.Add(1)
+		return nil
+	}, 0, 0), []int{root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = sched.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "task failed") {
+		t.Fatalf("expected task failure, got %v", err)
+	}
+	if ran.Load() != 0 {
+		t.Fatalf("expected dependent task not to run, got %d", ran.Load())
 	}
 }
