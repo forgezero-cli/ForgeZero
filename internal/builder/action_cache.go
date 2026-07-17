@@ -29,7 +29,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"unsafe"
 
 	"github.com/forgezero-cli/ForgeZero/internal/hashpool"
 	"github.com/forgezero-cli/ForgeZero/internal/io_uring"
@@ -84,6 +83,7 @@ var (
 	initOnce     sync.Once
 	preloadStart sync.Map
 	preloadWait  sync.WaitGroup
+	l1Mu         sync.RWMutex 
 )
 
 func actionCacheInit() {
@@ -162,15 +162,12 @@ func l1Key(digest [32]byte) uint64 {
 }
 
 func l1Load(key uint64) (*l1Entry, bool) {
+	l1Mu.RLock()
+	defer l1Mu.RUnlock()
 	expected := key
 	for probe := 0; probe < 16; probe++ {
 		idx := l1Index(key, probe)
 		entry := &l1Entries[idx]
-		prefetch(unsafe.Pointer(entry))
-		if probe+1 < 16 {
-			next := l1Index(key, probe+1)
-			prefetch(unsafe.Pointer(&l1Entries[next]))
-		}
 		if atomic.LoadUint64(&entry.key) != expected {
 			if atomic.LoadUint64(&entry.key) == 0 {
 				return nil, false
@@ -189,6 +186,8 @@ func l1Store(key uint64, hash [32]byte, size uint32, offset uint64) {
 	if offset != 0 {
 		offset += l1OffsetBias
 	}
+	l1Mu.Lock()
+	defer l1Mu.Unlock()
 	idx := l1Index(key, 0)
 	for probe := 0; probe < 16; probe++ {
 		entry := &l1Entries[idx]
