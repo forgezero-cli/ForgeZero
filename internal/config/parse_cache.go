@@ -29,9 +29,15 @@ type cacheEntry struct {
 	cfg     *Config
 }
 
-var configCache sync.Map
+var (
+	configCacheMu sync.RWMutex
+	configCache   map[string]*cacheEntry
+)
 
 func cacheKey(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return filepath.Clean(path)
@@ -40,11 +46,12 @@ func cacheKey(path string) string {
 }
 
 func loadConfigCache(path string, fi os.FileInfo) (*Config, bool) {
-	entryValue, ok := configCache.Load(cacheKey(path))
-	if !ok {
+	configCacheMu.RLock()
+	entry := configCache[cacheKey(path)]
+	configCacheMu.RUnlock()
+	if entry == nil {
 		return nil, false
 	}
-	entry := entryValue.(*cacheEntry)
 	if entry.size != fi.Size() || entry.modTime != fi.ModTime().UnixNano() {
 		return nil, false
 	}
@@ -52,18 +59,23 @@ func loadConfigCache(path string, fi os.FileInfo) (*Config, bool) {
 }
 
 func storeConfigCache(path string, fi os.FileInfo, cfg *Config) {
-	configCache.Store(cacheKey(path), &cacheEntry{
+	entry := &cacheEntry{
 		modTime: fi.ModTime().UnixNano(),
 		size:    fi.Size(),
 		cfg:     cloneConfig(cfg),
-	})
+	}
+	configCacheMu.Lock()
+	if configCache == nil {
+		configCache = make(map[string]*cacheEntry)
+	}
+	configCache[cacheKey(path)] = entry
+	configCacheMu.Unlock()
 }
 
 func clearConfigCache() {
-	configCache.Range(func(key, value interface{}) bool {
-		configCache.Delete(key)
-		return true
-	})
+	configCacheMu.Lock()
+	configCache = nil
+	configCacheMu.Unlock()
 }
 
 func cloneConfig(in *Config) *Config {
