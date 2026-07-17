@@ -136,6 +136,7 @@ func (db *DepBuilder) runPreBuildScripts() error {
 	return nil
 }
 
+
 func (db *DepBuilder) runPostBuildScripts() error {
 	if db.depCfg == nil || len(db.depCfg.DepBuild.PostBuild) == 0 {
 		return nil
@@ -160,7 +161,7 @@ func (db *DepBuilder) shouldIncludeFile(path string) bool {
 	if db.depCfg == nil {
 		return true
 	}
-
+	
 	basename := filepath.Base(path)
 
 	if len(db.depCfg.DepBuild.ExcludeFiles) > 0 {
@@ -194,6 +195,10 @@ func (db *DepBuilder) Build(outArchive string, excludePatterns []string, jobs in
 	}
 
 	if err := db.runPreBuildScripts(); err != nil {
+		return "", err
+	}
+
+	if err := db.runCustomSteps(); err != nil {
 		return "", err
 	}
 
