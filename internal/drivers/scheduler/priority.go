@@ -29,8 +29,8 @@ type priorityQueues struct {
 	counts [numPriorities]atomic.Int64
 }
 
-func newPriorityQueues(queueSize int) priorityQueues {
-	pq := priorityQueues{}
+func newPriorityQueues(queueSize int) *priorityQueues {
+	pq := &priorityQueues{}
 	for i := 0; i < numPriorities; i++ {
 		pq.levels[i] = newRingQueue(queueSize)
 	}

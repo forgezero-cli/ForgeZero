@@ -33,7 +33,7 @@ type dagNode struct {
 
 type DAGScheduler struct {
 	pool    *Scheduler
-	nodes   []dagNode
+	nodes   []*dagNode
 	ready   *intRingQueue
 	running atomic.Bool
 	errOnce sync.Once
@@ -48,7 +48,7 @@ func NewDAGScheduler(workerPoolSize int, nodeCapacity int) *DAGScheduler {
 	}
 	return &DAGScheduler{
 		pool:  NewScheduler(workerPoolSize, nodeCapacity*2),
-		nodes: make([]dagNode, 0, nodeCapacity),
+		nodes: make([]*dagNode, 0, nodeCapacity),
 		ready: newIntRingQueue(nodeCapacity),
 	}
 }
@@ -66,8 +66,7 @@ func (d *DAGScheduler) Submit(task Task, deps []int) (int, error) {
 			return -1, errors.New("invalid dependency index")
 		}
 	}
-
-	node := dagNode{task: task}
+	node := &dagNode{task: task}
 	node.deps.Store(int32(len(deps)))
 	d.nodes = append(d.nodes, node)
 	for _, dep := range deps {
@@ -105,7 +104,7 @@ func (d *DAGScheduler) worker(ctx context.Context) {
 		if d.err != nil {
 			return
 		}
-		node := &d.nodes[idx]
+		node := d.nodes[idx]
 		if err := node.task.Fn(node.task.Arg, node.task.Extra); err != nil {
 			d.setError(err)
 			return

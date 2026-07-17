@@ -38,8 +38,8 @@ var globalRunContext atomic.Pointer[runContextHolder]
 type Scheduler struct {
 	poolSize   int
 	queueSize  int
-	queues     priorityQueues
-	workers    []priorityQueues
+	queues     *priorityQueues
+	workers    []*priorityQueues
 	nextSubmit atomic.Uint64
 	pending    atomic.Int64
 	pendingMu  sync.Mutex
@@ -64,7 +64,7 @@ func NewScheduler(workerPoolSize int, queueSize int) *Scheduler {
 		poolSize:  workerPoolSize,
 		queueSize: queueSize,
 		queues:    newPriorityQueues(queueSize),
-		workers:   make([]priorityQueues, workerPoolSize),
+		workers:   make([]*priorityQueues, workerPoolSize),
 	}
 	s.pendingCond = sync.NewCond(&s.pendingMu)
 
