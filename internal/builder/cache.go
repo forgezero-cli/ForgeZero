@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/forgezero-cli/ForgeZero/internal/config"
 	fzerr "github.com/forgezero-cli/ForgeZero/internal/errors"
@@ -59,8 +60,12 @@ func (c *objectCache) get(key string) (*cachedObject, bool) {
 func (c *objectCache) delete(key string) {
 	if v, ok := c.entries.Load(key); ok {
 		if ent, ok2 := v.(*cachedObject); ok2 && ent != nil {
-			data := ent.object
 			c.entries.Delete(key)
+			size := int64(len(ent.object) + len(ent.syms))
+			if size > 0 {
+				atomic.AddInt64(&ramCacheUsedBytes, -size)
+			}
+			data := ent.object
 			if len(data) > 0 {
 				_ = munmapFile(data)
 				ent.object = nil
@@ -73,12 +78,19 @@ func (c *objectCache) delete(key string) {
 }
 
 func (c *objectCache) set(key string, object, syms []byte) {
+	if existing, ok := c.entries.Load(key); ok {
+		if ent, ok2 := existing.(*cachedObject); ok2 && ent != nil {
+			c.delete(key)
+		}
+	}
 	c.entries.Store(key, &cachedObject{object: object, syms: append([]byte(nil), syms...)})
 }
 
 var ramObjectStore = newObjectCache()
 var ramCacheHits *utils.NumaCounters
 var ramCacheMisses *utils.NumaCounters
+var ramCacheCapacityBytes int64
+var ramCacheUsedBytes int64
 
 type cacheTask struct {
 	src      string
@@ -246,6 +258,33 @@ func determineCacheMode(cfg *config.Config, noCache bool) cacheMode {
 	}
 }
 
+func SetRAMCacheCapacityMB(mb int) {
+	if mb <= 0 {
+		atomic.StoreInt64(&ramCacheCapacityBytes, 0)
+		return
+	}
+	atomic.StoreInt64(&ramCacheCapacityBytes, int64(mb)*1024*1024)
+}
+
+func RAMCacheCapacityBytes() int64 {
+	return atomic.LoadInt64(&ramCacheCapacityBytes)
+}
+
+func canStoreRAMCache(size int64) bool {
+	max := atomic.LoadInt64(&ramCacheCapacityBytes)
+	if max <= 0 {
+		return true
+	}
+	if size > max {
+		return false
+	}
+	if atomic.AddInt64(&ramCacheUsedBytes, size) > max {
+		atomic.AddInt64(&ramCacheUsedBytes, -size)
+		return false
+	}
+	return true
+}
+
 func restoreRAMCache(src, obj string, debug bool, mode string) (bool, error) {
 	h, err := utils.HashFile(src)
 	if err != nil {
@@ -297,19 +336,38 @@ func storeRAMCache(src, obj string, debug bool, mode string) error {
 	if info.Size() == 0 {
 		return fzerr.NewMsg(fzerr.CodeCacheEmpty, "refusing to cache empty object: "+obj)
 	}
+	size := int64(info.Size())
+	syms, err := readFileMaybeIOUring(obj + ".syms")
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	size += int64(len(syms))
+	if !canStoreRAMCache(size) {
+		if debug {
+			os.Stdout.WriteString("RAM cache skipped " + src + " (limit reached)\n")
+		}
+		return nil
+	}
 	fd := int(f.Fd())
 	data, err := mmapFile(fd, int(info.Size()))
 	if err != nil {
-		object, err2 := readFileMaybeIOUring(obj)
-		if err2 != nil {
+		if _, err2 := readFileMaybeIOUring(obj); err2 != nil {
+			atomic.AddInt64(&ramCacheUsedBytes, -size)
 			return err
 		}
-		syms, err2 := readFileMaybeIOUring(obj + ".syms")
+		object, err2 := readFileMaybeIOUring(obj)
+		if err2 != nil {
+			atomic.AddInt64(&ramCacheUsedBytes, -size)
+			return err
+		}
+		syms, err2 = readFileMaybeIOUring(obj + ".syms")
 		if err2 != nil && !os.IsNotExist(err2) {
+			atomic.AddInt64(&ramCacheUsedBytes, -size)
 			return err2
 		}
 		h, err2 := utils.HashFile(src)
 		if err2 != nil {
+			atomic.AddInt64(&ramCacheUsedBytes, -size)
 			return err2
 		}
 		key := buildCacheKey(h, debug, mode)
@@ -319,14 +377,16 @@ func storeRAMCache(src, obj string, debug bool, mode string) error {
 		}
 		return nil
 	}
-	syms, err := readFileMaybeIOUring(obj + ".syms")
+	syms, err = readFileMaybeIOUring(obj + ".syms")
 	if err != nil && !os.IsNotExist(err) {
 		_ = munmapFile(data)
+		atomic.AddInt64(&ramCacheUsedBytes, -size)
 		return err
 	}
 	h, err := utils.HashFile(src)
 	if err != nil {
 		_ = munmapFile(data)
+		atomic.AddInt64(&ramCacheUsedBytes, -size)
 		return err
 	}
 	key := buildCacheKey(h, debug, mode)
