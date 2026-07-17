@@ -22,14 +22,13 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
-	"unsafe"
 )
 
 func makeCounterTask(counter *int64) Task {
 	return AcquireTask(func(arg uintptr, extra uintptr) error {
-		atomic.AddInt64((*int64)(unsafe.Pointer(arg)), 1)
+		atomic.AddInt64(counter, 1)
 		return nil
-	}, uintptr(unsafe.Pointer(counter)), 0)
+	}, 0, 0)
 }
 
 func TestSchedulerRunsAllTasks(t *testing.T) {
