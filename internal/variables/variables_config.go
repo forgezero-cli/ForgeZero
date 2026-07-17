@@ -28,6 +28,9 @@ func ExpandString(s string, vars map[string]string) string {
 	if len(vars) == 0 || s == "" {
 		return s
 	}
+	if strings.IndexByte(s, '$') < 0 {
+		return s
+	}
 	prev := s
 	for i := 0; i < 10; i++ {
 		cur := expandOne(prev, vars)
