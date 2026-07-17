@@ -2,6 +2,67 @@
 
 # UNRELEASED
 
+## [6.0.0] - 2026-07-17
+
+### Added
+- **RAM cache capacity limits** – `cache_ram_mb` config option and `SetRAMCacheCapacityMB` function to control RAM cache size with atomic tracking and eviction.  
+  ([efb1576](https://github.com/forgezero-cli/ForgeZero/commit/efb1576), [8c332d3](https://github.com/forgezero-cli/ForgeZero/commit/8c332d3))
+- **Dependency build steps** – support for custom `steps` and `step_sets` in `[dep_build]` with conditional execution (`if`, `elif`, `else`), error handling (`try`, `catch`, `finally`), grouping (`group`, `stage`, `parallel`), and persistent outputs.  
+  ([ba554a7](https://github.com/forgezero-cli/ForgeZero/commit/ba554a7), [ddbd2c6](https://github.com/forgezero-cli/ForgeZero/commit/dddb2c6))
+- **Scheduler improvements** – condition variable for pending tasks to reduce busy-waiting, comprehensive stress tests, and proper error propagation that stops dependent tasks on failure.  
+  ([96c87ea](https://github.com/forgezero-cli/ForgeZero/commit/96c87ea), [16d1d35](https://github.com/forgezero-cli/ForgeZero/commit/16d1d35), [d8530f9](https://github.com/forgezero-cli/ForgeZero/commit/d8530f9), [af4bb07](https://github.com/forgezero-cli/ForgeZero/commit/af4bb07))
+- **Config validation** – comprehensive validation for source config, mode, profile, toolchain, isolation, cache mode, and build rules with proper error codes.  
+  ([ddbd2c6](https://github.com/forgezero-cli/ForgeZero/commit/dddb2c6))
+- **Config expansion optimization** – early exit when no variables require expansion.  
+  ([ddbd2c6](https://github.com/forgezero-cli/ForgeZero/commit/dddb2c6))
+- **Variable expansion optimization** – early return for strings without `$` to avoid unnecessary work.  
+  ([0bc36aa](https://github.com/forgezero-cli/ForgeZero/commit/0bc36aa))
+
+### Changed
+- **Assembler** – flag initialization moved to `sync.Once` and `target` parameter added to eliminate data races; all platform detection functions now accept explicit `target` parameter.  
+  ([5bc08ad](https://github.com/forgezero-cli/ForgeZero/commit/5bc08ad))
+- **L1 cache** – replaced lock-free operations with explicit `sync.RWMutex` protection to eliminate data races.  
+  ([a81ff24](https://github.com/forgezero-cli/ForgeZero/commit/a81ff24))
+- **Scheduler** – improved node validation order to prevent leaks and reduce busy-waiting with condition variables.  
+  ([af4bb07](https://github.com/forgezero-cli/ForgeZero/commit/af4bb07), [96c87ea](https://github.com/forgezero-cli/ForgeZero/commit/96c87ea))
+- **Config cache** – replaced `sync.Map` with `RWMutex`-protected map for better performance.  
+  ([7050146](https://github.com/forgezero-cli/ForgeZero/commit/7050146))
+- **TOML parsing** – optimized using unsafe string conversion to reduce allocations.  
+  ([73d0763](https://github.com/forgezero-cli/ForgeZero/commit/73d0763))
+- **Custom steps execution** – added proper integration with dependency builder.  
+  ([85b526f](https://github.com/forgezero-cli/ForgeZero/commit/85b526f))
+
+### Fixed
+- **Data races** – fixed all data races in assembler (global `Target` writes) and builder L1 cache (concurrent `l1Store` writes).  
+  ([5bc08ad](https://github.com/forgezero-cli/ForgeZero/commit/5bc08ad), [a81ff24](https://github.com/forgezero-cli/ForgeZero/commit/a81ff24))
+- **Scheduler node leak** – nodes are now validated before allocation to prevent leaks on invalid dependencies.  
+  ([af4bb07](https://github.com/forgezero-cli/ForgeZero/commit/af4bb07))
+- **Scheduler error handling** – dependent tasks now correctly skip execution when a dependency fails.  
+  ([d8530f9](https://github.com/forgezero-cli/ForgeZero/commit/d8530f9))
+- **Config include processing** – fixed includes to allow relative paths and proper merging of config values.  
+  ([ddbd2c6](https://github.com/forgezero-cli/ForgeZero/commit/dddb2c6))
+- **RAM cache size tracking** – proper atomic tracking of used bytes with rollback on errors.  
+  ([efb1576](https://github.com/forgezero-cli/ForgeZero/commit/efb1576))
+
+### Performance
+- **Variable expansion** – early return for strings without `$` reduces overhead.  
+  ([0bc36aa](https://github.com/forgezero-cli/ForgeZero/commit/0bc36aa))
+- **Config parsing** – optimized TOML parsing with unsafe string conversion.  
+  ([73d0763](https://github.com/forgezero-cli/ForgeZero/commit/73d0763))
+- **Scheduler** – reduced busy-waiting with condition variables, improved node validation.  
+  ([96c87ea](https://github.com/forgezero-cli/ForgeZero/commit/96c87ea), [af4bb07](https://github.com/forgezero-cli/ForgeZero/commit/af4bb07))
+
+### Testing
+- **Builder** – added comprehensive tests for autodeps, dependency build steps (unit, integration, parallel, TOML), and graph resolution.  
+  ([4758fc6](https://github.com/forgezero-cli/ForgeZero/commit/4758fc6), [6f033d8](https://github.com/forgezero-cli/ForgeZero/commit/6f033d8), [87591cd](https://github.com/forgezero-cli/ForgeZero/commit/87591cd), [191ef17](https://github.com/forgezero-cli/ForgeZero/commit/191ef17), [e05874d](https://github.com/forgezero-cli/ForgeZero/commit/e05874d), [c329d22](https://github.com/forgezero-cli/ForgeZero/commit/c329d22), [10319cf](https://github.com/forgezero-cli/ForgeZero/commit/10319cf))
+- **Scheduler** – added DAG stress test with 128 nodes and tests for invalid dependencies and error propagation.  
+  ([16d1d35](https://github.com/forgezero-cli/ForgeZero/commit/16d1d35), [d8530f9](https://github.com/forgezero-cli/ForgeZero/commit/d8530f9))
+- **Linker** – added object linking tests.  
+  ([81d9890](https://github.com/forgezero-cli/ForgeZero/commit/81d9890))
+- **Config** – added tests for CacheRAMMB override and merge.  
+  ([c643ff4](https://github.com/forgezero-cli/ForgeZero/commit/c643ff4))
+
+
 ## [6.0.0] - 2026-07-16
 
 ### Added
@@ -380,3 +441,26 @@ b0bf0bd feat: add Makefile parsing for source discovery
 8c1a1f0 test: add Makefile parsing tests
 795dd80 chore: remove fz binary
 d65d2e7 chore: add build tags and fix imports in parse_mk.go
+5bc08ad assembler: fix data race by moving flag initialization to sync.Once and using target parameter
+a81ff24 builder: add mutex protection for L1 cache to eliminate data race
+85b526f builder: add custom steps execution and fix formatting
+8c332d3 builder: add RAM cache capacity configuration via config
+efb1576 builder: implement RAM cache size limits with atomic tracking
+ddbd2c6 config: add build steps, step sets, RAM cache config and validation improvements
+c643ff4 config: add tests for CacheRAMMB override and merge
+7050146 config: replace sync.Map with RWMutex map for config cache
+73d0763 config/toml: optimize TOML parsing with unsafe string conversion
+af4bb07 scheduler: fix node dependency validation order to prevent leaks
+d8530f9 scheduler: add tests for invalid dependency and error propagation
+96c87ea scheduler: add condition variable for pending tasks to reduce busy-waiting
+16d1d35 scheduler: add DAG stress test with 128 nodes
+0bc36aa variables: add early return optimization for strings without dollar sign
+4758fc6 builder: add tests for autodeps package
+6f033d8 builder: add additional builder tests
+ba554a7 builder: implement dependency build steps with parallel execution
+87591cd builder: add integration tests for dependency build steps
+191ef17 builder: add parallel step execution tests
+e05874d builder: add unit tests for dependency build steps
+c329d22 builder: add TOML config tests for dependency build steps
+10319cf builder: add graph tests for dependency resolution
+81d9890 linker: add object linking tests
