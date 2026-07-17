@@ -18,6 +18,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -100,11 +101,13 @@ func loadYAML(data []byte, cfg *Config) error {
 	return nil
 }
 
+var depBuildMarker = []byte("[dep_build]")
+
 func loadTOML(data []byte, cfg *Config) error {
 	if err := toml.Unmarshal(data, cfg); err != nil {
 		return NewErrorDetail(ErrorParseTOML, err.Error())
 	}
-	if !strings.Contains(string(data), "[dep_build]") {
+	if bytes.Index(data, depBuildMarker) < 0 {
 		cfg.DepBuild.Enabled = true
 	}
 	return nil
@@ -203,6 +206,30 @@ type PreprocessConfig struct {
 	Defines map[string]string `yaml:"defines" toml:"defines"`
 }
 
+type BuildStep struct {
+	If         string            `yaml:"if" toml:"if"`
+	Elif       string            `yaml:"elif" toml:"elif"`
+	Else       bool              `yaml:"else" toml:"else"`
+	Try        bool              `yaml:"try" toml:"try"`
+	Catch      bool              `yaml:"catch" toml:"catch"`
+	Finally    bool              `yaml:"finally" toml:"finally"`
+	Group      string            `yaml:"group" toml:"group"`
+	Stage      int               `yaml:"stage" toml:"stage"`
+	Parallel   bool              `yaml:"parallel" toml:"parallel"`
+	StepSet    string            `yaml:"step_set" toml:"step_set"`
+	With       map[string]string `yaml:"with" toml:"with"`
+	Command    string            `yaml:"command" toml:"command"`
+	Run        string            `yaml:"run" toml:"run"`
+	Inputs     []string          `yaml:"inputs" toml:"inputs"`
+	Outputs    []string          `yaml:"outputs" toml:"outputs"`
+	Persistent bool              `yaml:"persistent" toml:"persistent"`
+}
+
+type StepSet struct {
+	Name string `yaml:"name" toml:"name"`
+	BuildStep
+}
+
 type DepBuildConfig struct {
 	Enabled      bool              `yaml:"enabled" toml:"enabled"`
 	SkipTests    bool              `yaml:"skip_tests" toml:"skip_tests"`
@@ -212,6 +239,8 @@ type DepBuildConfig struct {
 	Environment  map[string]string `yaml:"environment" toml:"environment"`
 	PreBuild     []string          `yaml:"pre_build" toml:"pre_build"`
 	PostBuild    []string          `yaml:"post_build" toml:"post_build"`
+	StepSets     []StepSet         `yaml:"step_sets" toml:"step_sets"`
+	Steps        []BuildStep       `yaml:"steps" toml:"steps"`
 	ExcludeFiles []string          `yaml:"exclude_files" toml:"exclude_files"`
 	OnlyFiles    []string          `yaml:"only_files" toml:"only_files"`
 }
@@ -245,6 +274,7 @@ type Config struct {
 	KeepObj            bool              `yaml:"keep_obj" toml:"keep_obj"`
 	NoCache            bool              `yaml:"no_cache" toml:"no_cache"`
 	CacheMode          CacheMode         `yaml:"cache_mode" toml:"cache_mode"`
+	CacheRAMMB         int               `yaml:"cache_ram_mb" toml:"cache_ram_mb"`
 	OptimizationLevel  int               `yaml:"optimization_level" toml:"optimization_level"`
 	Exclude            []string          `yaml:"exclude" toml:"exclude"`
 	Include            []string          `yaml:"include" toml:"include"`
@@ -275,6 +305,9 @@ type Config struct {
 
 func (c *Config) expand() {
 	if c == nil {
+		return
+	}
+	if !c.needsExpand() {
 		return
 	}
 	if c.Variables == nil {
@@ -329,6 +362,12 @@ func (c *Config) expand() {
 		variables.ExpandSlice(c.BuildRules[i].Outputs, vars)
 		c.BuildRules[i].Depfile = variables.ExpandString(c.BuildRules[i].Depfile, vars)
 	}
+	for i := range c.DepBuild.Steps {
+		c.DepBuild.Steps[i].Command = variables.ExpandString(c.DepBuild.Steps[i].Command, vars)
+		c.DepBuild.Steps[i].Run = variables.ExpandString(c.DepBuild.Steps[i].Run, vars)
+		variables.ExpandSlice(c.DepBuild.Steps[i].Inputs, vars)
+		variables.ExpandSlice(c.DepBuild.Steps[i].Outputs, vars)
+	}
 	c.Isolation = IsolationMode(variables.ExpandString(string(c.Isolation), vars))
 	c.ISO.SourceDir = variables.ExpandString(c.ISO.SourceDir, vars)
 	c.ISO.Output = variables.ExpandString(c.ISO.Output, vars)
@@ -337,6 +376,65 @@ func (c *Config) expand() {
 	c.ISO.BootCatalog = variables.ExpandString(c.ISO.BootCatalog, vars)
 	c.ISO.BootLoadSize = variables.ExpandString(c.ISO.BootLoadSize, vars)
 	variables.ExpandSlice(c.ISO.CustomArgs, vars)
+}
+
+func (c *Config) needsExpand() bool {
+	if len(c.Variables) > 0 {
+		return true
+	}
+	if containsDollar(c.Name) || containsDollar(c.Profile) || containsDollar(c.Target) || containsDollar(c.Sysroot) || containsDollar(c.SourceDir) || containsDollar(c.SourceFile) || containsDollar(c.Output) || containsDollar(c.OutObj) || containsDollar(c.Mode) || containsDollar(c.Toolchain) || containsDollar(c.IgnoreFile) {
+		return true
+	}
+	if containsDollarSlice(c.SourceDirs) || containsDollarSlice(c.SourceFiles) || containsDollarSlice(c.Exclude) || containsDollarSlice(c.Include) || containsDollarSlice(c.Scripts) || containsDollarSlice(c.Libs) || containsDollarSlice(c.AuditIgnore) || containsDollarSlice(c.Flags.Asm) || containsDollarSlice(c.Flags.Cc) || containsDollarSlice(c.Flags.Ld) || containsDollarSlice(c.ToolchainSettings.SearchPriority) || containsDollarSlice(c.ToolchainSettings.EnvAllow) || containsDollarSlice(c.ISO.CustomArgs) {
+		return true
+	}
+	if containsDollarMap(c.ToolChecksums) || containsDollarMap(c.ToolchainSettings.ToolPaths) {
+		return true
+	}
+	if containsDollar(c.Hooks.OnFailure) {
+		return true
+	}
+	for i := range c.Hooks.PreBuild {
+		if containsDollar(c.Hooks.PreBuild[i].Cmd) {
+			return true
+		}
+	}
+	for i := range c.BuildRules {
+		if containsDollar(c.BuildRules[i].Action) || containsDollar(c.BuildRules[i].Depfile) || containsDollarSlice(c.BuildRules[i].Inputs) || containsDollarSlice(c.BuildRules[i].Outputs) {
+			return true
+		}
+	}
+	for i := range c.DepBuild.Steps {
+		if containsDollar(c.DepBuild.Steps[i].Command) || containsDollar(c.DepBuild.Steps[i].Run) || containsDollarSlice(c.DepBuild.Steps[i].Inputs) || containsDollarSlice(c.DepBuild.Steps[i].Outputs) {
+			return true
+		}
+	}
+	if containsDollar(c.ISO.SourceDir) || containsDollar(c.ISO.Output) || containsDollar(c.ISO.VolumeID) || containsDollar(c.ISO.BootImage) || containsDollar(c.ISO.BootCatalog) || containsDollar(c.ISO.BootLoadSize) {
+		return true
+	}
+	return false
+}
+
+func containsDollar(s string) bool {
+	return strings.IndexByte(s, '$') >= 0
+}
+
+func containsDollarSlice(slice []string) bool {
+	for i := range slice {
+		if containsDollar(slice[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsDollarMap(m map[string]string) bool {
+	for _, v := range m {
+		if containsDollar(v) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Config) fillDefaults() {
@@ -364,6 +462,69 @@ func (c *Config) fillDefaults() {
 	if c.CacheMode == "" {
 		c.CacheMode = CacheModeDisk
 	}
+}
+
+func (c *Config) Validate() error {
+	if c == nil {
+		return nil
+	}
+	c.fillDefaults()
+	if c.SourceDir != "" && len(c.SourceDirs) > 0 {
+		return NewError(ErrorInvalidSourceConfig)
+	}
+	if c.SourceFile != "" && len(c.SourceFiles) > 0 {
+		return NewError(ErrorInvalidSourceConfig)
+	}
+	if c.Mode != "auto" && c.Mode != "c" && c.Mode != "raw" {
+		return NewErrorDetail(ErrorInvalidMode, c.Mode)
+	}
+	c.Profile = strings.TrimSpace(strings.ToLower(c.Profile))
+	if c.Profile != "balanced" && c.Profile != "powered" && c.Profile != "performance" {
+		return NewErrorDetail(ErrorInvalidProfile, c.Profile)
+	}
+	c.Toolchain = strings.TrimSpace(strings.ToLower(c.Toolchain))
+	if _, ok := supportedToolchains[c.Toolchain]; !ok {
+		return NewErrorDetail(ErrorInvalidToolchain, c.Toolchain)
+	}
+	c.Target = strings.TrimSpace(c.Target)
+	switch c.Isolation {
+	case IsolationNone, IsolationStandard, IsolationStrict:
+	default:
+		return NewErrorDetail(ErrorInvalidIsolation, string(c.Isolation))
+	}
+	switch c.CacheMode {
+	case CacheModeDisk, CacheModeRAM, CacheModeOff, "":
+	default:
+		return NewErrorDetail(ErrorInvalidCacheMode, string(c.CacheMode))
+	}
+	if c.NoCache {
+		c.CacheMode = CacheModeOff
+	}
+	if c.CacheRAMMB < 0 {
+		return NewErrorDetail(ErrorInvalidOverride, "cache_ram_mb must be non-negative")
+	}
+	if c.IgnoreFile == "" {
+		c.IgnoreFile = ".fzignore"
+	}
+	if len(c.BuildRules) > 0 {
+		outputs := make(map[string]struct{}, len(c.BuildRules)*2)
+		for _, rule := range c.BuildRules {
+			if rule.Action == "" {
+				return NewError(ErrorBuildRuleActionRequired)
+			}
+			if len(rule.Outputs) == 0 {
+				return NewError(ErrorBuildRuleOutputsRequired)
+			}
+			for _, out := range rule.Outputs {
+				key := filepath.Clean(out)
+				if _, ok := outputs[key]; ok {
+					return NewErrorDetail(ErrorDuplicateBuildRuleOutput, out)
+				}
+				outputs[key] = struct{}{}
+			}
+		}
+	}
+	return nil
 }
 
 func splitOverrideList(value string) []string {
@@ -521,6 +682,12 @@ func (c *Config) ApplySetOverrides(overrides []string) error {
 				return err
 			}
 			c.CacheMode = mode
+		case "cache_ram_mb":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return NewErrorDetail(ErrorInvalidOverride, "cache_ram_mb: "+err.Error())
+			}
+			c.CacheRAMMB = parsed
 		case "isolation":
 			var mode IsolationMode
 			if err := mode.UnmarshalText([]byte(value)); err != nil {
@@ -692,7 +859,7 @@ func Load(path string) (*Config, error) {
 		return nil, NewErrorDetail(ErrorFileRead, path+": "+err.Error())
 	}
 	var cfg Config
-	if err := loadConfigData(path, data, &cfg, make(map[string]struct{})); err != nil {
+	if err := loadConfigData(path, data, &cfg, nil); err != nil {
 		return nil, err
 	}
 	cfg.expand()
@@ -707,13 +874,13 @@ func loadConfigData(path string, data []byte, cfg *Config, seen map[string]struc
 	if cfg == nil {
 		return nil
 	}
-	ext := strings.ToLower(filepath.Ext(path))
-	switch ext {
-	case ".toml":
+	ext := filepath.Ext(path)
+	switch {
+	case ext == ".toml" || ext == ".TOML" || ext == ".Toml" || ext == ".tOmL":
 		if err := loadTOML(data, cfg); err != nil {
 			return err
 		}
-	case ".yaml", ".yml":
+	case ext == ".yaml" || ext == ".yml" || ext == ".YAML" || ext == ".YML":
 		if err := loadYAML(data, cfg); err != nil {
 			return err
 		}
@@ -789,70 +956,6 @@ func resolveConfigIncludes(path string, cfg *Config, seen map[string]struct{}) e
 	merged.Merge(&raw)
 	*cfg = merged
 	return nil
-}
-
-func (c *Config) Validate() error {
-	if c == nil {
-		return nil
-	}
-	c.fillDefaults()
-	if c.SourceDir != "" && len(c.SourceDirs) > 0 {
-		return NewError(ErrorInvalidSourceConfig)
-	}
-	if c.SourceFile != "" && len(c.SourceFiles) > 0 {
-		return NewError(ErrorInvalidSourceConfig)
-	}
-	if c.Mode != "auto" && c.Mode != "c" && c.Mode != "raw" {
-		return NewErrorDetail(ErrorInvalidMode, c.Mode)
-	}
-	c.Profile = strings.TrimSpace(strings.ToLower(c.Profile))
-	if c.Profile != "balanced" && c.Profile != "powered" && c.Profile != "performance" {
-		return NewErrorDetail(ErrorInvalidProfile, c.Profile)
-	}
-	c.Toolchain = strings.TrimSpace(strings.ToLower(c.Toolchain))
-	if _, ok := supportedToolchains[c.Toolchain]; !ok {
-		return NewErrorDetail(ErrorInvalidToolchain, c.Toolchain)
-	}
-	c.Target = strings.TrimSpace(c.Target)
-	switch c.Isolation {
-	case IsolationNone, IsolationStandard, IsolationStrict:
-	default:
-		return NewErrorDetail(ErrorInvalidIsolation, string(c.Isolation))
-	}
-	switch c.CacheMode {
-	case CacheModeDisk, CacheModeRAM, CacheModeOff, "":
-	default:
-		return NewErrorDetail(ErrorInvalidCacheMode, string(c.CacheMode))
-	}
-	if c.NoCache {
-		c.CacheMode = CacheModeOff
-	}
-	if c.IgnoreFile == "" {
-		c.IgnoreFile = ".fzignore"
-	}
-	if len(c.BuildRules) > 0 {
-		outputs := make(map[string]struct{}, len(c.BuildRules)*2)
-		for _, rule := range c.BuildRules {
-			if rule.Action == "" {
-				return NewError(ErrorBuildRuleActionRequired)
-			}
-			if len(rule.Outputs) == 0 {
-				return NewError(ErrorBuildRuleOutputsRequired)
-			}
-			for _, out := range rule.Outputs {
-				key := filepath.Clean(out)
-				if _, ok := outputs[key]; ok {
-					return NewErrorDetail(ErrorDuplicateBuildRuleOutput, out)
-				}
-				outputs[key] = struct{}{}
-			}
-		}
-	}
-	return nil
-}
-
-func (c *Config) IsolationEnabled() bool {
-	return c.Isolation != IsolationNone
 }
 
 func (c *Config) IsStrictIsolation() bool {
@@ -1054,11 +1157,47 @@ func (c *Config) Merge(other *Config) {
 	if len(other.BuildRules) > 0 {
 		c.BuildRules = append(c.BuildRules, other.BuildRules...)
 	}
+	if len(other.DepBuild.BuildTargets) > 0 {
+		c.DepBuild.BuildTargets = append(c.DepBuild.BuildTargets, other.DepBuild.BuildTargets...)
+	}
+	if len(other.DepBuild.Outputs) > 0 {
+		c.DepBuild.Outputs = append(c.DepBuild.Outputs, other.DepBuild.Outputs...)
+	}
+	if len(other.DepBuild.Include) > 0 {
+		c.DepBuild.Include = append(c.DepBuild.Include, other.DepBuild.Include...)
+	}
+	if len(other.DepBuild.PreBuild) > 0 {
+		c.DepBuild.PreBuild = append(c.DepBuild.PreBuild, other.DepBuild.PreBuild...)
+	}
+	if len(other.DepBuild.PostBuild) > 0 {
+		c.DepBuild.PostBuild = append(c.DepBuild.PostBuild, other.DepBuild.PostBuild...)
+	}
+	if len(other.DepBuild.Steps) > 0 {
+		c.DepBuild.Steps = append(c.DepBuild.Steps, other.DepBuild.Steps...)
+	}
+	if len(other.DepBuild.ExcludeFiles) > 0 {
+		c.DepBuild.ExcludeFiles = append(c.DepBuild.ExcludeFiles, other.DepBuild.ExcludeFiles...)
+	}
+	if len(other.DepBuild.OnlyFiles) > 0 {
+		c.DepBuild.OnlyFiles = append(c.DepBuild.OnlyFiles, other.DepBuild.OnlyFiles...)
+	}
+	if len(other.DepBuild.Environment) > 0 {
+		c.DepBuild.Environment = mergeStringMap(c.DepBuild.Environment, other.DepBuild.Environment)
+	}
+	if other.DepBuild.Enabled {
+		c.DepBuild.Enabled = true
+	}
+	if other.DepBuild.SkipTests {
+		c.DepBuild.SkipTests = true
+	}
 	if other.Hooks.OnFailure != "" {
 		c.Hooks.OnFailure = other.Hooks.OnFailure
 	}
 	if other.ISO.Enabled {
 		c.ISO.Enabled = true
+	}
+	if other.CacheRAMMB > 0 {
+		c.CacheRAMMB = other.CacheRAMMB
 	}
 	c.mergeISO(&other.ISO)
 }
