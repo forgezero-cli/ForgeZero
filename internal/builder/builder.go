@@ -399,6 +399,11 @@ func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose 
 
 func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int, buildType string) (*BuildResult, error) {
 	ApplyHostDetection(cfg)
+	if cfg == nil {
+		SetRAMCacheCapacityMB(0)
+	} else {
+		SetRAMCacheCapacityMB(cfg.CacheRAMMB)
+	}
 	localCfgLoaded := false
 	if len(dirs) > 0 {
 		localPaths := []string{filepath.Join(dirs[0], "fz.toml"), filepath.Join(dirs[0], ".fz.toml")}
