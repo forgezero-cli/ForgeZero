@@ -44,14 +44,33 @@ var (
 	CcFLagsParsed         []string
 	AdditionalIncludeDirs []string
 	ForceInternalAsm      bool = true
-
-	UseNasm bool
-
-	CcFlagsOnce sync.Once
-	runCommand  = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
+	UseNasm               bool
+	CcFlagsOnce           sync.Once
+	runCommand            = func(ctx context.Context, verbose bool, name string, args ...string) (string, error) {
 		return utils.RunCommandSilent(ctx, verbose, name, args...)
 	}
+	initFlagsOnce sync.Once
 )
+
+func initAssemblerFlags() {
+	initFlagsOnce.Do(func() {
+		if muslFlag := flag.Lookup("musl"); muslFlag != nil && muslFlag.Value.String() != "" {
+			muslVal := muslFlag.Value.String()
+			switch {
+			case muslVal == "riscv64":
+				Target = "riscv64-linux-musl"
+			case muslVal != "true" && muslVal != "false":
+				Target = muslVal + "-linux-musl"
+			case muslVal == "true":
+				Target = "x86_64-linux-musl"
+			}
+		}
+		if useNasmFlag := flag.Lookup("use-nasm"); useNasmFlag != nil {
+			UseNasm = useNasmFlag.Value.String() == "true"
+		}
+		ForceInternalAsm = !UseNasm
+	})
+}
 
 func SetRunCommand(fn func(ctx context.Context, verbose bool, name string, args ...string) (string, error)) {
 	if fn == nil {
@@ -194,7 +213,8 @@ func assembleWithNasm(ctx context.Context, src, obj string, debug, verbose bool)
 		nasmPath = path
 	}
 
-	args := []string{"-f", "elf64", "-o", obj}
+	args := make([]string, 0, 8)
+	args = append(args, "-f", "elf64", "-o", obj)
 	if debug {
 		args = append(args, "-g", "-F", "dwarf")
 	}
@@ -211,26 +231,13 @@ func assembleWithNasm(ctx context.Context, src, obj string, debug, verbose bool)
 }
 
 func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode string) error {
-	if ctxTarget, ok := ctx.Value(utils.TargetCtxKey).(string); ok {
-		Target = ctxTarget
+	initAssemblerFlags()
+
+	target := Target
+	if ctxTarget, ok := ctx.Value(utils.TargetCtxKey).(string); ok && ctxTarget != "" {
+		target = ctxTarget
 	}
 
-	if muslFlag := flag.Lookup("musl"); muslFlag != nil && muslFlag.Value.String() != "" {
-		muslVal := muslFlag.Value.String()
-		switch {
-		case muslVal == "riscv64":
-			Target = "riscv64-linux-musl"
-		case muslVal != "true" && muslVal != "false":
-			Target = muslVal + "-linux-musl"
-		case muslVal == "true":
-			Target = "x86_64-linux-musl"
-		}
-	}
-
-	if useNasmFlag := flag.Lookup("use-nasm"); useNasmFlag != nil {
-		UseNasm = useNasmFlag.Value.String() == "true"
-	}
-	ForceInternalAsm = !UseNasm
 	if verbose {
 		if UseNasm {
 			writeStderr("Using NASM for .asm files\n")
@@ -263,36 +270,33 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 		if mode != "raw" && mode != "auto" {
 			return errors.New("unsupported source mode: " + mode + " (supported: raw, auto)")
 		}
-		if isWasmTarget() {
+		if isWasmTargetWithTarget(target) {
 			return errors.New("cannot assemble .asm files for wasm target")
 		}
-
 		if strings.HasSuffix(src, ".asm") && UseNasm {
-
 			return assembleWithNasm(ctx, src, obj, debug, verbose)
 		}
-		return assembleRawASM(ctx, src, obj)
-
+		return assembleRawASM(ctx, src, obj, target)
 	case ".s":
 		if isGoAsmFile(src) {
 			return assembleGoAsm(ctx, src, obj, verbose)
 		}
-		return assembleS(ctx, src, obj, verbose)
+		return assembleS(ctx, src, obj, verbose, target)
 	case ".S":
-		return compileC(ctx, src, obj, verbose, ccForTarget())
+		return compileCWithTarget(ctx, src, obj, verbose, ccForTargetWithTarget(target), target)
 	case ".m", ".mm":
-		return compileC(ctx, src, obj, verbose, getCompiler(src))
+		return compileCWithTarget(ctx, src, obj, verbose, getCompilerWithTarget(src, target), target)
 	case ".c":
-		return compileC(ctx, src, obj, verbose, ccForTarget())
+		return compileCWithTarget(ctx, src, obj, verbose, ccForTargetWithTarget(target), target)
 	case ".cpp", ".cc", ".cxx":
-		return compileC(ctx, src, obj, verbose, cxxForTarget())
+		return compileCWithTarget(ctx, src, obj, verbose, cxxForTargetWithTarget(target), target)
 	default:
 		return errors.New("unsupported source extension: " + ext + " (supported: .asm, .s, .S, .m, .c, .cpp, .cc, .cxx)")
 	}
 }
 
-func assembleS(ctx context.Context, src, obj string, verbose bool) error {
-	_, err := runCommand(ctx, verbose, gasCmdForTarget(), "-o", obj, src)
+func assembleS(ctx context.Context, src, obj string, verbose bool, target string) error {
+	_, err := runCommand(ctx, verbose, gasCmdForTargetWithTarget(target), "-o", obj, src)
 	return err
 }
 
@@ -313,10 +317,14 @@ func getGccIncludePath() string {
 }
 
 func compileC(ctx context.Context, src, obj string, verbose bool, compiler string) error {
+	target := Target
 	if ctxTarget, ok := ctx.Value(utils.TargetCtxKey).(string); ok && ctxTarget != "" {
-		Target = ctxTarget
+		target = ctxTarget
 	}
+	return compileCWithTarget(ctx, src, obj, verbose, compiler, target)
+}
 
+func compileCWithTarget(ctx context.Context, src, obj string, verbose bool, compiler string, target string) error {
 	compilerParts := strings.Fields(compiler)
 	compilerBin := compilerParts[0]
 
@@ -330,8 +338,8 @@ func compileC(ctx context.Context, src, obj string, verbose bool, compiler strin
 		}
 	}
 
-	if compilerBin == "zig" && Target != "" {
-		args = append(args, "cc", "-target", Target)
+	if compilerBin == "zig" && target != "" {
+		args = append(args, "cc", "-target", target)
 	}
 	if len(compilerParts) > 1 {
 		if compilerBin != "zig" || compilerParts[1] != "cc" {
@@ -366,7 +374,7 @@ func compileC(ctx context.Context, src, obj string, verbose bool, compiler strin
 			newArgs = append(newArgs, PCHIncludeArgs[i])
 		}
 		if headerPath != "" {
-			pchPath, err := EnsurePCH(ctx, headerPath, compilerBin, args, Target, verbose)
+			pchPath, err := EnsurePCH(ctx, headerPath, compilerBin, args, target, verbose)
 			if err == nil && pchPath != "" {
 				args = append(args, "-include-pch", pchPath)
 			} else {
@@ -382,21 +390,21 @@ func compileC(ctx context.Context, src, obj string, verbose bool, compiler strin
 	return err
 }
 
-func assembleRawASM(ctx context.Context, src, obj string) error {
+func assembleRawASM(ctx context.Context, src, obj string, target string) error {
 	if IsBinFormat() {
-		return assembleRawBinary(src, obj)
+		return assembleRawBinary(src, obj, target)
 	}
 	return assembleBareMetalObject(ctx, src, obj)
 }
 
-func assembleRawBinary(src, obj string) error {
+func assembleRawBinary(src, obj string, target string) error {
 	srcBuf, release, err := loadSourcePooled(src)
 	if err != nil {
 		return err
 	}
 	defer release()
 
-	out, err := emitSourceRaw(srcBuf, selfTargetProfile(Target))
+	out, err := emitSourceRaw(srcBuf, selfTargetProfile(target))
 	if err != nil {
 		return err
 	}
@@ -405,4 +413,64 @@ func assembleRawBinary(src, obj string) error {
 
 func isWasmTarget() bool {
 	return strings.Contains(Target, "wasm") || strings.Contains(Target, "wasm32")
+}
+
+func isWasmTargetWithTarget(target string) bool {
+	return strings.Contains(target, "wasm") || strings.Contains(target, "wasm32")
+}
+
+func ccForTargetWithTarget(target string) string {
+	if strings.Contains(target, "riscv") {
+		if err := utils.CheckTool("zig"); err == nil {
+			return "zig"
+		}
+		return "riscv64-unknown-elf-gcc"
+	}
+	switch {
+	case isWasmTargetWithTarget(target):
+		if err := utils.CheckTool("emcc"); err == nil {
+			return "emcc"
+		}
+		return "clang"
+	case strings.Contains(target, "arm"):
+		return "arm-linux-gnueabihf-gcc"
+	default:
+		return "gcc"
+	}
+}
+
+func cxxForTargetWithTarget(target string) string {
+	switch {
+	case isWasmTargetWithTarget(target):
+		if err := utils.CheckTool("em++"); err == nil {
+			return "em++"
+		}
+		return "clang++"
+	case strings.Contains(target, "arm"):
+		return "arm-linux-gnueabihf-g++"
+	case strings.Contains(target, "riscv"):
+		return "riscv64-unknown-elf-g++"
+	default:
+		return "g++"
+	}
+}
+
+func gasCmdForTargetWithTarget(target string) string {
+	if isWasmTargetWithTarget(target) {
+		return "clang"
+	}
+	if strings.Contains(target, "arm") {
+		return "arm-linux-gnueabihf-as"
+	}
+	if strings.Contains(target, "riscv") {
+		return "riscv64-unknown-elf-as"
+	}
+	return "as"
+}
+
+func getCompilerWithTarget(src string, target string) string {
+	if strings.HasSuffix(src, ".m") {
+		return "clang"
+	}
+	return ccForTargetWithTarget(target)
 }
