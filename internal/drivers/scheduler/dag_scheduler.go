@@ -61,13 +61,16 @@ func (d *DAGScheduler) Submit(task Task, deps []int) (int, error) {
 		return -1, errors.New("scheduler already running")
 	}
 	idx := len(d.nodes)
-	node := dagNode{task: task}
-	node.deps.Store(int32(len(deps)))
-	d.nodes = append(d.nodes, node)
 	for _, dep := range deps {
 		if dep < 0 || dep >= idx {
 			return -1, errors.New("invalid dependency index")
 		}
+	}
+
+	node := dagNode{task: task}
+	node.deps.Store(int32(len(deps)))
+	d.nodes = append(d.nodes, node)
+	for _, dep := range deps {
 		d.nodes[dep].dependents = append(d.nodes[dep].dependents, idx)
 	}
 	return idx, nil
