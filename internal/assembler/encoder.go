@@ -40,8 +40,9 @@ func PutEncoder(e *Encoder) {
 	encPool.Put(e)
 }
 
-func (e *Encoder) WriteByte(b byte) {
+func (e *Encoder) WriteByte(b byte) error {
 	e.buf = append(e.buf, b)
+	return nil
 }
 
 func (e *Encoder) Write(p []byte) {
