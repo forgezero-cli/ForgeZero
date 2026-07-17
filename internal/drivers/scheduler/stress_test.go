@@ -43,3 +43,41 @@ func TestSchedulerStressNoLeak(t *testing.T) {
 		t.Fatalf("suspected memory leak: start=%d end=%d", mStart.HeapAlloc, mEnd.HeapAlloc)
 	}
 }
+
+func TestDAGSchedulerStressDependencies(t *testing.T) {
+	const nodes = 128
+	sched := NewDAGScheduler(8, nodes)
+	order := make([]int, 0, nodes)
+	var added atomic.Int64
+	for i := 0; i < nodes; i++ {
+		deps := make([]int, 0, 2)
+		if i > 0 {
+			deps = append(deps, i-1)
+		}
+		if i > 1 {
+			deps = append(deps, i-2)
+		}
+		idx, err := sched.Submit(AcquireTask(func(arg uintptr, extra uintptr) error {
+			order = append(order, int(arg))
+			added.Add(1)
+			return nil
+		}, uintptr(i), 0), deps)
+		if err != nil {
+			t.Fatalf("submit failed for node %d: %v", i, err)
+		}
+		if idx != i {
+			t.Fatalf("expected node index %d, got %d", i, idx)
+		}
+	}
+	if err := sched.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if added.Load() != nodes {
+		t.Fatalf("expected %d tasks run, got %d", nodes, added.Load())
+	}
+	for i, id := range order {
+		if id != i {
+			t.Fatalf("unexpected order at %d: got %d", i, id)
+		}
+	}
+}
