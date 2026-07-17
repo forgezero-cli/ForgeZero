@@ -308,7 +308,7 @@ func TestLoadYAMLDeprecationWarning(t *testing.T) {
 
 func TestApplySetOverrides(t *testing.T) {
 	cfg := &Config{}
-	if err := cfg.ApplySetOverrides([]string{"output=release", "mode=raw", "debug=true", "optimization_level=3"}); err != nil {
+	if err := cfg.ApplySetOverrides([]string{"output=release", "mode=raw", "debug=true", "optimization_level=3", "cache_ram_mb=256"}); err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Output != "release" {
@@ -322,6 +322,18 @@ func TestApplySetOverrides(t *testing.T) {
 	}
 	if cfg.OptimizationLevel != 3 {
 		t.Fatalf("OptimizationLevel = %d, want 3", cfg.OptimizationLevel)
+	}
+	if cfg.CacheRAMMB != 256 {
+		t.Fatalf("CacheRAMMB = %d, want 256", cfg.CacheRAMMB)
+	}
+}
+
+func TestMergeCacheRAMMB(t *testing.T) {
+	base := &Config{CacheRAMMB: 128}
+	other := &Config{CacheRAMMB: 512}
+	base.Merge(other)
+	if base.CacheRAMMB != 512 {
+		t.Fatalf("CacheRAMMB = %d, want 512", base.CacheRAMMB)
 	}
 }
 
