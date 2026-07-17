@@ -42,6 +42,8 @@ type Scheduler struct {
 	workers    []priorityQueues
 	nextSubmit atomic.Uint64
 	pending    atomic.Int64
+	pendingMu  sync.Mutex
+	pendingCond *sync.Cond
 	running    atomic.Bool
 	errMu      sync.Mutex
 	errs       []error
@@ -64,6 +66,7 @@ func NewScheduler(workerPoolSize int, queueSize int) *Scheduler {
 		queues:    newPriorityQueues(queueSize),
 		workers:   make([]priorityQueues, workerPoolSize),
 	}
+	s.pendingCond = sync.NewCond(&s.pendingMu)
 
 	for i := 0; i < workerPoolSize; i++ {
 		s.workers[i] = newPriorityQueues(queueSize)
@@ -148,14 +151,17 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		return nil
 	}
 
+	s.pendingMu.Lock()
 	for s.pending.Load() > 0 {
 		if err := ctx.Err(); err != nil {
+			s.pendingMu.Unlock()
 			s.running.Store(false)
 			globalRunContext.Store(nil)
 			return err
 		}
-		runtime.Gosched()
+		s.pendingCond.Wait()
 	}
+	s.pendingMu.Unlock()
 
 	s.running.Store(false)
 	globalRunContext.Store(nil)
@@ -183,6 +189,10 @@ func (s *Scheduler) workerLoop(workerIdx int) {
 			s.recordError(err)
 		}
 		ReleaseTask(task)
-		s.pending.Add(-1)
+		if s.pending.Add(-1) == 0 {
+			s.pendingMu.Lock()
+			s.pendingCond.Broadcast()
+			s.pendingMu.Unlock()
+		}
 	}
 }
