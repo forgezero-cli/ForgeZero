@@ -18,13 +18,20 @@
 package toml
 
 import (
-	"bytes"
+	"strings"
+	"unsafe"
 
 	burntsushi "github.com/BurntSushi/toml"
 )
 
 func Unmarshal(data []byte, v interface{}) error {
-	if _, err := burntsushi.DecodeReader(bytes.NewReader(data), v); err != nil {
+	var input string
+	if len(data) > 0 {
+		input = unsafe.String(&data[0], len(data))
+	}
+	var reader strings.Reader
+	reader.Reset(input)
+	if _, err := burntsushi.NewDecoder(&reader).Decode(v); err != nil {
 		return err
 	}
 	return nil
