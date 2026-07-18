@@ -669,8 +669,8 @@ func TestFindExecutable(t *testing.T) {
 	if path == "" {
 		t.Error("empty path")
 	}
-	if filepath.IsAbs(path) {
-		// good
+	if !filepath.IsAbs(path) {
+		t.Error("expected absolute path for executable")
 	}
 	_, err = FindExecutable(ctx, "nonexistent_cmd_xyz")
 	if err == nil {
@@ -692,7 +692,6 @@ func TestSafeEnv(t *testing.T) {
 	if len(env) == 0 {
 		t.Error("empty env")
 	}
-	// check that allowed env vars are present
 	found := false
 	for _, e := range env {
 		if strings.HasPrefix(e, "USER=") {
@@ -829,7 +828,6 @@ func TestFileIsStable(t *testing.T) {
 		t.Error("expected stable")
 	}
 	f.Close()
-	// test with invalid file
 	var invalid struct{ Stat func() (os.FileInfo, error) }
 	invalid.Stat = func() (os.FileInfo, error) { return nil, os.ErrInvalid }
 	f.Close()
@@ -923,7 +921,6 @@ func TestScanFileIncludes(t *testing.T) {
 	if len(buf) != 2 {
 		t.Errorf("expected 2 includes, got %d", len(buf))
 	}
-	// test with no includes
 	empty := filepath.Join(dir, "empty.c")
 	if err := os.WriteFile(empty, []byte("int x;"), 0o644); err != nil {
 		t.Fatal(err)
