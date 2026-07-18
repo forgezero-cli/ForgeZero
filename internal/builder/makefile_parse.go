@@ -18,80 +18,153 @@
 package builder
 
 import (
-	"bufio"
+	"bytes"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"unsafe"
 )
 
 func parseMakefileVars(path string) (map[string]string, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 	vars := make(map[string]string)
-	scanner := bufio.NewScanner(f)
-	var curName string
-	var curOp string
-	var curVal strings.Builder
-	re := regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*([:+]?=)\s*(.*)$`)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if curName != "" {
-			if strings.HasPrefix(line, "\t") || strings.HasPrefix(line, " ") {
-				trimmed := strings.TrimSpace(line)
-				if strings.HasSuffix(trimmed, "\\") {
-					trimmed = strings.TrimSuffix(trimmed, "\\")
-				}
-				if curVal.Len() > 0 {
-					curVal.WriteByte(' ')
-				}
-				curVal.WriteString(trimmed)
+
+	var curName []byte
+	var curOp []byte
+	var curVal []byte
+	cont := false
+
+	nextLine := func(start int) (line []byte, next int) {
+		if start >= len(data) {
+			return nil, len(data)
+		}
+		end := start
+		for end < len(data) && data[end] != '\n' {
+			end++
+		}
+		line = data[start:end]
+		if end < len(data) && data[end] == '\n' {
+			next = end + 1
+		} else {
+			next = end
+		}
+		if len(line) > 0 && line[len(line)-1] == '\r' {
+			line = line[:len(line)-1]
+		}
+		return
+	}
+
+	start := 0
+	for start < len(data) {
+		line, nstart := nextLine(start)
+		start = nstart
+		if len(curName) > 0 && len(line) > 0 && (line[0] == '\t' || line[0] == ' ') {
+			t := trimSpaceBytes(line)
+			if len(t) > 0 && t[len(t)-1] == '\\' {
+				t = t[:len(t)-1]
+				cont = true
+			} else {
+				cont = false
+			}
+			if len(curVal) > 0 {
+				curVal = append(curVal, ' ')
+			}
+			curVal = append(curVal, t...)
+			if cont {
 				continue
 			}
-			val := strings.TrimSpace(curVal.String())
-			if curOp == "+=" {
-				if prev, ok := vars[curName]; ok && prev != "" {
-					vars[curName] = prev + " " + val
+			key := bytesToString(trimSpaceBytes(curName))
+			val := bytesToString(trimSpaceBytes(curVal))
+			if bytes.Equal(curOp, []byte("+=")) {
+				if prev, ok := vars[key]; ok && prev != "" {
+					vars[key] = prev + " " + val
 				} else {
-					vars[curName] = val
+					vars[key] = val
 				}
 			} else {
-				vars[curName] = val
+				vars[key] = val
 			}
-			curName = ""
-			curOp = ""
-			curVal.Reset()
-		}
-
-		m := re.FindStringSubmatch(line)
-		if m == nil {
+			curName = nil
+			curOp = nil
+			curVal = nil
 			continue
 		}
-		curName = m[1]
-		curOp = m[2]
-		v := strings.TrimSpace(m[3])
-		if strings.HasSuffix(v, "\\") {
-			v = strings.TrimSuffix(v, "\\")
+
+		eq := bytes.IndexByte(line, '=')
+		if eq == -1 {
+			continue
 		}
-		curVal.WriteString(v)
-	}
-	if curName != "" {
-		val := strings.TrimSpace(curVal.String())
-		if curOp == "+=" {
-			if prev, ok := vars[curName]; ok && prev != "" {
-				vars[curName] = prev + " " + val
+		i := eq - 1
+		for i >= 0 && (line[i] == ' ' || line[i] == '\t') {
+			i--
+		}
+		var op []byte
+		if i >= 0 && (line[i] == ':' || line[i] == '+') {
+			op = []byte{line[i], '='}
+			j := i - 1
+			for j >= 0 && (line[j] == ' ' || line[j] == '\t') {
+				j--
+			}
+			name := line[:j+1]
+			name = trimSpaceBytes(name)
+			curName = append(curName[:0], name...)
+		} else {
+			op = []byte{'='}
+			name := line[:i+1]
+			name = trimSpaceBytes(name)
+			curName = append(curName[:0], name...)
+		}
+		curOp = append(curOp[:0], op...)
+		v := line[eq+1:]
+		v = trimSpaceBytes(v)
+		if len(v) > 0 && v[len(v)-1] == '\\' {
+			v = v[:len(v)-1]
+			cont = true
+		} else {
+			cont = false
+		}
+		curVal = append(curVal[:0], v...)
+		if cont {
+			continue
+		}
+		key := bytesToString(trimSpaceBytes(curName))
+		val := bytesToString(trimSpaceBytes(curVal))
+		if bytes.Equal(curOp, []byte("+=")) {
+			if prev, ok := vars[key]; ok && prev != "" {
+				vars[key] = prev + " " + val
 			} else {
-				vars[curName] = val
+				vars[key] = val
 			}
 		} else {
-			vars[curName] = val
+			vars[key] = val
 		}
+		curName = nil
+		curOp = nil
+		curVal = nil
 	}
-	return vars, scanner.Err()
+
+	return vars, nil
+}
+
+func trimSpaceBytes(b []byte) []byte {
+	start := 0
+	end := len(b)
+	for start < end && (b[start] == ' ' || b[start] == '\t' || b[start] == '\r' || b[start] == '\n') {
+		start++
+	}
+	for end > start && (b[end-1] == ' ' || b[end-1] == '\t' || b[end-1] == '\r' || b[end-1] == '\n') {
+		end--
+	}
+	return b[start:end]
+}
+
+func bytesToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
 }
 
 func makefileCandidates(rootDir string) []string {
