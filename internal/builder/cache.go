@@ -67,7 +67,11 @@ func (c *objectCache) delete(key string) {
 			}
 			data := ent.object
 			if len(data) > 0 {
-				_ = munmapFile(data)
+				if err := munmapFile(data); err != nil {
+					_, _ = os.Stderr.WriteString("munmapFile failed: ")
+					_, _ = os.Stderr.WriteString(err.Error())
+					_, _ = os.Stderr.WriteString("\n")
+				}
 				ent.object = nil
 				runtime.KeepAlive(data)
 			}
@@ -112,7 +116,11 @@ func init() {
 	for i := 0; i < workers; i++ {
 		go func() {
 			for t := range cacheWriteCh {
-				_ = storeCache(t.src, t.obj, t.cacheDir, t.debug, t.verbose, t.mode)
+				if err := storeCache(t.src, t.obj, t.cacheDir, t.debug, t.verbose, t.mode); err != nil {
+					_, _ = os.Stderr.WriteString("storeCache failed: ")
+					_, _ = os.Stderr.WriteString(err.Error())
+					_, _ = os.Stderr.WriteString("\n")
+				}
 			}
 		}()
 	}
@@ -122,8 +130,12 @@ func init() {
 
 func AsyncStoreCache(src, obj, cacheDir string, debug, verbose bool, mode string) error {
 	t := cacheTask{src: src, obj: obj, cacheDir: cacheDir, debug: debug, verbose: verbose, mode: mode}
-	cacheWriteCh <- t
-	return nil
+	select {
+	case cacheWriteCh <- t:
+		return nil
+	default:
+		return fzerr.NewMsg(fzerr.CodeSchedulerFull, "cache write channel full")
+	}
 }
 
 type shadowTask struct {
@@ -138,15 +150,23 @@ var shadowWriteCh = make(chan shadowTask, 256)
 func init() {
 	go func() {
 		for t := range shadowWriteCh {
-			_ = storeShadowCache(t.src, t.obj, t.debug, t.mode)
+			if err := storeShadowCache(t.src, t.obj, t.debug, t.mode); err != nil {
+				_, _ = os.Stderr.WriteString("storeShadowCache failed: ")
+				_, _ = os.Stderr.WriteString(err.Error())
+				_, _ = os.Stderr.WriteString("\n")
+			}
 		}
 	}()
 }
 
 func AsyncStoreShadowCache(src, obj string, debug bool, mode string) error {
 	t := shadowTask{src: src, obj: obj, debug: debug, mode: mode}
-	shadowWriteCh <- t
-	return nil
+	select {
+	case shadowWriteCh <- t:
+		return nil
+	default:
+		return fzerr.NewMsg(fzerr.CodeSchedulerFull, "shadow cache write channel full")
+	}
 }
 
 type pathBuffer struct {
@@ -379,13 +399,21 @@ func storeRAMCache(src, obj string, debug bool, mode string) error {
 	}
 	syms, err = readFileMaybeIOUring(obj + ".syms")
 	if err != nil && !os.IsNotExist(err) {
-		_ = munmapFile(data)
+		if err2 := munmapFile(data); err2 != nil {
+			_, _ = os.Stderr.WriteString("munmapFile failed: ")
+			_, _ = os.Stderr.WriteString(err2.Error())
+			_, _ = os.Stderr.WriteString("\n")
+		}
 		atomic.AddInt64(&ramCacheUsedBytes, -size)
 		return err
 	}
 	h, err := utils.HashFile(src)
 	if err != nil {
-		_ = munmapFile(data)
+		if err2 := munmapFile(data); err2 != nil {
+			_, _ = os.Stderr.WriteString("munmapFile failed: ")
+			_, _ = os.Stderr.WriteString(err2.Error())
+			_, _ = os.Stderr.WriteString("\n")
+		}
 		atomic.AddInt64(&ramCacheUsedBytes, -size)
 		return err
 	}
