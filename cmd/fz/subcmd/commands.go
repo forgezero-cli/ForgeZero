@@ -84,14 +84,20 @@ func AuditMain(args []string) {
 	}
 	if len(result.Findings) == 0 {
 		if *jsonOutput {
-			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "clean", "findings": []any{}})
+			if err := json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "clean", "findings": []any{}}); err != nil {
+				stdio.WriteFmt(2, "audit encode failed: %v\n", err)
+				os.Exit(1)
+			}
 		} else {
 			stdio.WriteFmt(1, "%s\n", "audit passed: no vulnerabilities found")
 		}
 		return
 	}
 	if *jsonOutput {
-		_ = json.NewEncoder(os.Stdout).Encode(result)
+		if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+			stdio.WriteFmt(2, "audit encode failed: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 	for _, finding := range result.Findings {
@@ -229,7 +235,10 @@ func VerifyMain(args []string) {
 			os.Exit(1)
 		}
 		if *jsonOutput {
-			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "updated", "manifest": manifest})
+			if err := json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "updated", "manifest": manifest}); err != nil {
+				stdio.WriteFmt(2, "verify encode failed: %v\n", err)
+				os.Exit(1)
+			}
 			return
 		}
 		stdio.WriteFmt(1, "manifest updated: %s\n", manifest)
@@ -242,14 +251,20 @@ func VerifyMain(args []string) {
 	}
 	if len(result.Missing) == 0 && len(result.Modified) == 0 && len(result.Extra) == 0 {
 		if *jsonOutput {
-			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "clean"})
+			if err := json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "clean"}); err != nil {
+				stdio.WriteFmt(2, "verify encode failed: %v\n", err)
+				os.Exit(1)
+			}
 			return
 		}
 		stdio.WriteFmt(1, "%s\n", "verify passed: source tree integrity intact")
 		return
 	}
 	if *jsonOutput {
-		_ = json.NewEncoder(os.Stdout).Encode(result)
+		if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+			stdio.WriteFmt(2, "verify encode failed: %v\n", err)
+			os.Exit(1)
+		}
 		os.Exit(1)
 	}
 	if len(result.Missing) > 0 {
