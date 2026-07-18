@@ -18,6 +18,7 @@
 package fzpkg
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -66,7 +67,7 @@ func TestAddRejectsUntrustedManifestSignature(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(pkgPath, "package.tar"), []byte("pkg"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Add(nil, pkgPath, ""); err == nil {
+	if err := Add(context.TODO(), pkgPath, ""); err == nil {
 		t.Fatal("expected untrusted signature error")
 	}
 }
