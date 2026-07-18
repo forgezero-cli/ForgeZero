@@ -37,12 +37,16 @@ func EncodeBuildReport(report BuildReport) error {
 }
 
 func WriteErrorReport(exitCode int, err error) {
-	_ = EncodeBuildReport(BuildReport{
+	if e := EncodeBuildReport(BuildReport{
 		Status:     "error",
 		ExitCode:   exitCode,
 		DurationMs: 0,
 		Error:      err.Error(),
-	})
+	}); e != nil {
+		_, _ = os.Stderr.WriteString("failed to write error report: ")
+		_, _ = os.Stderr.WriteString(e.Error())
+		_, _ = os.Stderr.WriteString("\n")
+	}
 }
 
 func WriteSuccessReport(durationMs int64, binary string, sourceFiles, objectFiles []string) error {
