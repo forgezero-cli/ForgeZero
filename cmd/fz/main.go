@@ -277,7 +277,12 @@ func main() {
 			os.Exit(1)
 		}
 	} else if flags.JSONOutput {
-		_ = stdio.WriteSuccessReport(result.DurationMs, result.Binary, result.SourceFiles, result.ObjectFiles)
+		if err := stdio.WriteSuccessReport(result.DurationMs, result.Binary, result.SourceFiles, result.ObjectFiles); err != nil {
+			stdio.WriteFmt(2, "write success report failed: %v\n", err)
+			if !flags.Watch {
+				os.Exit(1)
+			}
+		}
 	} else if result.Binary != "" {
 		stdio.WriteFmt(1, "Built: %s\n", result.Binary)
 	}
