@@ -400,16 +400,16 @@ func (p *parser) parseLine(line []byte) error {
 	case equalWord(tok, "pop"):
 		return p.emitPop(rest)
 	case equalWord(tok, "pushf"):
-		p.current.data = append(p.current.data, 0x9C)
+		p.current.AppendByte(0x9C)
 		return nil
 	case equalWord(tok, "popf"):
-		p.current.data = append(p.current.data, 0x9D)
+		p.current.AppendByte(0x9D)
 		return nil
 	case equalWord(tok, "pusha"):
-		p.current.data = append(p.current.data, 0x60)
+		p.current.AppendByte(0x60)
 		return nil
 	case equalWord(tok, "popa"):
-		p.current.data = append(p.current.data, 0x61)
+		p.current.AppendByte(0x61)
 		return nil
 	case equalWord(tok, "lea"):
 		return p.emitLea(rest)
@@ -494,19 +494,19 @@ func (p *parser) parseLine(line []byte) error {
 	case equalWord(tok, "jg"):
 		return p.emitJump(0x8F, rest)
 	case equalWord(tok, "nop"):
-		p.current.data = append(p.current.data, 0x90)
+		p.current.AppendByte(0x90)
 		return nil
 	case equalWord(tok, "hlt"):
-		p.current.data = append(p.current.data, 0xF4)
+		p.current.AppendByte(0xF4)
 		return nil
 	case equalWord(tok, "cli"):
-		p.current.data = append(p.current.data, 0xFA)
+		p.current.AppendByte(0xFA)
 		return nil
 	case equalWord(tok, "sti"):
-		p.current.data = append(p.current.data, 0xFB)
+		p.current.AppendByte(0xFB)
 		return nil
 	case equalWord(tok, "iret"):
-		p.current.data = append(p.current.data, 0xCF)
+		p.current.AppendByte(0xCF)
 		return nil
 	case equalWord(tok, "int"):
 		tok2, _ := readToken(rest)
@@ -521,28 +521,28 @@ func (p *parser) parseLine(line []byte) error {
 		}
 		return nil
 	case equalWord(tok, "ud2"):
-		p.current.data = append(p.current.data, 0x0F, 0x0B)
+		p.current.AppendBytes([]byte{0x0F, 0x0B})
 		return nil
 	case equalWord(tok, "cpuid"):
-		p.current.data = append(p.current.data, 0x0F, 0xA2)
+		p.current.AppendBytes([]byte{0x0F, 0xA2})
 		return nil
 	case equalWord(tok, "rdtsc"):
-		p.current.data = append(p.current.data, 0x0F, 0x31)
+		p.current.AppendBytes([]byte{0x0F, 0x31})
 		return nil
 	case equalWord(tok, "syscall"):
-		p.current.data = append(p.current.data, 0x0F, 0x05)
+		p.current.AppendBytes([]byte{0x0F, 0x05})
 		return nil
 	case equalWord(tok, "sysret"):
-		p.current.data = append(p.current.data, 0x0F, 0x07)
+		p.current.AppendBytes([]byte{0x0F, 0x07})
 		return nil
 	case equalWord(tok, "swapgs"):
-		p.current.data = append(p.current.data, 0x0F, 0x01, 0xF8)
+		p.current.AppendBytes([]byte{0x0F, 0x01, 0xF8})
 		return nil
 	case equalWord(tok, "ret"):
-		p.current.data = append(p.current.data, 0xC3)
+		p.current.AppendByte(0xC3)
 		return nil
 	case equalWord(tok, "retf"):
-		p.current.data = append(p.current.data, 0xCB)
+		p.current.AppendByte(0xCB)
 		return nil
 	case equalWord(tok, "enter"):
 		tok2, rest2 := readToken(rest)
@@ -551,18 +551,19 @@ func (p *parser) parseLine(line []byte) error {
 			return err
 		}
 		level, _ := parseNumber(trimSpace(rest2))
-		p.current.data = append(p.current.data, 0xC8)
-		p.current.data = append(p.current.data, byte(bytes), byte(bytes>>8))
-		p.current.data = append(p.current.data, byte(level))
+		p.current.AppendByte(0xC8)
+		p.current.AppendByte(byte(bytes))
+		p.current.AppendByte(byte(bytes >> 8))
+		p.current.AppendByte(byte(level))
 		return nil
 	case equalWord(tok, "leave"):
-		p.current.data = append(p.current.data, 0xC9)
+		p.current.AppendByte(0xC9)
 		return nil
 	case equalWord(tok, "pause"):
-		p.current.data = append(p.current.data, 0xF3, 0x90)
+		p.current.AppendBytes([]byte{0xF3, 0x90})
 		return nil
 	case equalWord(tok, "lock"):
-		p.current.data = append(p.current.data, 0xF0)
+		p.current.AppendByte(0xF0)
 		tok2, rest2 := readToken(rest)
 		return p.parseLine(append(tok2, rest2...))
 	}
