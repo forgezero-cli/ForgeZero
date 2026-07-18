@@ -82,7 +82,7 @@ func TestBuildDependencyGraphWithDepFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-depFile := filepath.Join(dir, "a.d")
+	depFile := filepath.Join(dir, "a.d")
 	if err := os.WriteFile(depFile, []byte("a.o: a.c b.c\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
