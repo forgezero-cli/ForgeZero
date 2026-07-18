@@ -819,7 +819,7 @@ func TestLinkWithLdMissingLib(t *testing.T) {
 }
 
 func TestValidateLinkCallErrors(t *testing.T) {
-	if err := validateLinkCall(nil, "out"); err == nil {
+	if err := validateLinkCall(context.TODO(), "out"); err == nil {
 		t.Error("expected invalid linking context error")
 	}
 	if err := validateLinkCall(context.Background(), ""); err == nil {
