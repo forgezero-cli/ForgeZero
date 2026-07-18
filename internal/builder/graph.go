@@ -31,7 +31,7 @@ var (
 	errInvalidDependency = errors.New("invalid dependency index")
 	errDependencyCycle   = errors.New("dependency cycle detected")
 	topoScratchPool      = sync.Pool{New: func() any { return &topoScratch{} }}
-	topoOrderPool        = sync.Pool{New: func() any { return make([]int, 0, 128) }}
+	topoOrderPool        = sync.Pool{New: func() any { s := make([]int, 0, 128); return &s }}
 )
 
 type topoScratch struct {
@@ -118,7 +118,8 @@ func topoSort(graph [][]int) ([]int, error) {
 		return nil, nil
 	}
 	scratch := topoScratchPool.Get().(*topoScratch)
-	order := topoOrderPool.Get().([]int)
+	orderPtr := topoOrderPool.Get().(*[]int)
+	order := (*orderPtr)[:0]
 	order = ensureIntCap(order, n)
 	scratch.inDegree = ensureIntLen(scratch.inDegree, n)
 	scratch.adjIndex = ensureIntLen(scratch.adjIndex, n+1)
@@ -137,7 +138,8 @@ func topoSort(graph [][]int) ([]int, error) {
 		for _, dep := range deps {
 			if dep < 0 || dep >= n {
 				topoScratchPool.Put(scratch)
-				topoOrderPool.Put(order[:0])
+				*orderPtr = order[:0]
+				topoOrderPool.Put(orderPtr)
 				return nil, errInvalidDependency
 			}
 			scratch.adjIndex[dep+1]++
@@ -160,7 +162,8 @@ func topoSort(graph [][]int) ([]int, error) {
 	}
 	if len(scratch.queue) == 0 {
 		topoScratchPool.Put(scratch)
-		topoOrderPool.Put(order[:0])
+		*orderPtr = order[:0]
+		topoOrderPool.Put(orderPtr)
 		return nil, errDependencyCycle
 	}
 	for len(scratch.queue) > 0 {
@@ -179,7 +182,8 @@ func topoSort(graph [][]int) ([]int, error) {
 	}
 	if len(order) != n {
 		topoScratchPool.Put(scratch)
-		topoOrderPool.Put(order[:0])
+		*orderPtr = order[:0]
+		topoOrderPool.Put(orderPtr)
 		return nil, errDependencyCycle
 	}
 	scratch.inDegree = scratch.inDegree[:0]
