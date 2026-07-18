@@ -294,7 +294,7 @@ func TestLoadYAMLDeprecationWarning(t *testing.T) {
 	}
 	os.Stderr = w
 	defer func() { os.Stderr = oldStderr }()
-	_, err = Load(cfgPath)
+	_, _ = Load(cfgPath)
 	_ = w.Close()
 	data, err := io.ReadAll(r)
 	_ = r.Close()
