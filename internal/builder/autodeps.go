@@ -136,7 +136,6 @@ func (db *DepBuilder) runPreBuildScripts() error {
 	return nil
 }
 
-
 func (db *DepBuilder) runPostBuildScripts() error {
 	if db.depCfg == nil || len(db.depCfg.DepBuild.PostBuild) == 0 {
 		return nil
@@ -161,7 +160,7 @@ func (db *DepBuilder) shouldIncludeFile(path string) bool {
 	if db.depCfg == nil {
 		return true
 	}
-	
+
 	basename := filepath.Base(path)
 
 	if len(db.depCfg.DepBuild.ExcludeFiles) > 0 {
