@@ -83,7 +83,7 @@ var (
 	initOnce     sync.Once
 	preloadStart sync.Map
 	preloadWait  sync.WaitGroup
-	l1Mu         sync.RWMutex 
+	l1Mu         sync.RWMutex
 )
 
 func actionCacheInit() {
@@ -101,7 +101,11 @@ func actionCacheInit() {
 
 func actionCacheWorker() {
 	for job := range jobQueue {
-		_ = actionCacheStoreSync(job.inputs, job.action, job.outputs, job.env, job.cacheDir)
+		if err := actionCacheStoreSync(job.inputs, job.action, job.outputs, job.env, job.cacheDir); err != nil {
+			_, _ = os.Stderr.WriteString("actionCacheStoreSync failed: ")
+			_, _ = os.Stderr.WriteString(err.Error())
+			_, _ = os.Stderr.WriteString("\n")
+		}
 	}
 }
 
@@ -531,11 +535,19 @@ func mapL2Data(cacheDir string) error {
 
 func reloadL2Data(cacheDir string) error {
 	if l2Data != nil {
-		_ = munmapFile(l2Data)
+		if err := munmapFile(l2Data); err != nil {
+			_, _ = os.Stderr.WriteString("munmapFile failed: ")
+			_, _ = os.Stderr.WriteString(err.Error())
+			_, _ = os.Stderr.WriteString("\n")
+		}
 		l2Data = nil
 	}
 	if l2File != nil {
-		_ = l2File.Close()
+		if err := l2File.Close(); err != nil {
+			_, _ = os.Stderr.WriteString("l2File close failed: ")
+			_, _ = os.Stderr.WriteString(err.Error())
+			_, _ = os.Stderr.WriteString("\n")
+		}
 		l2File = nil
 	}
 	path := l2DataPath(cacheDir)
