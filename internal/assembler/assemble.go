@@ -25,7 +25,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 
@@ -110,9 +109,11 @@ func SetAdditionalIncludeDirs(dirs []string) {
 func assembleGoAsm(ctx context.Context, src, obj string, verbose bool) error {
 	goroot := os.Getenv("GOROOT")
 	if goroot == "" {
-		goroot = runtime.GOROOT()
+		if out, err := exec.Command("go", "env", "GOROOT").Output(); err == nil {
+			goroot = strings.TrimSpace(string(out))
+		}
 	}
-	includeDir := goroot + "/src/runtime"
+	includeDir := filepath.Join(goroot, "src", "runtime")
 
 	if verbose {
 		writeStderr("Running: go tool asm -I " + includeDir + src + "-o " + obj + "\n")
