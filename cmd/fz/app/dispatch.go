@@ -180,7 +180,10 @@ func HandleVersion(flags *cli.Flags) bool {
 	}
 	if flags.JSONOutput {
 		report := stdio.BuildReport{Status: "info", ExitCode: 0, DurationMs: 0, Binary: cli.VersionCore}
-		_ = json.NewEncoder(os.Stdout).Encode(report)
+		if err := json.NewEncoder(os.Stdout).Encode(report); err != nil {
+			stdio.WriteFmt(2, "version encode failed: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	if flags.ShortVersion {
 		stdio.WriteStdout(cli.VersionCore + "\n")
@@ -212,7 +215,10 @@ func HandleHelp(flags *cli.Flags) bool {
 func HandleConfigError(err error, jsonOutput bool) {
 	if jsonOutput {
 		report := stdio.BuildReport{Status: "error", ExitCode: 2, DurationMs: 0, Error: err.Error()}
-		_ = json.NewEncoder(os.Stdout).Encode(report)
+		if encErr := json.NewEncoder(os.Stdout).Encode(report); encErr != nil {
+			stdio.WriteFmt(2, "config encode failed: %v\n", encErr)
+			os.Exit(1)
+		}
 	} else {
 		stdio.WriteFmt(2, "config error: %v\n", err)
 	}
@@ -280,7 +286,9 @@ func HandleWatch(flags *cli.Flags, cfg *config.Config, srcPath string, buildCtx 
 	if err != nil {
 		if flags.JSONOutput {
 			report := stdio.BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
-			_ = json.NewEncoder(os.Stdout).Encode(report)
+			if encErr := json.NewEncoder(os.Stdout).Encode(report); encErr != nil {
+				stdio.WriteFmt(2, "watch encode failed: %v\n", encErr)
+			}
 		} else {
 			stdio.WriteFmt(2, "watcher error: %v\n", err)
 		}
@@ -303,7 +311,9 @@ func HandleWatch(flags *cli.Flags, cfg *config.Config, srcPath string, buildCtx 
 	if err := w.AddRecursive(watchTarget); err != nil {
 		if flags.JSONOutput {
 			report := stdio.BuildReport{Status: "error", ExitCode: 1, DurationMs: 0, Error: err.Error()}
-			_ = json.NewEncoder(os.Stdout).Encode(report)
+			if encErr := json.NewEncoder(os.Stdout).Encode(report); encErr != nil {
+				stdio.WriteFmt(2, "watch encode failed: %v\n", encErr)
+			}
 		} else {
 			stdio.WriteFmt(2, "cannot watch: %v\n", err)
 		}
@@ -311,9 +321,13 @@ func HandleWatch(flags *cli.Flags, cfg *config.Config, srcPath string, buildCtx 
 	}
 
 	if flags.ConfigPath != "" {
-		_ = w.Add(flags.ConfigPath)
+		if err := w.Add(flags.ConfigPath); err != nil {
+			stdio.WriteFmt(2, "watch add failed: %v\n", err)
+		}
 	} else if cfgFile := config.DefaultConfigPath(); cfgFile != "" {
-		_ = w.Add(cfgFile)
+		if err := w.Add(cfgFile); err != nil {
+			stdio.WriteFmt(2, "watch add failed: %v\n", err)
+		}
 	}
 
 	if !flags.JSONOutput {
