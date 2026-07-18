@@ -147,8 +147,7 @@ func scanFileIncludes(path string, buf []string) ([]string, error) {
 			i++
 		}
 		if i >= len(data) {
-			pos = len(data)
-			break
+			return buf, nil
 		}
 		switch data[i] {
 		case '"':
@@ -158,8 +157,7 @@ func scanFileIncludes(path string, buf []string) ([]string, error) {
 				end++
 			}
 			if end >= len(data) {
-				pos = len(data)
-				break
+				return buf, nil
 			}
 			resolved, err := resolveIncludePathBytes(currentDir, data[begin:end])
 			if err == nil {
@@ -173,8 +171,7 @@ func scanFileIncludes(path string, buf []string) ([]string, error) {
 				end++
 			}
 			if end >= len(data) {
-				pos = len(data)
-				break
+				return buf, nil
 			}
 			resolved, err := resolveIncludePathBytes(currentDir, data[begin:end])
 			if err == nil {
