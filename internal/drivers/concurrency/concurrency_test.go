@@ -94,6 +94,7 @@ func BenchmarkSemaphoreAcquireRelease(b *testing.B) {
 	}
 }
 
+//nolint:staticcheck
 func BenchmarkMutexLockUnlock(b *testing.B) {
 	var m Mutex
 	b.ReportAllocs()
