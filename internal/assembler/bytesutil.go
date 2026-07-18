@@ -187,10 +187,21 @@ func alignOut(out []byte, align uint64) []byte {
 		return out
 	}
 	pad := int((align - uint64(len(out))%align) % align)
-	for i := 0; i < pad; i++ {
-		out = append(out, 0)
+	if pad == 0 {
+		return out
 	}
-	return out
+	n := len(out)
+	need := n + pad
+	if need <= cap(out) {
+		out = out[:need]
+		for i := n; i < need; i++ {
+			out[i] = 0
+		}
+		return out
+	}
+	nb := make([]byte, need)
+	copy(nb, out)
+	return nb
 }
 
 func alignOutOffset(offset int, align uint64) int {
@@ -202,6 +213,12 @@ func alignOutOffset(offset int, align uint64) int {
 }
 
 func appendByte(out []byte, v byte) []byte {
+	n := len(out)
+	if n+1 <= cap(out) {
+		out = out[:n+1]
+		out[n] = v
+		return out
+	}
 	return append(out, v)
 }
 
@@ -235,13 +252,42 @@ func containsFold(s, substr string) bool {
 }
 
 func appendUint16(out []byte, v uint16) []byte {
+	n := len(out)
+	if n+2 <= cap(out) {
+		out = out[:n+2]
+		out[n] = byte(v)
+		out[n+1] = byte(v >> 8)
+		return out
+	}
 	return append(out, byte(v), byte(v>>8))
 }
 
 func appendUint32(out []byte, v uint32) []byte {
+	n := len(out)
+	if n+4 <= cap(out) {
+		out = out[:n+4]
+		out[n] = byte(v)
+		out[n+1] = byte(v >> 8)
+		out[n+2] = byte(v >> 16)
+		out[n+3] = byte(v >> 24)
+		return out
+	}
 	return append(out, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 }
 
 func appendUint64(out []byte, v uint64) []byte {
+	n := len(out)
+	if n+8 <= cap(out) {
+		out = out[:n+8]
+		out[n] = byte(v)
+		out[n+1] = byte(v >> 8)
+		out[n+2] = byte(v >> 16)
+		out[n+3] = byte(v >> 24)
+		out[n+4] = byte(v >> 32)
+		out[n+5] = byte(v >> 40)
+		out[n+6] = byte(v >> 48)
+		out[n+7] = byte(v >> 56)
+		return out
+	}
 	return append(out, byte(v), byte(v>>8), byte(v>>16), byte(v>>24), byte(v>>32), byte(v>>40), byte(v>>48), byte(v>>56))
 }
