@@ -25,14 +25,27 @@ import (
 func WriteOut(fd int, s string) {
 	switch fd {
 	case 1:
-		_, _ = os.Stdout.WriteString(s)
+		if _, err := os.Stdout.WriteString(s); err != nil {
+			_, _ = os.Stderr.WriteString("stdout write failed: ")
+			_, _ = os.Stderr.WriteString(err.Error())
+			_, _ = os.Stderr.WriteString("\n")
+		}
 	case 2:
-		_, _ = os.Stderr.WriteString(s)
+		if _, err := os.Stderr.WriteString(s); err != nil {
+		}
 	default:
 		f := os.NewFile(uintptr(fd), "")
 		if f != nil {
-			_, _ = f.WriteString(s)
-			_ = f.Close()
+			if _, err := f.WriteString(s); err != nil {
+				_, _ = os.Stderr.WriteString("fd write failed: ")
+				_, _ = os.Stderr.WriteString(err.Error())
+				_, _ = os.Stderr.WriteString("\n")
+			}
+			if err := f.Close(); err != nil {
+				_, _ = os.Stderr.WriteString("fd close failed: ")
+				_, _ = os.Stderr.WriteString(err.Error())
+				_, _ = os.Stderr.WriteString("\n")
+			}
 		}
 	}
 }
@@ -183,14 +196,27 @@ func WriteFmt(fd int, format string, a ...any) {
 	b := FormatAppend(buf[:0], format, a...)
 	switch fd {
 	case 1:
-		_, _ = os.Stdout.Write(b)
+		if _, err := os.Stdout.Write(b); err != nil {
+			_, _ = os.Stderr.WriteString("stdout write failed: ")
+			_, _ = os.Stderr.WriteString(err.Error())
+			_, _ = os.Stderr.WriteString("\n")
+		}
 	case 2:
-		_, _ = os.Stderr.Write(b)
+		if _, err := os.Stderr.Write(b); err != nil {
+		}
 	default:
 		f := os.NewFile(uintptr(fd), "")
 		if f != nil {
-			_, _ = f.Write(b)
-			_ = f.Close()
+			if _, err := f.Write(b); err != nil {
+				_, _ = os.Stderr.WriteString("fd write failed: ")
+				_, _ = os.Stderr.WriteString(err.Error())
+				_, _ = os.Stderr.WriteString("\n")
+			}
+			if err := f.Close(); err != nil {
+				_, _ = os.Stderr.WriteString("fd close failed: ")
+				_, _ = os.Stderr.WriteString(err.Error())
+				_, _ = os.Stderr.WriteString("\n")
+			}
 		}
 	}
 }
