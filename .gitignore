@@ -1,3 +1,4 @@
+*.prof
 # After delete
 nginx
 git
