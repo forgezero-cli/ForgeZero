@@ -23,8 +23,6 @@ import (
 	"os"
 	"runtime"
 	"unsafe"
-
-	"golang.org/x/sys/cpu"
 )
 
 //go:noescape
@@ -159,35 +157,7 @@ func ExecRawXor(data []byte) uint8 {
 	if len(data) == 0 {
 		return 0
 	}
-	if cpu.X86.HasAVX2 {
-		return uint8(execRawXorAVX2(unsafe.Pointer(&data[0]), uintptr(len(data))))
-	}
-	var a1, a2, a3, a4 uint64
-	n := len(data)
-	i := 0
-	for ; i+32 <= n; i += 32 {
-		a1 ^= *(*uint64)(unsafe.Pointer(&data[i]))
-		a2 ^= *(*uint64)(unsafe.Pointer(&data[i+8]))
-		a3 ^= *(*uint64)(unsafe.Pointer(&data[i+16]))
-		a4 ^= *(*uint64)(unsafe.Pointer(&data[i+24]))
-	}
-	var acc uint64 = a1 ^ a2 ^ a3 ^ a4
-	for ; i+8 <= n; i += 8 {
-		acc ^= *(*uint64)(unsafe.Pointer(&data[i]))
-	}
-	var b uint8
-	b ^= uint8(acc)
-	b ^= uint8(acc >> 8)
-	b ^= uint8(acc >> 16)
-	b ^= uint8(acc >> 24)
-	b ^= uint8(acc >> 32)
-	b ^= uint8(acc >> 40)
-	b ^= uint8(acc >> 48)
-	b ^= uint8(acc >> 56)
-	for ; i < n; i++ {
-		b ^= data[i]
-	}
-	return b
+	return execRawXorFallback(data)
 }
 
 func execRawXorFallback(data []byte) uint8 {
@@ -218,4 +188,3 @@ func execRawXorFallback(data []byte) uint8 {
 	}
 	return b
 }
-
