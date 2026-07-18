@@ -131,7 +131,7 @@ func parseRegister(tok []byte) (byte, int, bool) {
 			if idx >= 10 {
 				return 0, 0, false
 			}
-			width := 64
+			var width int
 			if pos < n {
 				suf := name[pos:]
 				_ = suf
@@ -174,7 +174,8 @@ func parseRegister(tok []byte) (byte, int, bool) {
 		if idx < 10 || idx > 15 {
 			return 0, 0, false
 		}
-		width := 64
+		var width int
+		width = 64
 		if len(name) == 4 {
 			suf := name[3]
 			switch suf {
@@ -351,38 +352,38 @@ func (p *parser) writeMemOperand(mem operand, reg byte, isLea bool) {
 
 	if index != 255 {
 		if dispVal == 0 {
-			p.current.data = append(p.current.data, encodeModRM(0, reg, 4), encodeSIB(scale, index, base))
+			p.current.AppendBytes([]byte{encodeModRM(0, reg, 4), encodeSIB(scale, index, base)})
 			return
 		}
 		if dispVal >= -128 && dispVal <= 127 {
-			p.current.data = append(p.current.data, encodeModRM(1, reg, 4), encodeSIB(scale, index, base), byte(dispVal))
+			p.current.AppendBytes([]byte{encodeModRM(1, reg, 4), encodeSIB(scale, index, base), byte(dispVal)})
 			return
 		}
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(dispVal))
-		p.current.data = append(p.current.data, encodeModRM(2, reg, 4), encodeSIB(scale, index, base))
-		p.current.data = append(p.current.data, buf[:]...)
+		p.current.AppendBytes([]byte{encodeModRM(2, reg, 4), encodeSIB(scale, index, base)})
+		p.current.AppendBytes(buf[:])
 		return
 	}
 	if base == 255 {
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(dispVal))
-		p.current.data = append(p.current.data, encodeModRM(0, reg, 5))
-		p.current.data = append(p.current.data, buf[:]...)
+		p.current.AppendByte(encodeModRM(0, reg, 5))
+		p.current.AppendBytes(buf[:])
 		return
 	}
 	if dispVal == 0 {
-		p.current.data = append(p.current.data, encodeModRM(0, reg, base))
+		p.current.AppendByte(encodeModRM(0, reg, base))
 		return
 	}
 	if dispVal >= -128 && dispVal <= 127 {
-		p.current.data = append(p.current.data, encodeModRM(1, reg, base), byte(dispVal))
+		p.current.AppendBytes([]byte{encodeModRM(1, reg, base), byte(dispVal)})
 		return
 	}
 	var buf [4]byte
 	binary.LittleEndian.PutUint32(buf[:], uint32(dispVal))
-	p.current.data = append(p.current.data, encodeModRM(2, reg, base))
-	p.current.data = append(p.current.data, buf[:]...)
+	p.current.AppendByte(encodeModRM(2, reg, base))
+	p.current.AppendBytes(buf[:])
 }
 
 func (p *parser) emitArith(opRegReg byte, opRegImm byte, rest []byte) error {
@@ -399,32 +400,32 @@ func (p *parser) emitArith(opRegReg byte, opRegImm byte, rest []byte) error {
 		return err
 	}
 	if dst.typ == opReg && src.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, opRegReg, encodeModRM(3, src.reg, dst.reg))
+		p.current.AppendBytes([]byte{0x48, opRegReg, encodeModRM(3, src.reg, dst.reg)})
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opImm {
-		p.current.data = append(p.current.data, 0x48, opRegImm, encodeModRM(3, 0, dst.reg))
+		p.current.AppendBytes([]byte{0x48, opRegImm, encodeModRM(3, 0, dst.reg)})
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(src.imm))
-		p.current.data = append(p.current.data, buf[:]...)
+		p.current.AppendBytes(buf[:])
 		return nil
 	}
 	if dst.typ == opMem && src.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, opRegReg)
+		p.current.AppendBytes([]byte{0x48, opRegReg})
 		p.writeMemOperand(dst, src.reg, false)
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opMem {
-		p.current.data = append(p.current.data, 0x48, opRegReg)
+		p.current.AppendBytes([]byte{0x48, opRegReg})
 		p.writeMemOperand(src, dst.reg, false)
 		return nil
 	}
 	if dst.typ == opMem && src.typ == opImm {
-		p.current.data = append(p.current.data, 0x48, opRegImm)
+		p.current.AppendBytes([]byte{0x48, opRegImm})
 		p.writeMemOperand(dst, 0, false)
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(src.imm))
-		p.current.data = append(p.current.data, buf[:]...)
+		p.current.AppendBytes(buf[:])
 		return nil
 	}
 	return errors.New("unsupported operand combination for arithmetic")
@@ -437,11 +438,11 @@ func (p *parser) emitInc(rest []byte) error {
 		return err
 	}
 	if op.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, 0xFF, encodeModRM(3, 0, op.reg))
+		p.current.AppendBytes([]byte{0x48, 0xFF, encodeModRM(3, 0, op.reg)})
 		return nil
 	}
 	if op.typ == opMem {
-		p.current.data = append(p.current.data, 0x48, 0xFF)
+		p.current.AppendBytes([]byte{0x48, 0xFF})
 		p.writeMemOperand(op, 0, false)
 		return nil
 	}
@@ -455,11 +456,11 @@ func (p *parser) emitDec(rest []byte) error {
 		return err
 	}
 	if op.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, 0xFF, encodeModRM(3, 1, op.reg))
+		p.current.AppendBytes([]byte{0x48, 0xFF, encodeModRM(3, 1, op.reg)})
 		return nil
 	}
 	if op.typ == opMem {
-		p.current.data = append(p.current.data, 0x48, 0xFF)
+		p.current.AppendBytes([]byte{0x48, 0xFF})
 		p.writeMemOperand(op, 1, false)
 		return nil
 	}
@@ -473,11 +474,11 @@ func (p *parser) emitUnary(opcode byte, ext byte, rest []byte) error {
 		return err
 	}
 	if op.typ == opReg {
-		p.current.data = append(p.current.data, 0x48, opcode, encodeModRM(3, ext, op.reg))
+		p.current.AppendBytes([]byte{0x48, opcode, encodeModRM(3, ext, op.reg)})
 		return nil
 	}
 	if op.typ == opMem {
-		p.current.data = append(p.current.data, 0x48, opcode)
+		p.current.AppendBytes([]byte{0x48, opcode})
 		p.writeMemOperand(op, ext, false)
 		return nil
 	}
@@ -491,18 +492,18 @@ func (p *parser) emitPush(rest []byte) error {
 		return err
 	}
 	if op.typ == opReg {
-		p.current.data = append(p.current.data, 0x50+op.reg)
+		p.current.AppendByte(0x50 + op.reg)
 		return nil
 	}
 	if op.typ == opImm {
-		p.current.data = append(p.current.data, 0x68)
+		p.current.AppendByte(0x68)
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(op.imm))
-		p.current.data = append(p.current.data, buf[:]...)
+		p.current.AppendBytes(buf[:])
 		return nil
 	}
 	if op.typ == opMem {
-		p.current.data = append(p.current.data, 0xFF)
+		p.current.AppendByte(0xFF)
 		p.writeMemOperand(op, 6, false)
 		return nil
 	}
@@ -516,11 +517,11 @@ func (p *parser) emitPop(rest []byte) error {
 		return err
 	}
 	if op.typ == opReg {
-		p.current.data = append(p.current.data, 0x58+op.reg)
+		p.current.AppendByte(0x58 + op.reg)
 		return nil
 	}
 	if op.typ == opMem {
-		p.current.data = append(p.current.data, 0x8F)
+		p.current.AppendByte(0x8F)
 		p.writeMemOperand(op, 0, false)
 		return nil
 	}
@@ -556,7 +557,9 @@ func (p *parser) emitJmp(rest []byte) error {
 	}
 	if op.typ == opLabel {
 		name := op.label
-		_ = p.addSymbol(name, 0, shnUnDef, stBindLocal)
+		if err := p.addSymbol(name, 0, shnUnDef, stBindLocal); err != nil {
+			return err
+		}
 		symIdx := p.findSymbol(name)
 		cur := len(p.current.data)
 		p.current.data = append(p.current.data, 0xE9, 0, 0, 0, 0)
@@ -591,7 +594,9 @@ func (p *parser) emitJcc(opcode byte, rest []byte) error {
 		return errors.New("jcc requires label")
 	}
 	name := op.label
-	_ = p.addSymbol(name, 0, shnUnDef, stBindLocal)
+	if err := p.addSymbol(name, 0, shnUnDef, stBindLocal); err != nil {
+		return err
+	}
 	symIdx := p.findSymbol(name)
 	cur := len(p.current.data)
 	p.current.data = append(p.current.data, 0x0F, opcode, 0, 0, 0, 0)
@@ -733,7 +738,9 @@ func (p *parser) emitMov(rest []byte) error {
 	}
 	if dst.typ == opReg && src.typ == opLabel {
 		name := src.label
-		_ = p.addSymbol(name, 0, shnUnDef, stBindLocal)
+		if err := p.addSymbol(name, 0, shnUnDef, stBindLocal); err != nil {
+			return err
+		}
 		symIdx := p.findSymbol(name)
 		cur := len(p.current.data)
 		p.current.data = append(p.current.data, 0x48, 0xB8+dst.reg)
@@ -828,7 +835,9 @@ func (p *parser) emitCall(rest []byte) error {
 	if len(name) == 0 {
 		return errors.New("invalid call target")
 	}
-	_ = p.addSymbol(name, 0, shnUnDef, stBindLocal)
+	if err := p.addSymbol(name, 0, shnUnDef, stBindLocal); err != nil {
+		return err
+	}
 	symIdx := p.findSymbol(name)
 	cur := len(p.current.data)
 	p.current.data = append(p.current.data, 0xE8, 0, 0, 0, 0)
@@ -912,7 +921,9 @@ func (p *parser) emitJump(opcode byte, rest []byte) error {
 	if len(name) == 0 {
 		return errors.New("invalid jump target")
 	}
-	_ = p.addSymbol(name, 0, shnUnDef, stBindLocal)
+	if err := p.addSymbol(name, 0, shnUnDef, stBindLocal); err != nil {
+		return err
+	}
 	symIdx := p.findSymbol(name)
 	cur := len(p.current.data)
 	p.current.data = append(p.current.data, 0x0F, opcode, 0, 0, 0, 0)
