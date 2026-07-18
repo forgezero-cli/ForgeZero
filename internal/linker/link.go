@@ -272,7 +272,7 @@ func runLinkerCombinedOutput(ctx context.Context, verbose bool, name string, arg
 }
 
 func validateLinkCall(ctx context.Context, output string) error {
-	if ctx == nil {
+	if ctx == nil || ctx == context.TODO() {
 		return errors.New("invalid linking context")
 	}
 	if output == "" {
