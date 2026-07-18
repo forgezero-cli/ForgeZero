@@ -2,6 +2,56 @@
 
 # UNRELEASED
 
+## [6.0.0] - 2026-07-18
+
+### Added
+- **AVX2 optimization for ExecRawXor** – SIMD-accelerated XOR operations using AVX2 when available, with optimized 64-bit chunk fallback for significant performance gains.  
+  ([2ddf2a4](https://github.com/forgezero-cli/ForgeZero/commit/2ddf2a4))
+- **Zero-allocation Makefile parser** – manual byte-level parsing with `unsafe` string conversion eliminating all allocations during Makefile variable extraction.  
+  ([2ddf2a4](https://github.com/forgezero-cli/ForgeZero/commit/2ddf2a4))
+- **Encoder capacity optimization** – `Reserve` method and grow logic with 4096-byte default buffer to reduce allocations in hot path.  
+  ([1199697](https://github.com/forgezero-cli/ForgeZero/commit/1199697))
+
+### Changed
+- **Assembler byte operations** – replaced `append` calls with capacity-checked `AppendByte`/`AppendBytes` methods for zero-allocation emission.  
+  ([98f993f](https://github.com/forgezero-cli/ForgeZero/commit/98f993f), [291e081](https://github.com/forgezero-cli/ForgeZero/commit/291e081), [aa4bcc5](https://github.com/forgezero-cli/ForgeZero/commit/aa4bcc5))
+- **GOROOT detection** – replaced `runtime.GOROOT()` with `exec.Command("go", "env", "GOROOT")` for better cross-compilation support.  
+  ([722c33f](https://github.com/forgezero-cli/ForgeZero/commit/722c33f))
+- **Sync.Pool usage** – fixed `topoOrder` pool to use pointer to slice, preventing allocation issues.  
+  ([e89fb9f](https://github.com/forgezero-cli/ForgeZero/commit/e89fb9f))
+
+### Fixed
+- **Error handling** – added comprehensive error handling for JSON encoding, file writes, cache operations, and mmap operations across all packages.  
+  ([2257e55](https://github.com/forgezero-cli/ForgeZero/commit/2257e55), [14b2d8d](https://github.com/forgezero-cli/ForgeZero/commit/14b2d8d), [5face59](https://github.com/forgezero-cli/ForgeZero/commit/5face59), [942dda1](https://github.com/forgezero-cli/ForgeZero/commit/942dda1), [88ac473](https://github.com/forgezero-cli/ForgeZero/commit/88ac473), [304abdc](https://github.com/forgezero-cli/ForgeZero/commit/304abdc), [a615529](https://github.com/forgezero-cli/ForgeZero/commit/a615529))
+- **Makefile parser** – infinite loop fixed with proper EOF handling in include scanning.  
+  ([2ddf2a4](https://github.com/forgezero-cli/ForgeZero/commit/2ddf2a4))
+- **FindExecutable test** – inverted logic corrected for proper absolute path assertion.  
+  ([2ddf2a4](https://github.com/forgezero-cli/ForgeZero/commit/2ddf2a4))
+- **Config test** – proper error handling for Load function return value.  
+  ([372e4e5](https://github.com/forgezero-cli/ForgeZero/commit/372e4e5))
+
+### Testing
+- **stdio** – added output tests for write operations.  
+  ([2ddf2a4](https://github.com/forgezero-cli/ForgeZero/commit/2ddf2a4))
+- **assembler** – added stress tests and section helper functions.  
+  ([2ddf2a4](https://github.com/forgezero-cli/ForgeZero/commit/2ddf2a4))
+- **logger** – added logger tests.  
+  ([2ddf2a4](https://github.com/forgezero-cli/ForgeZero/commit/2ddf2a4))
+- **XOR** – added benchmark tests for AVX2 optimization.  
+  ([2ddf2a4](https://github.com/forgezero-cli/ForgeZero/commit/2ddf2a4))
+
+### Documentation
+- **YOUTUBE.md** – added new video link showing Redis build process.  
+  ([a4d2186](https://github.com/forgezero-cli/ForgeZero/commit/a4d2186))
+- **cmodule** – marked as unsupported with notice.  
+  ([e792c7d](https://github.com/forgezero-cli/ForgeZero/commit/e792c7d))
+
+### Build
+- Added `*.prof` to `.gitignore` for profiling files.  
+  ([3f5cd01](https://github.com/forgezero-cli/ForgeZero/commit/3f5cd01))
+- Replaced deprecated `ioutil.TempFile` with `os.CreateTemp`.  
+  ([bf06eb8](https://github.com/forgezero-cli/ForgeZero/commit/bf06eb8))
+
 ## [6.0.0] - 2026-07-17
 
 ### Added
@@ -464,3 +514,29 @@ e05874d builder: add unit tests for dependency build steps
 c329d22 builder: add TOML config tests for dependency build steps
 10319cf builder: add graph tests for dependency resolution
 81d9890 linker: add object linking tests
+3f5cd01 chore: add *.prof to gitignore
+2257e55 fix: handle JSON encode errors in dispatch
+14b2d8d fix: handle WriteSuccessReport error
+5face59 fix: add error handling for write operations
+942dda1 fix: handle EncodeBuildReport error in WriteErrorReport
+88ac473 fix: handle JSON encode errors in audit and verify
+a4d2186 docs: add new YouTube video link
+e792c7d docs: mark cmodule as unsupported
+722c33f fix: use exec.Command for GOROOT detection
+98f993f perf: optimize byte slice operations with capacity checks
+291e081 perf: use AppendByte/AppendBytes instead of append
+1199697 perf: optimize Encoder with capacity checks and larger buffer
+aa4bcc5 perf: use AppendBytes for byte sequences
+bf06eb8 chore: replace deprecated ioutil.TempFile
+304abdc fix: add error handling for cache operations
+75347f9 chore: fix formatting and remove blank lines
+60f7a7f chore: add newline at end of file
+a615529 fix: add error handling for cache operations
+e89fb9f perf: fix sync.Pool usage for topoOrder
+6181552 chore: fix indentation in graph_test.go
+372e4e5 fix: handle error return in config test
+2ddf2a4 perf: rewrite Makefile parser with zero allocation parsing
+9b669f8 test(scheduler): avoid unsafe.Pointer conversion in test helper
+e734275 chore(gloria): remove unused asm trampoline with missing Go declaration
+479f1b5 fix(assembler): match WriteByte signature to io.ByteWriter
+fd508de fix(scheduler): avoid copying atomic values in dag nodes and priority queues
