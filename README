@@ -6,6 +6,16 @@ and Gloria. It wraps NASM, GAS, FASM, GCC, Clang, Zig, and LD behind a
 single command-line interface, and provides fast, allocation-free builds
 without Makefiles or configuration.
 
+-----------
+Project Philosophy
+
+This tool isn’t here to hide the compiler from you.
+It’s built for people who know what a linker actually does, and aren’t afraid to tell it what to do.
+You pay for speed with knowledge — of flags, of libraries, of architectures.
+Zero magic. Maximum performance.
+If you want a black box, go use something else.
+If you want to control the box — welcome.
+
 Quick Start
 -----------
 
