@@ -1,3 +1,9 @@
+# Tests Artefacts 
+redis-server
+
+# Just testing new idea
+ins
+
 *.prof
 # After delete
 nginx
@@ -54,7 +60,6 @@ test.sh
 *.tmp
 *.log
 *.pid
-bench/*
 TODO.md
 cmake_bench/
 super.sh
