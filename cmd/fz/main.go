@@ -37,6 +37,7 @@ import (
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
+
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
