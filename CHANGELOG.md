@@ -5,6 +5,7 @@
 ## [6.0.0] - 2026-07-18
 
 ### Added
+
 - **AVX2 optimization for ExecRawXor** – SIMD-accelerated XOR operations using AVX2 when available, with optimized 64-bit chunk fallback for significant performance gains.  
   ([2ddf2a4](https://github.com/forgezero-cli/ForgeZero/commit/2ddf2a4))
 - **Zero-allocation Makefile parser** – manual byte-level parsing with `unsafe` string conversion eliminating all allocations during Makefile variable extraction.  
@@ -13,6 +14,7 @@
   ([1199697](https://github.com/forgezero-cli/ForgeZero/commit/1199697))
 
 ### Changed
+
 - **Assembler byte operations** – replaced `append` calls with capacity-checked `AppendByte`/`AppendBytes` methods for zero-allocation emission.  
   ([98f993f](https://github.com/forgezero-cli/ForgeZero/commit/98f993f), [291e081](https://github.com/forgezero-cli/ForgeZero/commit/291e081), [aa4bcc5](https://github.com/forgezero-cli/ForgeZero/commit/aa4bcc5))
 - **GOROOT detection** – replaced `runtime.GOROOT()` with `exec.Command("go", "env", "GOROOT")` for better cross-compilation support.  
@@ -21,6 +23,7 @@
   ([e89fb9f](https://github.com/forgezero-cli/ForgeZero/commit/e89fb9f))
 
 ### Fixed
+
 - **Error handling** – added comprehensive error handling for JSON encoding, file writes, cache operations, and mmap operations across all packages.  
   ([2257e55](https://github.com/forgezero-cli/ForgeZero/commit/2257e55), [14b2d8d](https://github.com/forgezero-cli/ForgeZero/commit/14b2d8d), [5face59](https://github.com/forgezero-cli/ForgeZero/commit/5face59), [942dda1](https://github.com/forgezero-cli/ForgeZero/commit/942dda1), [88ac473](https://github.com/forgezero-cli/ForgeZero/commit/88ac473), [304abdc](https://github.com/forgezero-cli/ForgeZero/commit/304abdc), [a615529](https://github.com/forgezero-cli/ForgeZero/commit/a615529))
 - **Makefile parser** – infinite loop fixed with proper EOF handling in include scanning.  
@@ -31,6 +34,7 @@
   ([372e4e5](https://github.com/forgezero-cli/ForgeZero/commit/372e4e5))
 
 ### Testing
+
 - **stdio** – added output tests for write operations.  
   ([2ddf2a4](https://github.com/forgezero-cli/ForgeZero/commit/2ddf2a4))
 - **assembler** – added stress tests and section helper functions.  
@@ -41,12 +45,14 @@
   ([2ddf2a4](https://github.com/forgezero-cli/ForgeZero/commit/2ddf2a4))
 
 ### Documentation
+
 - **YOUTUBE.md** – added new video link showing Redis build process.  
   ([a4d2186](https://github.com/forgezero-cli/ForgeZero/commit/a4d2186))
 - **cmodule** – marked as unsupported with notice.  
   ([e792c7d](https://github.com/forgezero-cli/ForgeZero/commit/e792c7d))
 
 ### Build
+
 - Added `*.prof` to `.gitignore` for profiling files.  
   ([3f5cd01](https://github.com/forgezero-cli/ForgeZero/commit/3f5cd01))
 - Replaced deprecated `ioutil.TempFile` with `os.CreateTemp`.  
@@ -55,6 +61,7 @@
 ## [6.0.0] - 2026-07-17
 
 ### Added
+
 - **RAM cache capacity limits** – `cache_ram_mb` config option and `SetRAMCacheCapacityMB` function to control RAM cache size with atomic tracking and eviction.  
   ([efb1576](https://github.com/forgezero-cli/ForgeZero/commit/efb1576), [8c332d3](https://github.com/forgezero-cli/ForgeZero/commit/8c332d3))
 - **Dependency build steps** – support for custom `steps` and `step_sets` in `[dep_build]` with conditional execution (`if`, `elif`, `else`), error handling (`try`, `catch`, `finally`), grouping (`group`, `stage`, `parallel`), and persistent outputs.  
@@ -69,6 +76,7 @@
   ([0bc36aa](https://github.com/forgezero-cli/ForgeZero/commit/0bc36aa))
 
 ### Changed
+
 - **Assembler** – flag initialization moved to `sync.Once` and `target` parameter added to eliminate data races; all platform detection functions now accept explicit `target` parameter.  
   ([5bc08ad](https://github.com/forgezero-cli/ForgeZero/commit/5bc08ad))
 - **L1 cache** – replaced lock-free operations with explicit `sync.RWMutex` protection to eliminate data races.  
@@ -83,6 +91,7 @@
   ([85b526f](https://github.com/forgezero-cli/ForgeZero/commit/85b526f))
 
 ### Fixed
+
 - **Data races** – fixed all data races in assembler (global `Target` writes) and builder L1 cache (concurrent `l1Store` writes).  
   ([5bc08ad](https://github.com/forgezero-cli/ForgeZero/commit/5bc08ad), [a81ff24](https://github.com/forgezero-cli/ForgeZero/commit/a81ff24))
 - **Scheduler node leak** – nodes are now validated before allocation to prevent leaks on invalid dependencies.  
@@ -95,6 +104,7 @@
   ([efb1576](https://github.com/forgezero-cli/ForgeZero/commit/efb1576))
 
 ### Performance
+
 - **Variable expansion** – early return for strings without `$` reduces overhead.  
   ([0bc36aa](https://github.com/forgezero-cli/ForgeZero/commit/0bc36aa))
 - **Config parsing** – optimized TOML parsing with unsafe string conversion.  
@@ -103,6 +113,7 @@
   ([96c87ea](https://github.com/forgezero-cli/ForgeZero/commit/96c87ea), [af4bb07](https://github.com/forgezero-cli/ForgeZero/commit/af4bb07))
 
 ### Testing
+
 - **Builder** – added comprehensive tests for autodeps, dependency build steps (unit, integration, parallel, TOML), and graph resolution.  
   ([4758fc6](https://github.com/forgezero-cli/ForgeZero/commit/4758fc6), [6f033d8](https://github.com/forgezero-cli/ForgeZero/commit/6f033d8), [87591cd](https://github.com/forgezero-cli/ForgeZero/commit/87591cd), [191ef17](https://github.com/forgezero-cli/ForgeZero/commit/191ef17), [e05874d](https://github.com/forgezero-cli/ForgeZero/commit/e05874d), [c329d22](https://github.com/forgezero-cli/ForgeZero/commit/c329d22), [10319cf](https://github.com/forgezero-cli/ForgeZero/commit/10319cf))
 - **Scheduler** – added DAG stress test with 128 nodes and tests for invalid dependencies and error propagation.  
@@ -112,10 +123,10 @@
 - **Config** – added tests for CacheRAMMB override and merge.  
   ([c643ff4](https://github.com/forgezero-cli/ForgeZero/commit/c643ff4))
 
-
 ## [6.0.0] - 2026-07-16
 
 ### Added
+
 - **`--config-only` CLI flag** – restricts build configuration to explicit `fz.toml`/`configure.fz` settings, skipping auto-discovery and Makefile parsing for better control in complex build environments.  
   ([5d2fed1](https://github.com/forgezero-cli/ForgeZero/commit/5d2fed1), [5d5519c](https://github.com/forgezero-cli/ForgeZero/commit/5d5519c), [0569c1d](https://github.com/forgezero-cli/ForgeZero/commit/0569c1d))
 - **`configure.fz` support** – build rules can now be defined via `configure.fz` files with `OUTPUT`, `ACTION`, and `MAKECMD` variables, providing a lightweight alternative to full TOML configuration.  
@@ -126,6 +137,7 @@
   ([0215d95](https://github.com/forgezero-cli/ForgeZero/commit/0215d95))
 
 ### Changed
+
 - **Config propagation** – `ParseMakefile` setting from config now properly propagates to CLI flags during config loading.  
   ([f668ac6](https://github.com/forgezero-cli/ForgeZero/commit/f668ac6))
 - **Symlink handling** – source hash calculation now skips symlinks that point to directories, preventing hash errors.  
@@ -134,16 +146,19 @@
   ([6f1ea0d](https://github.com/forgezero-cli/ForgeZero/commit/6f1ea0d))
 
 ### Fixed
+
 - **Config-only validation** – config-only mode now properly errors when no `SourceFiles` or `BuildRules` are provided, preventing ambiguous builds.  
   ([f8fd775](https://github.com/forgezero-cli/ForgeZero/commit/f8fd775))
 
 ### Build
+
 - Removed binary files (`dump.rdb`, `fz`, `redis-server`) from repository.  
   ([394d90c](https://github.com/forgezero-cli/ForgeZero/commit/394d90c), [795dd80](https://github.com/forgezero-cli/ForgeZero/commit/795dd80), [b0bf0bd](https://github.com/forgezero-cli/ForgeZero/commit/b0bf0bd))
 
 ## [6.0.0] - 2026-07-15
 
 ### Added
+
 - **Auto-dependency management** – `AutoBuildDeps` (default: true) automatically builds dependencies from `deps/` directory during build. Dependencies are built as static archives with ordering controlled by `configure.fz`.  
   ([7087eec](https://github.com/forgezero-cli/ForgeZero/commit/7087eec), [1edd34c](https://github.com/forgezero-cli/ForgeZero/commit/1edd34c))
 - **`DepBuildConfig`** – per-dependency build settings: `enabled`, `skip_tests`, `outputs`, `include`, `environment`, `pre_build`, `post_build`, `exclude_files`, `only_files`.  
@@ -168,6 +183,7 @@
   ([1edd34c](https://github.com/forgezero-cli/ForgeZero/commit/1edd34c))
 
 ### Changed
+
 - **Build source discovery** – now prioritizes config-defined sources when CLI flags are omitted, with fallback to CLI flags.  
   ([62ca4ca](https://github.com/forgezero-cli/ForgeZero/commit/62ca4ca), [69bf7ff](https://github.com/forgezero-cli/ForgeZero/commit/69bf7ff))
 - **Ignore file loading** – `.fzignore` is now loaded from project root first, with verbose logging for debugging.  
@@ -180,6 +196,7 @@
   ([92b880a](https://github.com/forgezero-cli/ForgeZero/commit/92b880a))
 
 ### Fixed
+
 - **Obj directory creation** – `.fz_objs` directory is now created before dependency builds to prevent errors.  
   ([7087eec](https://github.com/forgezero-cli/ForgeZero/commit/7087eec))
 - **Config include cycles** – cyclic includes are now properly detected and reported with `ErrorCyclicInclude`.  
@@ -190,6 +207,7 @@
 ## [6.0.0] - 2026-07-09
 
 ### Added
+
 - **FZP (ForgeZero Preprocessor)** – built‑in preprocessor that handles `#define`, `#undef`, `#ifdef`, `#ifndef`, `#if`, `#else`, `#elif`, `#endif`, `#include`, `#error`, `#pragma once`. Automatically scans `*.h.in` templates and generates headers during a normal build.  
   ([4f4ed42](https://github.com/forgezero-cli/ForgeZero/commit/4f4ed42), [bf82e89](https://github.com/forgezero-cli/ForgeZero/commit/bf82e89))
 - **`fzpkg` – secure package management** – packages are verified against a trusted‑key store. New sub‑commands: `fz pm verify`, `fz pm sign`, `fz pm keys`, `fz pm trust`.  
@@ -213,8 +231,8 @@
 - **Integration test project** – added `FZP_TEST/` with a complete C project that verifies FZP preprocessing, including conditional blocks and macro substitution.  
   ([9728a0a](https://github.com/forgezero-cli/ForgeZero/commit/9728a0a))
 
-
 ### Changed
+
 - **YAML configuration is now deprecated** – a warning is emitted when a YAML config is loaded; TOML is the recommended format.  
   ([6d817d1](https://github.com/forgezero-cli/ForgeZero/commit/6d817d1), [df815b7](https://github.com/forgezero-cli/ForgeZero/commit/df815b7))
 - **Package manager (fz pm)** – replaced internal implementation with `fzpkg`, adding cryptographic trust and verification.  
@@ -223,18 +241,20 @@
   ([6bf8ec0](https://github.com/forgezero-cli/ForgeZero/commit/6bf8ec0))
 
 ### Fixed
+
 - **Integration test for FZP** – test now uses system `fz` binary and skips if not found, avoiding build failures.  
   ([34b60c8](https://github.com/forgezero-cli/ForgeZero/commit/34b60c8), [9154a3c](https://github.com/forgezero-cli/ForgeZero/commit/9154a3c))
 - **Include resolution** – relative includes are resolved correctly, and include cycles are detected.  
   ([4f4ed42](https://github.com/forgezero-cli/ForgeZero/commit/4f4ed42))
 
 ### Documentation
-- Added `FZP`, `FZPKG`, `SECURITY` guides, updated `INDEX` and `TOML_CONFIG` to reflect deprecation of YAML.
 
+- Added `FZP`, `FZPKG`, `SECURITY` guides, updated `INDEX` and `TOML_CONFIG` to reflect deprecation of YAML.
 
 ## [6.0.0] – 2026-07-08
 
 ### Added
+
 - **TOML configuration support** – ForgeZero now uses `.fz.toml` as the primary config format with full TOML parsing, caching by mtime, and recursive `include` directives.  
   ([b3c0e20](https://github.com/forgezero-cli/ForgeZero/commit/b3c0e20), [b457ad5](https://github.com/forgezero-cli/ForgeZero/commit/b457ad5))
 - **Configure script DSL (`configure.fz`)** – users can write dynamic configuration scripts with methods like `AddSources`, `AddCompilerFlags`, `AddLDFlags`, `AddDefines`, `GenerateConfigH`, and `Remove*` variants.  
@@ -263,6 +283,7 @@
   (new docs files)
 
 ### Changed
+
 - **Configuration priority**: TOML is now the default; YAML is still supported but deprecated. `fz init` generates `.fz.toml`.  
   ([08a6bc7](https://github.com/forgezero-cli/ForgeZero/commit/08a6bc7), [abcc16d](https://github.com/forgezero-cli/ForgeZero/commit/abcc16d))
 - **Scheduler** – rewired to use lock‑free queues, pooled tasks, and global context, achieving **0 allocs/op** in benchmarks.  
@@ -277,6 +298,7 @@
   ([c184594](https://github.com/forgezero-cli/ForgeZero/commit/c184594))
 
 ### Fixed
+
 - **Cross‑platform compilation**: eliminated undefined syscall errors on Windows and macOS by introducing platform‑specific wrappers (`mmap_linux.go`, `mmap_other.go`).  
   ([1810a46](https://github.com/forgezero-cli/ForgeZero/commit/1810a46), [5e53c67](https://github.com/forgezero-cli/ForgeZero/commit/5e53c67))
 - **Seal build tags**: corrected `//go:build` directives to prevent duplicate declaration errors.  
@@ -287,21 +309,25 @@
   ([94bd54a](https://github.com/forgezero-cli/ForgeZero/commit/94bd54a))
 
 ### Performance
+
 - ForgeZero now runs **16.75× faster than Ninja** on a 2000‑module benchmark (measured with `hyperfine`).
 - Scheduler hot path: **0 allocs/op**.
 - L1/L2/L3 action cache with prefetch, MAP_POPULATE, and io_uring reduces rebuild times by up to 80% for repeated builds.
 
 ### Documentation
+
 - Added `QUICKSTART.md`, `TOML_CONFIG.md`, `CONFIGURE_FZ.md`, `EXAMPLES.md`, `PERFORMANCE.md`, `ERROR_HANDLING.md`, `CONFIG_FLEXIBILITY.md`, and `INDEX.md`.
 - Refreshed `CLI-REFERENCE`, `CONTENTS`, and updated navigation in `INDEX.md`.
 
 ### Build
+
 - Added dependency `github.com/BurntSushi/toml` for TOML parsing.
 - Updated `go.mod` and `go.sum`.
 
 ## [5.3.1] – 2026-07-07
 
 ### Added
+
 - **DAG‑based parallel task scheduler** (`scheduler`) – enables efficient, dependency‑aware parallel execution of build tasks.  
   ([f6dbe36](https://github.com/forgezero-cli/ForgeZero/commit/f6dbe36), [98ab763](https://github.com/forgezero-cli/ForgeZero/commit/98ab763), [159f241](https://github.com/forgezero-cli/ForgeZero/commit/159f241))
 - **Precompiled header (PCH) support** – generation, caching, and integration into the assembly process for faster compilation.  
@@ -340,6 +366,7 @@
   ([503d7b4](https://github.com/forgezero-cli/ForgeZero/commit/503d7b4), [a4a37ea](https://github.com/forgezero-cli/ForgeZero/commit/a4a37ea))
 
 ### Changed
+
 - **Overhauled core build engine** – now uses DAG scheduling and the new hash cache for a more reliable and faster build.  
   ([5dd68e4](https://github.com/forgezero-cli/ForgeZero/commit/5dd68e4))
 - **Linker logic** – response‑file creation extracted to a dedicated module; inline logic removed for better separation of concerns.  
@@ -370,6 +397,7 @@
   ([b6e7442](https://github.com/forgezero-cli/ForgeZero/commit/b6e7442))
 
 ### Fixed
+
 - **Comprehensive test coverage** for dependency parsing, graph building, DAGScheduler, and PCH integration hooks.  
   ([b3c0694](https://github.com/forgezero-cli/ForgeZero/commit/b3c0694), [98ab763](https://github.com/forgezero-cli/ForgeZero/commit/98ab763), [51840fd](https://github.com/forgezero-cli/ForgeZero/commit/51840fd))
 - **Shell command validation** – allowed `-c` (Unix) and `/C` (Windows) arguments in `RunCommand` without strict validation, enabling complex shell payloads.  
@@ -382,9 +410,9 @@
   ([503d7b4](https://github.com/forgezero-cli/ForgeZero/commit/503d7b4), [a4a37ea](https://github.com/forgezero-cli/ForgeZero/commit/a4a37ea), [f9f04ec](https://github.com/forgezero-cli/ForgeZero/commit/f9f04ec), [1211ba8](https://github.com/forgezero-cli/ForgeZero/commit/1211ba8))
 
 ### Build
+
 - Bumped core version from **v5.3.0** to **v5.3.1**.  
   ([67d023a](https://github.com/forgezero-cli/ForgeZero/commit/67d023a))
-
 
 ---
 
@@ -408,7 +436,7 @@ e6a4211 linker: extract response‑file creation logic to dedicated module
 3d78363 utils: add dependency parsing and graph building utilities
 b3c0694 utils: add unit tests for dependency parsing and graph building
 df563f5 builder: implement source file hashing and refresh logic using BLAKE3
-1100f19 assembler: add --use-asm flag to select NASM over internal assembler and add units tests for NASM selection logic 
+1100f19 assembler: add --use-asm flag to select NASM over internal assembler and add units tests for NASM selection logic
 976f09c assembler: optimize x86 backend without API changes
 f8ed04b linker: optimize symbol parsing with byte-level operations
 5c1cea5 style: remove extra blank lines in cache.go
@@ -540,3 +568,4 @@ e89fb9f perf: fix sync.Pool usage for topoOrder
 e734275 chore(gloria): remove unused asm trampoline with missing Go declaration
 479f1b5 fix(assembler): match WriteByte signature to io.ByteWriter
 fd508de fix(scheduler): avoid copying atomic values in dag nodes and priority queues
+```

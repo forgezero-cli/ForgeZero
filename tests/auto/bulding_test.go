@@ -28,7 +28,7 @@ import (
 )
 
 func TestBuildToolCreatesAndProducesBinaryInTempProject(t *testing.T) {
-	// FIXME:
+	// FIXME: fix this test after changes to -mode raw; currently fails due to changes in the build process
 	t.Skip("temporarily skip due to changes -mode raw; will fix later")
 
 	if runtime.GOOS == "windows" {
