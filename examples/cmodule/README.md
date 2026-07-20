@@ -6,6 +6,7 @@ Architecture
 dlopen/dlsym bridge loads an external ELF shared object and resolves a direct entry symbol. The host passes a pointer to `fz_context_t` for plugin initialization. The loader exposes raw symbol lookup and a helper to invoke the plugin entry.
 
 The ABI
+
 ```c
 typedef struct {
     const char* plugin_path;
@@ -28,9 +29,10 @@ typedef struct {
 ```
 
 Build
+
 ```sh
-fz -dir ./c_src/ -out libfz_example.so 
-fz -verify libfz_example.so 
+fz -dir ./c_src/ -out libfz_example.so
+fz -verify libfz_example.so
 
 ```
 
