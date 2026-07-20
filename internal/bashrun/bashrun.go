@@ -26,6 +26,7 @@ import (
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
+
 func RunInline(ctx context.Context, script string, verbose bool) error {
 	script = strings.TrimSpace(script)
 	if script == "" {
