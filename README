@@ -1,4 +1,7 @@
 ForgeZero
+
+DOCUMENTATION: https://forgezero-cli.github.io/forgezero-docs/
+
 =========
 
 ForgeZero is a zero-overhead build tool for assembly, C, C++, Objective-C,
