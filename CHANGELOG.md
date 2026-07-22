@@ -2,6 +2,46 @@
 
 # UNRELEASED
 
+## 2026-07-22
+
+### Added
+
+- **Custom work-stealing thread pool (`fo`)** – lock-free ring buffer per worker with work-stealing for load balancing, exponential backoff when idle, and global pool singleton. Replaces DAG scheduler in builder and linker for simpler parallelism.  
+  ([08cb407](https://github.com/forgezero-cli/ForgeZero/commit/08cb407))
+- **Diagnostic error system** – line-level error reporting with colored terminal output, source context rendering, and fix suggestions. Errors now include file path, line number, parameter name, and actionable hints.  
+  ([184746d](https://github.com/forgezero-cli/ForgeZero/commit/184746d), [f9b7697](https://github.com/forgezero-cli/ForgeZero/commit/f9b7697))
+- **Config validation for hardware settings** – new config fields: `compiler.path`, `cpu_target`, `instruction_sets`, `concurrency.workers`, `concurrency.pin`, `concurrency.pin_to`. Includes architecture-aware validation with `isSupportedTarget()`.  
+  ([2ec9e53](https://github.com/forgezero-cli/ForgeZero/commit/2ec9e53))
+
+### Changed
+
+- **Builder parallel execution** – replaced DAG scheduler with `fo` worker pool for simpler, more reliable parallel compilation.  
+  ([bec8e9a](https://github.com/forgezero-cli/ForgeZero/commit/bec8e9a))
+- **Linker parallel execution** – replaced DAG scheduler with `fo` worker pool for parallel linking.  
+  ([9037a00](https://github.com/forgezero-cli/ForgeZero/commit/9037a00))
+- **Config error formatting** – enhanced `Error` struct with `Path`, `Line`, `Parameter`, and `Suggestion` fields for detailed, user-friendly error messages.  
+  ([f9b7697](https://github.com/forgezero-cli/ForgeZero/commit/f9b7697))
+- **CLI config loader** – integrated diagnostic error logging for config loading failures with detailed location info.  
+  ([a8dd4e0](https://github.com/forgezero-cli/ForgeZero/commit/a8dd4e0))
+
+### Fixed
+
+- **Config validation** – added comprehensive validation for compiler, CPU target, instruction sets, and concurrency settings with proper error codes and suggestions.  
+  ([2ec9e53](https://github.com/forgezero-cli/ForgeZero/commit/2ec9e53), [79a375b](https://github.com/forgezero-cli/ForgeZero/commit/79a375b))
+
+### Performance
+
+- **Worker pool** – zero-allocation task submission with lock-free ring buffers and work-stealing for optimal load balancing.
+
+### Testing
+
+- **Config validation** – added tests for compiler and hardware validation across different architectures.  
+  ([79a375b](https://github.com/forgezero-cli/ForgeZero/commit/79a375b))
+- **Error rendering** – added tests for line-level error diagnostic rendering.  
+  ([184746d](https://github.com/forgezero-cli/ForgeZero/commit/184746d))
+- **Pool** – comprehensive tests for the `fo` work-stealing thread pool.  
+  ([08cb407](https://github.com/forgezero-cli/ForgeZero/commit/08cb407))
+
 ## [6.0.0] - 2026-07-18
 
 ### Added
@@ -568,4 +608,12 @@ e89fb9f perf: fix sync.Pool usage for topoOrder
 e734275 chore(gloria): remove unused asm trampoline with missing Go declaration
 479f1b5 fix(assembler): match WriteByte signature to io.ByteWriter
 fd508de fix(scheduler): avoid copying atomic values in dag nodes and priority queues
+08cb407 drivers: add fo work-stealing thread pool
+9037a00 linker: replace DAG scheduler with worker pool
+bec8e9a builder: replace DAG scheduler with worker pool
+a8dd4e0 cli: integrate config diagnostic error reporting
+79a375b config: add tests for compiler and hardware validation
+2ec9e53 config: add compiler, cpu_target, instruction_sets, and concurrency settings
+f9b7697 config: enhance Error struct with location and fix suggestions
+184746d errors: implement diagnostic system with line-level error reporting
 ```
