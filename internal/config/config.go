@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,9 +94,9 @@ func (m *CacheMode) unmarshalValue(value string) error {
 	return nil
 }
 
-func loadYAML(data []byte, cfg *Config) error {
+func loadYAML(path string, data []byte, cfg *Config) error {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return NewErrorDetail(ErrorParseYAML, err.Error())
+		return NewErrorLocation(ErrorParseYAML, path, 0, "yaml", err.Error(), "Use valid YAML syntax or migrate to TOML.")
 	}
 	os.Stderr.WriteString("WARNING: YAML config format is deprecated. Please migrate to TOML.\n")
 	return nil
@@ -103,9 +104,9 @@ func loadYAML(data []byte, cfg *Config) error {
 
 var depBuildMarker = []byte("[dep_build]")
 
-func loadTOML(data []byte, cfg *Config) error {
+func loadTOML(path string, data []byte, cfg *Config) error {
 	if err := toml.Unmarshal(data, cfg); err != nil {
-		return NewErrorDetail(ErrorParseTOML, err.Error())
+		return NewErrorLocation(ErrorParseTOML, path, 0, "toml", err.Error(), "Use valid TOML syntax and retry.")
 	}
 	if bytes.Index(data, depBuildMarker) < 0 {
 		cfg.DepBuild.Enabled = true
@@ -254,6 +255,16 @@ type AutoBuildConfig struct {
 	DefaultEnvironment map[string]string `yaml:"default_environment" toml:"default_environment"`
 }
 
+type CompilerConfig struct {
+	Path string `yaml:"path" toml:"path"`
+}
+
+type ConcurrencyConfig struct {
+	Workers int      `yaml:"workers" toml:"workers"`
+	Pin     bool     `yaml:"pin" toml:"pin"`
+	PinTo   []string `yaml:"pin_to" toml:"pin_to"`
+}
+
 type Config struct {
 	Name    string `yaml:"name" toml:"name"`
 	Profile string `yaml:"profile" toml:"profile"`
@@ -276,6 +287,10 @@ type Config struct {
 	CacheMode          CacheMode         `yaml:"cache_mode" toml:"cache_mode"`
 	CacheRAMMB         int               `yaml:"cache_ram_mb" toml:"cache_ram_mb"`
 	OptimizationLevel  int               `yaml:"optimization_level" toml:"optimization_level"`
+	Compiler           CompilerConfig    `yaml:"compiler" toml:"compiler"`
+	CPUTarget          string            `yaml:"cpu_target" toml:"cpu_target"`
+	InstructionSets    []string          `yaml:"instruction_sets" toml:"instruction_sets"`
+	Concurrency        ConcurrencyConfig `yaml:"concurrency" toml:"concurrency"`
 	Exclude            []string          `yaml:"exclude" toml:"exclude"`
 	Include            []string          `yaml:"include" toml:"include"`
 	Scripts            []string          `yaml:"scripts" toml:"scripts"`
@@ -301,6 +316,30 @@ type Config struct {
 	ISO        ISOConfig        `yaml:"iso" toml:"iso"`
 	DepBuild   DepBuildConfig   `yaml:"dep_build" toml:"dep_build"`
 	AutoBuild  AutoBuildConfig  `yaml:"auto_build" toml:"auto_build"`
+}
+
+func isSupportedTarget(target string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(target))
+	if normalized == "" || normalized == "native" || normalized == "host" {
+		return false
+	}
+	var allowed map[string]struct{}
+	switch runtime.GOARCH {
+	case "amd64":
+		allowed = map[string]struct{}{"amd64": {}, "x86_64": {}}
+	case "arm64":
+		allowed = map[string]struct{}{"arm64": {}, "aarch64": {}}
+	case "386":
+		allowed = map[string]struct{}{"386": {}, "i386": {}, "i686": {}, "x86": {}}
+	case "arm":
+		allowed = map[string]struct{}{"arm": {}}
+	case "riscv64":
+		allowed = map[string]struct{}{"riscv64": {}, "riscv": {}}
+	default:
+		allowed = map[string]struct{}{runtime.GOARCH: {}}
+	}
+	_, ok := allowed[normalized]
+	return ok
 }
 
 func (c *Config) expand() {
@@ -471,6 +510,39 @@ func (c *Config) Validate() error {
 	c.fillDefaults()
 	if c.SourceDir != "" && len(c.SourceDirs) > 0 {
 		return NewError(ErrorInvalidSourceConfig)
+	}
+	if c.Toolchain != "" && c.Toolchain != "auto" {
+		if strings.TrimSpace(c.Compiler.Path) == "" {
+			return NewErrorLocation(ErrorInvalidConfig, "", 0, "compiler.path", "compiler.path is required when toolchain is explicitly configured", "Set compiler.path to the absolute tool path for the selected toolchain.")
+		}
+	}
+	if c.CPUTarget != "" {
+		if strings.TrimSpace(c.CPUTarget) == "" {
+			return NewErrorLocation(ErrorInvalidConfig, "", 0, "cpu_target", "cpu_target cannot be empty", "Set cpu_target to a supported CPU architecture or remove the entry.")
+		}
+		if !isSupportedTarget(c.CPUTarget) {
+			return NewErrorLocation(ErrorInvalidConfig, "", 0, "cpu_target", "cpu_target is not supported by this host", "Use a target that matches the current architecture or remove the explicit override.")
+		}
+	}
+	if len(c.InstructionSets) > 0 {
+		for _, set := range c.InstructionSets {
+			if strings.TrimSpace(set) == "" {
+				return NewErrorLocation(ErrorInvalidConfig, "", 0, "instruction_sets", "instruction_sets cannot contain empty entries", "Remove empty entries from instruction_sets.")
+			}
+		}
+	}
+	if c.Concurrency.Workers < 0 {
+		return NewErrorLocation(ErrorInvalidConfig, "", 0, "concurrency.workers", "concurrency.workers must be non-negative", "Use a non-negative worker count or leave it unset.")
+	}
+	if c.Concurrency.Pin && len(c.Concurrency.PinTo) == 0 {
+		return NewErrorLocation(ErrorInvalidConfig, "", 0, "concurrency.pin_to", "concurrency.pin_to must be set when concurrency.pin is true", "Provide at least one CPU index in pin_to.")
+	}
+	if len(c.Concurrency.PinTo) > 0 {
+		for _, pin := range c.Concurrency.PinTo {
+			if strings.TrimSpace(pin) == "" {
+				return NewErrorLocation(ErrorInvalidConfig, "", 0, "concurrency.pin_to", "concurrency.pin_to cannot contain empty entries", "Remove empty entries from pin_to.")
+			}
+		}
 	}
 	if c.SourceFile != "" && len(c.SourceFiles) > 0 {
 		return NewError(ErrorInvalidSourceConfig)
@@ -694,6 +766,26 @@ func (c *Config) ApplySetOverrides(overrides []string) error {
 				return err
 			}
 			c.Isolation = mode
+		case "compiler.path":
+			c.Compiler.Path = value
+		case "cpu_target":
+			c.CPUTarget = value
+		case "instruction_sets":
+			c.InstructionSets = splitOverrideList(value)
+		case "concurrency.workers":
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return NewErrorDetail(ErrorInvalidOverride, "concurrency.workers: "+err.Error())
+			}
+			c.Concurrency.Workers = parsed
+		case "concurrency.pin":
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				return NewErrorDetail(ErrorInvalidOverride, "concurrency.pin: "+err.Error())
+			}
+			c.Concurrency.Pin = parsed
+		case "concurrency.pin_to":
+			c.Concurrency.PinTo = splitOverrideList(value)
 		case "ignore_file":
 			c.IgnoreFile = value
 		case "exclude":
@@ -856,7 +948,7 @@ func Load(path string) (*Config, error) {
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, NewErrorDetail(ErrorFileRead, path+": "+err.Error())
+		return nil, NewErrorLocation(ErrorFileRead, path, 0, "config file", err.Error(), "Ensure the file exists and is readable.")
 	}
 	var cfg Config
 	if err := loadConfigData(path, data, &cfg, nil); err != nil {
@@ -877,20 +969,20 @@ func loadConfigData(path string, data []byte, cfg *Config, seen map[string]struc
 	ext := filepath.Ext(path)
 	switch {
 	case ext == ".toml" || ext == ".TOML" || ext == ".Toml" || ext == ".tOmL":
-		if err := loadTOML(data, cfg); err != nil {
+		if err := loadTOML(path, data, cfg); err != nil {
 			return err
 		}
 	case ext == ".yaml" || ext == ".yml" || ext == ".YAML" || ext == ".YML":
-		if err := loadYAML(data, cfg); err != nil {
+		if err := loadYAML(path, data, cfg); err != nil {
 			return err
 		}
 	default:
-		if err := loadTOML(data, cfg); err == nil {
+		if err := loadTOML(path, data, cfg); err == nil {
 			break
-		} else if err := loadYAML(data, cfg); err == nil {
+		} else if err := loadYAML(path, data, cfg); err == nil {
 			break
 		} else {
-			return NewErrorDetail(ErrorParseTOML, "unknown config format")
+			return NewErrorLocation(ErrorParseTOML, path, 0, "config format", "unknown config format", "Use a supported .toml, .yaml, or .yml file.")
 		}
 	}
 	return resolveConfigIncludes(path, cfg, seen)
@@ -942,7 +1034,7 @@ func resolveConfigIncludes(path string, cfg *Config, seen map[string]struct{}) e
 		}
 		data, err := os.ReadFile(childPath)
 		if err != nil {
-			return NewErrorDetail(ErrorIncludeRead, childPath+": "+err.Error())
+			return NewErrorLocation(ErrorIncludeRead, childPath, 0, "config include", err.Error(), "Ensure the included file exists and is readable.")
 		}
 		var childCfg Config
 		if err := loadConfigData(childPath, data, &childCfg, seen); err != nil {
@@ -1127,6 +1219,24 @@ func (c *Config) Merge(other *Config) {
 	}
 	if other.OptimizationLevel > 0 {
 		c.OptimizationLevel = other.OptimizationLevel
+	}
+	if other.Compiler.Path != "" {
+		c.Compiler.Path = other.Compiler.Path
+	}
+	if other.CPUTarget != "" {
+		c.CPUTarget = other.CPUTarget
+	}
+	if len(other.InstructionSets) > 0 {
+		c.InstructionSets = mergeStrings(c.InstructionSets, other.InstructionSets)
+	}
+	if other.Concurrency.Workers > 0 {
+		c.Concurrency.Workers = other.Concurrency.Workers
+	}
+	if other.Concurrency.Pin {
+		c.Concurrency.Pin = true
+	}
+	if len(other.Concurrency.PinTo) > 0 {
+		c.Concurrency.PinTo = mergeStrings(c.Concurrency.PinTo, other.Concurrency.PinTo)
 	}
 	if len(other.Scripts) > 0 {
 		c.Scripts = mergeStrings(c.Scripts, other.Scripts)
