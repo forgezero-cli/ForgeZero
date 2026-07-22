@@ -26,8 +26,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"unsafe"
 
-	"github.com/forgezero-cli/ForgeZero/internal/drivers/scheduler"
+	"github.com/forgezero-cli/ForgeZero/internal/drivers/fo"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
@@ -108,28 +110,33 @@ func LinkMultipleParallel(ctx context.Context, objFiles []string, bin string, ve
 	}
 	targets = append(targets, LinkTarget{Name: bin, Objs: finalObjs})
 
-	dag := scheduler.NewDAGScheduler(jobs, len(targets))
-	partitionIndices := make([]int, len(targets)-1)
+	pool := fo.InitGlobalPool(jobs)
+	defer pool.Stop()
+
+	errCh := make(chan error, len(targets)-1)
+	var wg sync.WaitGroup
 	for i := 0; i < len(targets)-1; i++ {
 		target := targets[i]
-		idx, err := dag.Submit(scheduler.AcquireTask(func(arg uintptr, extra uintptr) error {
-			return linkPartition(ctx, &target, mode, verbose)
-		}, 0, 0), nil)
-		if err != nil {
-			return errors.New("failed to submit partition link task: " + err.Error())
-		}
-		partitionIndices[i] = idx
+		task := fo.Task{Fn: func(arg unsafe.Pointer) error {
+			defer wg.Done()
+			linkTarget := (*LinkTarget)(arg)
+			if err := linkPartition(ctx, linkTarget, mode, verbose); err != nil {
+				errCh <- err
+				return err
+			}
+			return nil
+		}, Arg: unsafe.Pointer(&target)}
+		wg.Add(1)
+		pool.Submit(task)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		return err
 	}
 
 	finalTarget := targets[len(targets)-1]
-	_, err = dag.Submit(scheduler.AcquireTask(func(arg uintptr, extra uintptr) error {
-		return linkFinal(ctx, &finalTarget, mode, verbose, sanitize, strict, libs)
-	}, 0, 0), partitionIndices)
-	if err != nil {
-		return errors.New("failed to submit final link task: " + err.Error())
-	}
-
-	if err := dag.Run(ctx); err != nil {
+	if err := linkFinal(ctx, &finalTarget, mode, verbose, sanitize, strict, libs); err != nil {
 		return err
 	}
 
