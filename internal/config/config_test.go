@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -91,6 +92,35 @@ func TestValidate(t *testing.T) {
 	err = cfg.Validate()
 	if err == nil {
 		t.Error("expected invalid cache_mode error")
+	}
+}
+
+func TestValidateStrictCompilerAndHardwareSettings(t *testing.T) {
+	cfg := &Config{Toolchain: "gcc", CPUTarget: "invalid-target", InstructionSets: []string{"avx2"}, Concurrency: ConcurrencyConfig{Pin: true}}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected missing compiler path or invalid hardware settings to fail")
+	}
+	if !strings.Contains(err.Error(), "compiler.path") && !strings.Contains(err.Error(), "cpu_target") && !strings.Contains(err.Error(), "instruction_sets") && !strings.Contains(err.Error(), "pin_to") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cfg.Compiler.Path = "/usr/bin/gcc"
+	switch runtime.GOARCH {
+	case "amd64":
+		cfg.CPUTarget = "x86_64"
+	case "arm64":
+		cfg.CPUTarget = "aarch64"
+	case "386":
+		cfg.CPUTarget = "i386"
+	default:
+		cfg.CPUTarget = runtime.GOARCH
+	}
+	cfg.InstructionSets = []string{"sse2", "avx2"}
+	cfg.Concurrency.PinTo = []string{"0", "1"}
+	err = cfg.Validate()
+	if err != nil {
+		t.Fatalf("expected valid compiler and hardware settings to pass: %v", err)
 	}
 }
 
@@ -216,6 +246,17 @@ func TestLoadMerged(t *testing.T) {
 	}
 	if cfg.SourceDir != "./src" {
 		t.Errorf("expected source_dir ./src, got %s", cfg.SourceDir)
+	}
+}
+
+func TestConfigErrorFormatting(t *testing.T) {
+	err := NewErrorLocation(ErrorInvalidIsolation, "/tmp/fz.toml", 12, "isolation", "invalid isolation value", "Use standard or strict.")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "[fz] Config Error") || !strings.Contains(got, "/tmp/fz.toml") || !strings.Contains(got, "(line 12)") {
+		t.Fatalf("unexpected error format: %s", got)
 	}
 }
 
