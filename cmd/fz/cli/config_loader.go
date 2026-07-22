@@ -20,6 +20,7 @@ package cli
 import (
 	"github.com/forgezero-cli/ForgeZero/cmd/fz/stdio"
 	"github.com/forgezero-cli/ForgeZero/internal/config"
+	fzerr "github.com/forgezero-cli/ForgeZero/internal/errors"
 	"github.com/forgezero-cli/ForgeZero/internal/profiles"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
@@ -31,16 +32,46 @@ func LoadConfig(flags *Flags) (*config.Config, string, error) {
 	if flags.ConfigFZPPath != "" {
 		cfg, err = config.LoadFZP(flags.ConfigFZPPath)
 		if err != nil {
+			if cfgErr, ok := err.(interface {
+				Path() string
+				Line() int
+				Parameter() string
+				Detail() string
+				Suggestion() string
+			}); ok {
+				d := fzerr.Diagnostic{Level: fzerr.LevelError, FilePath: cfgErr.Path(), Line: cfgErr.Line(), Param: cfgErr.Parameter(), Message: cfgErr.Detail(), FixHint: cfgErr.Suggestion()}
+				d.Log()
+			}
 			return nil, "", err
 		}
 	} else if flags.ConfigPath != "" {
 		cfg, err = config.Load(flags.ConfigPath)
 		if err != nil {
+			if cfgErr, ok := err.(interface {
+				Path() string
+				Line() int
+				Parameter() string
+				Detail() string
+				Suggestion() string
+			}); ok {
+				d := fzerr.Diagnostic{Level: fzerr.LevelError, FilePath: cfgErr.Path(), Line: cfgErr.Line(), Param: cfgErr.Parameter(), Message: cfgErr.Detail(), FixHint: cfgErr.Suggestion()}
+				d.Log()
+			}
 			return nil, "", err
 		}
 	} else {
 		cfg, err = config.LoadMerged("")
 		if err != nil {
+			if cfgErr, ok := err.(interface {
+				Path() string
+				Line() int
+				Parameter() string
+				Detail() string
+				Suggestion() string
+			}); ok {
+				d := fzerr.Diagnostic{Level: fzerr.LevelError, FilePath: cfgErr.Path(), Line: cfgErr.Line(), Param: cfgErr.Parameter(), Message: cfgErr.Detail(), FixHint: cfgErr.Suggestion()}
+				d.Log()
+			}
 			return nil, "", err
 		}
 	}
