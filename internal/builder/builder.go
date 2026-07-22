@@ -26,12 +26,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"unsafe"
 
 	"github.com/forgezero-cli/ForgeZero/internal/fzp"
 
 	"github.com/forgezero-cli/ForgeZero/internal/assembler"
 	"github.com/forgezero-cli/ForgeZero/internal/config"
-	"github.com/forgezero-cli/ForgeZero/internal/drivers/scheduler"
+	"github.com/forgezero-cli/ForgeZero/internal/drivers/fo"
 	"github.com/forgezero-cli/ForgeZero/internal/ignore"
 	"github.com/forgezero-cli/ForgeZero/internal/linker"
 	"github.com/forgezero-cli/ForgeZero/internal/seal"
@@ -1052,11 +1054,10 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 
 	sort.Slice(pairs, func(i, j int) bool { return pairs[i].obj < pairs[j].obj })
 
-	depGraph, err := buildDependencyGraph(pairs, rootDir)
+	_, err = buildDependencyGraph(pairs, rootDir)
 	if err != nil && verbose {
 		os.Stdout.WriteString("Warning: could not build dependency graph: " + err.Error() + "; falling back to flat build\n")
 	}
-	useDAG := (err == nil && depGraph != nil && len(depGraph) == len(pairs))
 
 	if jobs <= 0 {
 		jobs = 1
@@ -1145,41 +1146,32 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		return nil
 	}
 
-	if useDAG {
-		dag := scheduler.NewDAGScheduler(jobs, len(pairs))
-		for i := range pairs {
-			idx := i
-			p := pairs[i]
-			_, err := dag.Submit(scheduler.AcquireTask(func(arg uintptr, extra uintptr) error {
-				return buildOne(p)
-			}, 0, 0), depGraph[idx])
-			if err != nil {
-				if cleanupObjDir {
-					os.RemoveAll(objDir)
-				}
-				return nil, errors.New("failed to submit task: " + err.Error())
+	pool := fo.InitGlobalPool(jobs)
+	defer pool.Stop()
+
+	errCh := make(chan error, len(pairs))
+	var wg sync.WaitGroup
+	for i := range pairs {
+		p := pairs[i]
+		task := fo.Task{Fn: func(arg unsafe.Pointer) error {
+			defer wg.Done()
+			pairArg := (*pair)(arg)
+			if err := buildOne(*pairArg); err != nil {
+				errCh <- err
+				return err
 			}
+			return nil
+		}, Arg: unsafe.Pointer(&p)}
+		wg.Add(1)
+		pool.Submit(task)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if cleanupObjDir {
+			os.RemoveAll(objDir)
 		}
-		if err := dag.Run(ctx); err != nil {
-			if cleanupObjDir {
-				os.RemoveAll(objDir)
-			}
-			return nil, err
-		}
-	} else {
-		sched := scheduler.NewScheduler(jobs, len(pairs)*2)
-		for i := range pairs {
-			p := pairs[i]
-			sched.SubmitBlocking(scheduler.AcquireTask(func(arg uintptr, extra uintptr) error {
-				return buildOne(p)
-			}, 0, 0), 0)
-		}
-		if err := sched.Run(ctx); err != nil {
-			if cleanupObjDir {
-				os.RemoveAll(objDir)
-			}
-			return nil, err
-		}
+		return nil, err
 	}
 
 	objFiles := make([]string, len(pairs))
