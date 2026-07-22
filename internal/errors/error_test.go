@@ -17,7 +17,10 @@
 
 package fzerr
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestErrorCode(t *testing.T) {
 	e := New(CodeFileNotFound)
@@ -49,5 +52,20 @@ func TestAppendMsg(t *testing.T) {
 	buf := AppendMsg(nil, CodeHashOpen, "path", "denied")
 	if len(buf) == 0 {
 		t.Fatal("empty buffer")
+	}
+}
+
+func TestRenderLineError(t *testing.T) {
+	file := []byte("[fz]\ncompiler = \"gcc\"\nsources_dirs = [\"src\", \"lib\"]\n")
+	out := RenderLineError(file, 3, "sources_dirs", "the configured directory does not exist", "ensure the path exists")
+	if len(out) == 0 {
+		t.Fatal("empty rendered diagnostic")
+	}
+	text := string(out)
+	if !strings.Contains(text, "sources_dirs") {
+		t.Fatalf("expected diagnostic to mention parameter, got %q", text)
+	}
+	if !strings.Contains(text, "ensure the path exists") {
+		t.Fatalf("expected diagnostic to include hint, got %q", text)
 	}
 }
