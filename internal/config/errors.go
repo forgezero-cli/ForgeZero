@@ -17,6 +17,11 @@
 
 package config
 
+import (
+	"strconv"
+	"strings"
+)
+
 type ErrorKind uint8
 
 const (
@@ -65,29 +70,51 @@ var kindText = [...]string{
 }
 
 type Error struct {
-	Kind   ErrorKind
-	Detail string
-	Cause  error
+	Kind       ErrorKind
+	Detail     string
+	Cause      error
+	Path       string
+	Line       int
+	Parameter  string
+	Suggestion string
 }
 
 func (e Error) Error() string {
 	if e.Kind == ErrorNone {
 		return ""
 	}
-	text := kindText[e.Kind]
-	if text == "" {
-		text = "config error"
+
+	prefix := "[fz] Config Error"
+	if e.Path != "" {
+		prefix += " " + e.Path
 	}
-	if e.Detail == "" {
-		if e.Cause == nil {
-			return text
+	if e.Line > 0 {
+		prefix += " (line " + strconv.Itoa(e.Line) + ")"
+	}
+
+	parameter := strings.TrimSpace(e.Parameter)
+	if parameter == "" {
+		parameter = "config"
+	}
+
+	suggestion := strings.TrimSpace(e.Suggestion)
+	if suggestion == "" {
+		suggestion = "Check the config value and retry."
+	}
+
+	if e.Detail != "" {
+		detail := strings.TrimSpace(e.Detail)
+		if detail != "" {
+			return prefix + ": " + parameter + " is invalid. " + detail + " " + suggestion
 		}
-		return text + ": " + e.Cause.Error()
 	}
-	if e.Cause == nil {
-		return text + ": " + e.Detail
+	if e.Cause != nil {
+		cause := strings.TrimSpace(e.Cause.Error())
+		if cause != "" {
+			return prefix + ": " + parameter + " is invalid. " + cause + " " + suggestion
+		}
 	}
-	return text + ": " + e.Detail + ": " + e.Cause.Error()
+	return prefix + ": " + parameter + " is invalid. " + suggestion
 }
 
 func (e Error) Is(target error) bool {
@@ -115,4 +142,8 @@ func NewErrorDetail(kind ErrorKind, detail string) error {
 
 func NewErrorCause(kind ErrorKind, detail string, cause error) error {
 	return Error{Kind: kind, Detail: detail, Cause: cause}
+}
+
+func NewErrorLocation(kind ErrorKind, path string, line int, parameter, detail, suggestion string) error {
+	return Error{Kind: kind, Path: path, Line: line, Parameter: parameter, Detail: detail, Suggestion: suggestion}
 }
