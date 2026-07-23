@@ -227,7 +227,6 @@ func Build(ctx context.Context, buildCtx BuildContext, cfg *config.Config) Build
 			if !buildCtx.KeepObj && buildCtx.Verbose {
 				stdio.WriteFmt(1, "Removed object dir: %s\n", res.ObjDir)
 			}
-			stdio.WriteFmt(1, "Built: %s\n", res.Binary)
 		}
 
 		result.DurationMs = time.Since(startTime).Milliseconds()
