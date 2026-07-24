@@ -36,15 +36,19 @@ func LinkOrClone(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC|unix.O_CLOEXEC, FilePerm)
 	if err != nil {
 		return err
 	}
 	if err := unix.IoctlSetInt(int(out.Fd()), unix.FICLONE, int(in.Fd())); err == nil {
-		out.Close()
+		if cerr := out.Close(); cerr != nil {
+			return cerr
+		}
 		return nil
 	}
-	out.Close()
+	if cerr := out.Close(); cerr != nil {
+		return cerr
+	}
 	return CopyFile(src, dst)
 }
