@@ -86,9 +86,9 @@ func Compile(ctx context.Context, src, obj string, debug, verbose bool, target, 
 	}
 	args := CompileArgs(src, obj, debug, target, strings.ToLower(filepath.Ext(src)), extraFlags)
 	if verbose {
-		os.Stdout.WriteString("Running: zig ")
-		os.Stdout.WriteString(strings.Join(args, " "))
-		os.Stdout.WriteString("\n")
+		_, _ = os.Stdout.WriteString("Running: zig ")
+		_, _ = os.Stdout.WriteString(strings.Join(args, " "))
+		_, _ = os.Stdout.WriteString("\n")
 	}
 	output, err := RunCommand(ctx, verbose, args...)
 	if err != nil {
@@ -144,9 +144,9 @@ func Link(ctx context.Context, objs []string, bin string, verbose bool, target s
 		args = append(args, strings.Fields(extraFlags)...)
 	}
 	if verbose {
-		os.Stdout.WriteString("Running: zig ")
-		os.Stdout.WriteString(strings.Join(args, " "))
-		os.Stdout.WriteString("\n")
+		_, _ = os.Stdout.WriteString("Running: zig ")
+		_, _ = os.Stdout.WriteString(strings.Join(args, " "))
+		_, _ = os.Stdout.WriteString("\n")
 	}
 	output, err := RunCommand(ctx, verbose, args...)
 	if err != nil {
