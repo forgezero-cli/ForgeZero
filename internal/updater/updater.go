@@ -90,10 +90,10 @@ func UpdateSelf(currentVersion string) error {
 		return errors.New("get latest version: " + err.Error())
 	}
 	if latest == currentVersion {
-		os.Stdout.WriteString("Already up to date.\n")
+		_, _ = os.Stdout.WriteString("Already up to date.\n")
 		return nil
 	}
-	os.Stdout.WriteString("New version available: " + latest + " (current: " + currentVersion + ")\n")
+	_, _ = os.Stdout.WriteString("New version available: " + latest + " (current: " + currentVersion + ")\n")
 	return installAsset(latest)
 }
 
@@ -184,7 +184,7 @@ func installAsset(latest string) error {
 	if err := os.Chmod(exePath, mode); err != nil {
 		return errors.New("set executable mode: " + err.Error())
 	}
-	os.Stdout.WriteString("Update successful: " + exePath + "\n")
+	_, _ = os.Stdout.WriteString("Update successful: " + exePath + "\n")
 	return nil
 }
 
@@ -223,6 +223,6 @@ func RestoreBackup() error {
 	if err := os.Rename(swap, backupPath); err != nil {
 		return errors.New("rotate backup: " + err.Error())
 	}
-	os.Stdout.WriteString("Rolled back: " + exePath + "\n")
+	_, _ = os.Stdout.WriteString("Rolled back: " + exePath + "\n")
 	return nil
 }
