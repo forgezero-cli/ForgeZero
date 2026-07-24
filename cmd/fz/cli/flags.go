@@ -97,7 +97,7 @@ func SetupFlags() *Flags {
 	flag.StringVar(&f.RollBackToFlag, "rollback-to", "", "rollback-to needs version(e.g fz --rollback-to 5.1.0)")
 
 	flag.Usage = func() {
-		os.Stderr.WriteString("Run " + os.Args[0] + " -help for full usage.\n")
+		_, _ = os.Stderr.WriteString("Run " + os.Args[0] + " -help for full usage.\n")
 		os.Exit(2)
 	}
 
