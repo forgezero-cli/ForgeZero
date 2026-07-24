@@ -43,6 +43,6 @@ func symlinkAllowed(rootEval, path, target string) (bool, error) {
 	if targetEval == rootClean || strings.HasPrefix(targetEval, rootClean+string(os.PathSeparator)) {
 		return true, nil
 	}
-	os.Stderr.WriteString("SECURITY WARNING: skipping symlink " + path + " -> " + targetAbs + " outside project root " + rootClean + "\n")
+	_, _ = os.Stderr.WriteString("SECURITY WARNING: skipping symlink " + path + " -> " + targetAbs + " outside project root " + rootClean + "\n")
 	return false, nil
 }
