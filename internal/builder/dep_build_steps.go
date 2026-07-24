@@ -393,6 +393,34 @@ func envMapToSlice(envMap map[string]string) []string {
 	return env
 }
 
+func writeTempShellScript(script string) (string, error) {
+	if script == "" {
+		return "", nil
+	}
+	if strings.ContainsRune(script, 0) {
+		return "", errors.New("invalid command")
+	}
+	ext := ".sh"
+	if runtime.GOOS == "windows" {
+		ext = ".cmd"
+	}
+	tmpFile, err := os.CreateTemp("", "forgezero-script-*"+ext)
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmpFile.Name()
+	if _, err := tmpFile.WriteString(script); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+		return "", err
+	}
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", err
+	}
+	return tmpPath, nil
+}
+
 func (db *DepBuilder) runCommandStep(command string, envMap map[string]string) error {
 	if command == "" {
 		return nil
@@ -405,11 +433,20 @@ func (db *DepBuilder) runCommandStep(command string, envMap map[string]string) e
 	for k, v := range envMap {
 		envSlice = append(envSlice, k+"="+v)
 	}
+	tmpPath, err := writeTempShellScript(command)
+	if err != nil {
+		db.logf("error", "Command failed: "+command)
+		return err
+	}
+	if tmpPath == "" {
+		return nil
+	}
+	defer func() { _ = os.Remove(tmpPath) }()
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(db.ctx, "cmd.exe", "/C", command)
+		cmd = exec.CommandContext(db.ctx, "cmd.exe", "/C", tmpPath)
 	} else {
-		cmd = exec.CommandContext(db.ctx, "sh", "-c", command)
+		cmd = exec.CommandContext(db.ctx, "sh", tmpPath)
 	}
 	cmd.Dir = db.depPath
 	cmd.Env = envSlice
