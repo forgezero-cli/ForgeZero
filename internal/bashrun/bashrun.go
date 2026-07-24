@@ -26,7 +26,6 @@ import (
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
-
 func RunInline(ctx context.Context, script string, verbose bool) error {
 	script = strings.TrimSpace(script)
 	if script == "" {
@@ -48,16 +47,16 @@ func runWithShell(ctx context.Context, shellPath, script string, verbose bool) e
 	}
 	name := tmp.Name()
 	if _, err := tmp.WriteString(script); err != nil {
-		tmp.Close()
-		os.Remove(name)
+		_ = tmp.Close()
+		_ = os.Remove(name)
 		return err
 	}
-	tmp.Close()
+	_ = tmp.Close()
 	if err := os.Chmod(name, 0o700); err != nil {
-		os.Remove(name)
+		_ = os.Remove(name)
 		return err
 	}
-	defer os.Remove(name)
+	defer func() { _ = os.Remove(name) }()
 
 	cmd := exec.CommandContext(ctx, shellPath, name)
 	cmd.Dir, _ = os.Getwd()
