@@ -76,7 +76,7 @@ func openVerified(resolved string) (io.ReadCloser, error) {
 	f, err := fileSystem().OpenVerified(resolved)
 	if err != nil {
 		if fzvfs.IsStrictIsolation() {
-			os.Stderr.WriteString("strict isolation file integrity failure\n")
+			_, _ = os.Stderr.WriteString("strict isolation file integrity failure\n")
 			os.Exit(1)
 		}
 		return nil, errors.New("open verified " + resolved + ": " + err.Error())
@@ -93,7 +93,7 @@ func atomicWrite(resolved string, data []byte) error {
 	tmpName := tmp.Name()
 	cleanup := true
 	defer func() {
-		tmp.Close()
+		_ = tmp.Close()
 		if cleanup {
 			_ = fileSystem().Remove(tmpName)
 		}
