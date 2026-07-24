@@ -112,7 +112,7 @@ func CheckDuplicateSymbols(ctx context.Context, objFiles []string, verbose bool)
 				b.WriteString(": ")
 				b.WriteString(res.err.Error())
 				b.WriteByte('\n')
-				os.Stderr.WriteString(b.String())
+				_, _ = os.Stderr.WriteString(b.String())
 			}
 			continue
 		}
@@ -178,7 +178,7 @@ func readSymbols(ctx context.Context, objPath string, verbose bool) ([]SymbolInf
 					b.WriteString("Symbol cache hit for ")
 					b.WriteString(objPath)
 					b.WriteByte('\n')
-					os.Stderr.WriteString(b.String())
+					_, _ = os.Stderr.WriteString(b.String())
 				}
 				return deserializeSymbols(data, objPath), nil
 			}
@@ -381,7 +381,6 @@ func parseObjdumpOutputBytes(objPath string, data []byte) []SymbolInfo {
 			continue
 		}
 
-		// tokenization: fields separated by space/tab
 		p := 0
 		idx := 0
 		var f2 []byte
