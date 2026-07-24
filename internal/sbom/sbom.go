@@ -214,7 +214,7 @@ func hashVendorEntry(rootAbs, path string, entry os.DirEntry) (string, error) {
 			return "", errors.New("eval symlink error")
 		}
 		if err := utils.EnsureInsideRoot(rootAbs, resolved); err != nil {
-			os.Stderr.WriteString("SECURITY WARNING: vendor symlink " + path + " outside project root " + rootAbs + "\n")
+			_, _ = os.Stderr.WriteString("SECURITY WARNING: vendor symlink " + path + " outside project root " + rootAbs + "\n")
 			return utils.HashDirWithRoot(rootAbs, path)
 		}
 		st, serr := utils.StatResolved(resolved)
