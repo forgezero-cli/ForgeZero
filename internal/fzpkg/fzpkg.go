@@ -97,11 +97,11 @@ func List() error {
 		return err
 	}
 	if len(trustStore.Keys) == 0 {
-		os.Stdout.WriteString("No trusted keys configured.\n")
+		_, _ = os.Stdout.WriteString("No trusted keys configured.\n")
 		return nil
 	}
 	for _, key := range trustStore.Keys {
-		os.Stdout.WriteString(key + "\n")
+		_, _ = os.Stdout.WriteString(key + "\n")
 	}
 	return nil
 }
