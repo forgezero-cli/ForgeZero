@@ -186,6 +186,9 @@ func alignOut(out []byte, align uint64) []byte {
 	if align == 0 {
 		return out
 	}
+	if align > uint64(^uint(0)) {
+		return out
+	}
 	pad := int((align - uint64(len(out))%align) % align)
 	if pad == 0 {
 		return out
@@ -206,6 +209,9 @@ func alignOut(out []byte, align uint64) []byte {
 
 func alignOutOffset(offset int, align uint64) int {
 	if align == 0 {
+		return offset
+	}
+	if align > uint64(^uint(0)) {
 		return offset
 	}
 	mask := int(align - 1)
