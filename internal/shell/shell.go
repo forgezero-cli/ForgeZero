@@ -37,17 +37,17 @@ func Run() {
 	if os.Getenv("FZ_STAGING") == "1" {
 		status = "STAGING"
 	}
-	os.Stdout.WriteString("FORGEZERO 4.0 ZERO [MIL-SPEC] // STATUS: " + status + " // AUTONOMY: ACTIVE\n")
-	os.Stdout.WriteString("┌─────────────────────────────────┐\n")
-	os.Stdout.WriteString("│  fz interactive shell           │\n")
-	os.Stdout.WriteString("│  Type 'help' for commands       │\n")
-	os.Stdout.WriteString("└─────────────────────────────────┘\n")
+	_, _ = os.Stdout.WriteString("FORGEZERO 5.3.0 ZERO // STATUS: " + status + " // AUTONOMY: ACTIVE\n")
+	_, _ = os.Stdout.WriteString("┌─────────────────────────────────┐\n")
+	_, _ = os.Stdout.WriteString("│  fz interactive shell           │\n")
+	_, _ = os.Stdout.WriteString("│  Type 'help' for commands       │\n")
+	_, _ = os.Stdout.WriteString("└─────────────────────────────────┘\n")
 
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sc
-		os.Stdout.WriteString("\nExiting...\n")
+		_, _ = os.Stdout.WriteString("\nExiting...\n")
 		os.Exit(0)
 	}()
 
@@ -60,27 +60,27 @@ func Run() {
 		switch cmd {
 		case "build":
 			if err := cmdBuild(state); err != nil {
-				os.Stderr.WriteString("error: " + err.Error() + "\n")
+				_, _ = os.Stderr.WriteString("error: " + err.Error() + "\n")
 			}
 		case "clean":
 			if err := cmdClean(state); err != nil {
-				os.Stderr.WriteString("error: " + err.Error() + "\n")
+				_, _ = os.Stderr.WriteString("error: " + err.Error() + "\n")
 			}
 		case "set":
 			if err := cmdSet(state, args); err != nil {
-				os.Stderr.WriteString("error: " + err.Error() + "\n")
+				_, _ = os.Stderr.WriteString("error: " + err.Error() + "\n")
 			}
 		case "show":
 			cmdShow(state)
 		case "watch":
-			os.Stdout.WriteString("watch mode coming soon\n")
+			_, _ = os.Stdout.WriteString("watch mode coming soon\n")
 		case "exit", "quit":
-			os.Stdout.WriteString("Goodbye.\n")
+			_, _ = os.Stdout.WriteString("Goodbye.\n")
 			os.Exit(0)
 		case "help":
 			cmdHelp()
 		default:
-			os.Stderr.WriteString("unknown command: " + cmd + "\n")
+			_, _ = os.Stderr.WriteString("unknown command: " + cmd + "\n")
 		}
 	}
 
