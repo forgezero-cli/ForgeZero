@@ -22,11 +22,12 @@ package gloria
 
 import (
 	"bytes"
-	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"syscall"
 	"testing"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
@@ -167,5 +168,24 @@ func TestGloriaPrint(t *testing.T) {
 
 	if result != expected {
 		t.Errorf("unexpected result: got %q, want %q", result, expected)
+	}
+}
+
+func TestEmitBuiltinCallRejectsOutOfRangeImmediates(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "port too large", args: []string{"65536", "1"}},
+		{name: "data too large", args: []string{"1", "256"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := emitBuiltinCall(nil, "out8", tt.args, &compilerState{})
+			if err == nil {
+				t.Fatalf("emitBuiltinCall(%q) expected error for out-of-range immediate", tt.args)
+			}
+		})
 	}
 }
