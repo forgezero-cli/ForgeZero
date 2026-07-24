@@ -398,6 +398,18 @@ func TestEmitPushImm(t *testing.T) {
 	}
 }
 
+func TestEmitImmOverflowRejected(t *testing.T) {
+	for _, instr := range []string{"add rax, 4294967296", "push 4294967296", "cmp rax, 4294967296"} {
+		p := &parser{}
+		p.text.name = []byte(".text")
+		p.text.data = make([]byte, 0, 1024)
+		p.current = &p.text
+		if err := p.parseLine([]byte(instr)); err == nil {
+			t.Fatalf("expected error for %q", instr)
+		}
+	}
+}
+
 func TestEmitPop(t *testing.T) {
 	p := &parser{}
 	p.text.name = []byte(".text")
