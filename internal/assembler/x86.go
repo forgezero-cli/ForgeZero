@@ -404,6 +404,9 @@ func (p *parser) emitArith(opRegReg byte, opRegImm byte, rest []byte) error {
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opImm {
+		if src.imm > 0xFFFFFFFF {
+			return errors.New("immediate too large for 32-bit encoding")
+		}
 		p.current.AppendBytes([]byte{0x48, opRegImm, encodeModRM(3, 0, dst.reg)})
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(src.imm))
@@ -421,6 +424,9 @@ func (p *parser) emitArith(opRegReg byte, opRegImm byte, rest []byte) error {
 		return nil
 	}
 	if dst.typ == opMem && src.typ == opImm {
+		if src.imm > 0xFFFFFFFF {
+			return errors.New("immediate too large for 32-bit encoding")
+		}
 		p.current.AppendBytes([]byte{0x48, opRegImm})
 		p.writeMemOperand(dst, 0, false)
 		var buf [4]byte
@@ -496,6 +502,9 @@ func (p *parser) emitPush(rest []byte) error {
 		return nil
 	}
 	if op.typ == opImm {
+		if op.imm > 0xFFFFFFFF {
+			return errors.New("immediate too large for 32-bit encoding")
+		}
 		p.current.AppendByte(0x68)
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(op.imm))
@@ -628,6 +637,9 @@ func (p *parser) emitTest(rest []byte) error {
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opImm {
+		if src.imm > 0xFFFFFFFF {
+			return errors.New("immediate too large for 32-bit encoding")
+		}
 		p.current.data = append(p.current.data, 0x48, 0xF7, encodeModRM(3, 0, dst.reg))
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(src.imm))
@@ -894,6 +906,9 @@ func (p *parser) emitCmp(rest []byte) error {
 		return nil
 	}
 	if dst.typ == opReg && src.typ == opImm {
+		if src.imm > 0xFFFFFFFF {
+			return errors.New("immediate too large for 32-bit encoding")
+		}
 		p.current.data = append(p.current.data, 0x48, 0x81, encodeModRM(3, 7, dst.reg))
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], uint32(src.imm))
@@ -906,6 +921,9 @@ func (p *parser) emitCmp(rest []byte) error {
 		return nil
 	}
 	if dst.typ == opMem && src.typ == opImm {
+		if src.imm > 0xFFFFFFFF {
+			return errors.New("immediate too large for 32-bit encoding")
+		}
 		p.current.data = append(p.current.data, 0x48, 0x81)
 		p.writeMemOperand(dst, 7, false)
 		var buf [4]byte
