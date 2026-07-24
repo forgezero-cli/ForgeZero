@@ -302,7 +302,7 @@ func assembleS(ctx context.Context, src, obj string, verbose bool, target string
 }
 
 func writeStderr(s string) {
-	os.Stderr.WriteString(s)
+	_, _ = os.Stderr.WriteString(s)
 }
 
 func getGccIncludePath() string {
