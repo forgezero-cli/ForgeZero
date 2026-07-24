@@ -47,7 +47,7 @@ func Walk(root string, fn func(path string, info os.FileInfo, err error) error) 
 		for {
 			n, _, errno := syscall.Syscall(syscall.SYS_GETDENTS64, uintptr(fd), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 			if errno != 0 {
-				syscall.Close(fd)
+				_ = syscall.Close(fd)
 				if errno == syscall.EINTR {
 					continue
 				}
@@ -68,7 +68,7 @@ func Walk(root string, fn func(path string, info os.FileInfo, err error) error) 
 						if err == filepath.SkipDir {
 							continue
 						}
-						syscall.Close(fd)
+						_ = syscall.Close(fd)
 						return err
 					}
 					continue
@@ -78,7 +78,7 @@ func Walk(root string, fn func(path string, info os.FileInfo, err error) error) 
 					if err == filepath.SkipDir {
 						continue
 					}
-					syscall.Close(fd)
+					_ = syscall.Close(fd)
 					return err
 				}
 
@@ -88,7 +88,7 @@ func Walk(root string, fn func(path string, info os.FileInfo, err error) error) 
 
 			}
 		}
-		syscall.Close(fd)
+		_ = syscall.Close(fd)
 	}
 	return nil
 }
