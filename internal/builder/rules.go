@@ -85,15 +85,15 @@ func executeBuildRule(ctx context.Context, rule config.BuildRule, verbose bool) 
 	}
 	if !needsBuild {
 		if verbose {
-			os.Stdout.WriteString("Skipping build rule: " + rule.Name + "\n")
+			_, _ = os.Stdout.WriteString("Skipping build rule: " + rule.Name + "\n")
 		}
 		return nil
 	}
 	cmd := expandRuleAction(rule)
 	name, args := utils.ShellCommand(cmd)
 	if verbose {
-		os.Stdout.WriteString("Running build rule: " + rule.Name + "\n")
-		os.Stdout.WriteString("Command: " + cmd + "\n")
+		_, _ = os.Stdout.WriteString("Running build rule: " + rule.Name + "\n")
+		_, _ = os.Stdout.WriteString("Command: " + cmd + "\n")
 	}
 	_, err = utils.RunCommand(ctx, verbose, os.Stdout, os.Stderr, name, args...)
 	return err
