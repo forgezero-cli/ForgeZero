@@ -265,7 +265,7 @@ func runLinkerCombinedOutput(ctx context.Context, verbose bool, name string, arg
 	out := buf.String()
 
 	if verbose && len(out) > 0 {
-		os.Stdout.WriteString(out)
+		_, _ = os.Stdout.WriteString(out)
 	}
 
 	return out, err
@@ -388,7 +388,7 @@ func LinkMultiple(ctx context.Context, objFiles []string, bin string, verbose bo
 }
 
 func writeStderr(s string) {
-	os.Stderr.WriteString(s)
+	_, _ = os.Stderr.WriteString(s)
 }
 
 func AutoBuildProject(ctx context.Context) error {
@@ -484,7 +484,7 @@ func runBuild(ctx context.Context, files []string, backend string) error {
 }
 
 func printInfo(msg string) {
-	os.Stdout.WriteString(msg + "\n")
+	_, _ = os.Stdout.WriteString(msg + "\n")
 }
 
 func buildLinkArgs(objs []string, bin string, sanitize bool, strict bool, libs []string, wasm bool, useFuseLd bool) []string {
@@ -527,14 +527,14 @@ func runCompiler(ctx context.Context, compiler string, objs []string, bin string
 	useFuseLd := compiler != "zig"
 	args := buildLinkArgs(objs, bin, sanitize, strict, libs, wasm, useFuseLd)
 	if verbose {
-		os.Stdout.WriteString("Running: " + compiler + " ")
+		_, _ = os.Stdout.WriteString("Running: " + compiler + " ")
 		for i, a := range args {
 			if i > 0 {
-				os.Stdout.WriteString(" ")
+				_, _ = os.Stdout.WriteString(" ")
 			}
-			os.Stdout.WriteString(a)
+			_, _ = os.Stdout.WriteString(a)
 		}
-		os.Stdout.WriteString("\n")
+		_, _ = os.Stdout.WriteString("\n")
 	}
 	output, err := runLinkerCommand(ctx, verbose, compiler, args)
 	if err == nil {
@@ -560,14 +560,14 @@ func runCompiler(ctx context.Context, compiler string, objs []string, bin string
 	args2 = append(args2, args...)
 	if verbose {
 		printInfo(compiler + " failed, retrying with -no-pie")
-		os.Stdout.WriteString("Running: " + compiler + " ")
+		_, _ = os.Stdout.WriteString("Running: " + compiler + " ")
 		for i, a := range args2 {
 			if i > 0 {
-				os.Stdout.WriteString(" ")
+				_, _ = os.Stdout.WriteString(" ")
 			}
-			os.Stdout.WriteString(a)
+			_, _ = os.Stdout.WriteString(a)
 		}
-		os.Stdout.WriteString("\n")
+		_, _ = os.Stdout.WriteString("\n")
 	}
 	output2, err2 := runLinkerCommand(ctx, verbose, compiler, args2)
 	if err2 == nil {
@@ -612,14 +612,14 @@ func linkWithLd(ctx context.Context, objs []string, bin string, verbose bool, li
 		args = append(args, "-shared")
 	}
 	if verbose {
-		os.Stdout.WriteString("Running: " + linker + " ")
+		_, _ = os.Stdout.WriteString("Running: " + linker + " ")
 		for i, a := range args {
 			if i > 0 {
-				os.Stdout.WriteString(" ")
+				_, _ = os.Stdout.WriteString(" ")
 			}
-			os.Stdout.WriteString(a)
+			_, _ = os.Stdout.WriteString(a)
 		}
-		os.Stdout.WriteString("\n")
+		_, _ = os.Stdout.WriteString("\n")
 	}
 	output, err := runLinkerCommand(ctx, verbose, linker, args)
 	if err != nil {
@@ -768,14 +768,14 @@ func linkWindowsImpl(ctx context.Context, objs []string, bin string, verbose boo
 		args = append(args, "-shared")
 	}
 	if verbose {
-		os.Stdout.WriteString("Running: clang ")
+		_, _ = os.Stdout.WriteString("Running: clang ")
 		for i, a := range args {
 			if i > 0 {
-				os.Stdout.WriteString(" ")
+				_, _ = os.Stdout.WriteString(" ")
 			}
-			os.Stdout.WriteString(a)
+			_, _ = os.Stdout.WriteString(a)
 		}
-		os.Stdout.WriteString("\n")
+		_, _ = os.Stdout.WriteString("\n")
 	}
 	output, err := runLinkerCommand(ctx, verbose, "clang", args)
 	if err != nil {
