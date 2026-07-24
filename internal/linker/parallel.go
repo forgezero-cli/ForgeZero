@@ -69,7 +69,7 @@ func LinkMultipleParallel(ctx context.Context, objFiles []string, bin string, ve
 	for _, obj := range objFiles {
 		if isArchiveFile(obj) {
 			if verbose {
-				os.Stdout.WriteString("Archive library detected; falling back to single-stage link\n")
+				_, _ = os.Stdout.WriteString("Archive library detected; falling back to single-stage link\n")
 			}
 			return linkMultipleSingle(ctx, objFiles, bin, verbose, mode, sanitize, strict, libs)
 		}
@@ -275,14 +275,14 @@ func linkWithLdRelocatable(ctx context.Context, objs []string, out string, verbo
 	args = append(args, objs...)
 	args = append(args, "-r", "-o", out)
 	if verbose {
-		os.Stdout.WriteString("Running: " + cmd + " ")
+		_, _ = os.Stdout.WriteString("Running: " + cmd + " ")
 		for i, a := range args {
 			if i > 0 {
-				os.Stdout.WriteString(" ")
+				_, _ = os.Stdout.WriteString(" ")
 			}
-			os.Stdout.WriteString(a)
+			_, _ = os.Stdout.WriteString(a)
 		}
-		os.Stdout.WriteString("\n")
+		_, _ = os.Stdout.WriteString("\n")
 	}
 	output, err := runLinkerCommand(ctx, verbose, cmd, args)
 	if err != nil {
