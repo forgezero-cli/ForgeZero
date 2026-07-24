@@ -78,7 +78,7 @@ func (t *Toolchain) Prepare() (string, error) {
 
 	entries, err := fs.ReadDir(muslAssets, subDir)
 	if err != nil {
-		t.Close()
+		_ = t.Close()
 		return "", errors.New("architecture " + t.TargetArch + " is not supported by ForgeZero musl toolchain")
 	}
 
@@ -89,13 +89,13 @@ func (t *Toolchain) Prepare() (string, error) {
 
 		data, err := muslAssets.ReadFile(path.Join(subDir, entry.Name()))
 		if err != nil {
-			t.Close()
+			_ = t.Close()
 			return "", err
 		}
 
 		destPath := filepath.Join(tmpDir, entry.Name())
 		if err := os.WriteFile(destPath, data, 0644); err != nil {
-			t.Close()
+			_ = t.Close()
 			return "", err
 		}
 	}
