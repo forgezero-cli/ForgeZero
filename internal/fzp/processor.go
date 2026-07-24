@@ -82,15 +82,10 @@ func (p *Processor) Process(path string, opts Options) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	resolved := path
-	if filepath.IsAbs(resolved) {
-		if !p.isAllowedPath(resolved) {
-			return "", nil
-		}
-	} else {
-		resolved = filepath.Join(p.rootDir, resolved)
+	resolved, err := p.resolvePath(path)
+	if err != nil {
+		return "", err
 	}
-	resolved = filepath.Clean(resolved)
 	if p.isInStack(resolved) {
 		return "", fzerr.NewMsg(fzerr.CodeIncludeFailed, "include cycle detected: "+resolved)
 	}
@@ -311,6 +306,25 @@ func (p *Processor) shouldEmit() bool {
 	}
 	state := p.condStack[len(p.condStack)-1]
 	return state.parentActive && state.active
+}
+
+func (p *Processor) resolvePath(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	resolved := path
+	if filepath.IsAbs(resolved) {
+		if !p.isAllowedPath(resolved) {
+			return "", fzerr.NewMsg(fzerr.CodeIncludeFailed, "path outside allowed paths: "+resolved)
+		}
+	} else {
+		resolved = filepath.Join(p.rootDir, resolved)
+	}
+	resolved = filepath.Clean(resolved)
+	if !p.isAllowedPath(resolved) {
+		return "", fzerr.NewMsg(fzerr.CodeIncludeFailed, "path outside allowed paths: "+resolved)
+	}
+	return resolved, nil
 }
 
 func (p *Processor) resolveIncludePath(includePath, currentPath string) (string, error) {
