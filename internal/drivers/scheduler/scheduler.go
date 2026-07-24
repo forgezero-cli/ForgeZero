@@ -36,18 +36,18 @@ type runContextHolder struct {
 var globalRunContext atomic.Pointer[runContextHolder]
 
 type Scheduler struct {
-	poolSize   int
-	queueSize  int
-	queues     *priorityQueues
-	workers    []*priorityQueues
-	nextSubmit atomic.Uint64
-	pending    atomic.Int64
-	pendingMu  sync.Mutex
+	poolSize    int
+	queueSize   int
+	queues      *priorityQueues
+	workers     []*priorityQueues
+	nextSubmit  atomic.Uint64
+	pending     atomic.Int64
+	pendingMu   sync.Mutex
 	pendingCond *sync.Cond
-	running    atomic.Bool
-	errMu      sync.Mutex
-	errs       []error
-	ctxHolder  runContextHolder
+	running     atomic.Bool
+	errMu       sync.Mutex
+	errs        []error
+	ctxHolder   runContextHolder
 }
 
 func NewScheduler(workerPoolSize int, queueSize int) *Scheduler {
@@ -82,6 +82,9 @@ func (s *Scheduler) Submit(task Task, priority int) error {
 		return nil
 	}
 	if s.running.Load() {
+		return errQueueFull
+	}
+	if s.poolSize <= 0 {
 		return errQueueFull
 	}
 	idx := int((s.nextSubmit.Add(1) - 1) % uint64(s.poolSize))
