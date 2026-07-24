@@ -612,7 +612,7 @@ func CopyFile(src, dst string) error {
 	}
 	tmpName := tmp.Name()
 	if err := fileSystem().Chmod(tmpName, FilePerm); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		_ = fileSystem().Remove(tmpName)
 		return errors.New("chmod temp " + tmpName + ": " + err.Error())
 	}
@@ -620,14 +620,14 @@ func CopyFile(src, dst string) error {
 	buf := *bufp
 	if _, err := io.CopyBuffer(tmp, in, buf); err != nil {
 		copyBufferPool.Put(bufp)
-		in.Close()
-		tmp.Close()
+		_ = in.Close()
+		_ = tmp.Close()
 		_ = fileSystem().Remove(tmpName)
 		return errors.New("copy data to " + tmpName + ": " + err.Error())
 	}
 	copyBufferPool.Put(bufp)
 	if err := in.Close(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		_ = fileSystem().Remove(tmpName)
 		return errors.New("close src " + srcResolved + ": " + err.Error())
 	}
