@@ -396,14 +396,14 @@ func writeActionArchive(path string, outputs []string, digest [32]byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
-	defer tmp.Close()
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	defer func() { _ = tmp.Close() }()
 	count := len(outputs)
 	recordSize := 0
 	for _, out := range outputs {
 		info, err := os.Stat(out)
 		if err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			return err
 		}
 		recordSize += l2OutputHeaderSize + len(out) + int(info.Size())
@@ -415,28 +415,28 @@ func writeActionArchive(path string, outputs []string, digest [32]byte) error {
 	binary.LittleEndian.PutUint16(header[40:42], uint16(count))
 	binary.LittleEndian.PutUint32(header[46:50], uint32(recordSize))
 	if _, err := tmp.Write(header[:]); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	for _, out := range outputs {
 		info, err := os.Stat(out)
 		if err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			return err
 		}
 		var entryHeader [l2OutputHeaderSize]byte
 		binary.LittleEndian.PutUint16(entryHeader[0:2], uint16(len(out)))
 		binary.LittleEndian.PutUint32(entryHeader[4:8], uint32(info.Size()))
 		if _, err := tmp.Write(entryHeader[:]); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			return err
 		}
 		if _, err := tmp.Write([]byte(out)); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			return err
 		}
 		if err := copyFileContents(tmp, out); err != nil {
-			tmp.Close()
+			_ = tmp.Close()
 			return err
 		}
 	}
@@ -451,7 +451,7 @@ func copyFileContents(dst *os.File, path string) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	buf := make([]byte, 32768)
 	for {
 		n, err := src.Read(buf)
@@ -479,7 +479,7 @@ func appendL2FromArchive(data []byte, cacheDir string) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 	offset, err := dst.Seek(0, io.SeekEnd)
 	if err != nil {
 		return 0, err
@@ -515,16 +515,16 @@ func mapL2Data(cacheDir string) error {
 	}
 	info, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return err
 	}
 	if info.Size() == 0 {
-		file.Close()
+		_ = file.Close()
 		return nil
 	}
 	data, err := mmapFile(int(file.Fd()), int(info.Size()))
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return err
 	}
 	prefetchMappedFile(data)
@@ -557,16 +557,16 @@ func reloadL2Data(cacheDir string) error {
 	}
 	info, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return err
 	}
 	if info.Size() == 0 {
-		file.Close()
+		_ = file.Close()
 		return nil
 	}
 	data, err := mmapFile(int(file.Fd()), int(info.Size()))
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return err
 	}
 	prefetchMappedFile(data)
