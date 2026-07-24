@@ -265,7 +265,7 @@ func scanTree(root string) (dirs, files int, err error) {
 			if oerr != nil {
 				return dirs, files, errors.New("read " + path + ": " + oerr.Error())
 			}
-			f.Close()
+			_ = f.Close()
 		}
 	}
 	return dirs, files, nil
