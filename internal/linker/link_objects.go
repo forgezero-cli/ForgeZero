@@ -53,7 +53,7 @@ func LinkObjects(ctx context.Context, target string, objs []string, cfg *config.
 
 	verbose := cfg != nil && cfg.Verbose
 	if verbose {
-		os.Stdout.WriteString("Running: " + cmd + " " + strings.Join(args, " ") + "\n")
+		_, _ = os.Stdout.WriteString("Running: " + cmd + " " + strings.Join(args, " ") + "\n")
 	}
 	output, err := runLinkerCommand(ctx, verbose, cmd, args)
 	if err != nil {
