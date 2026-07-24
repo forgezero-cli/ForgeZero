@@ -121,8 +121,11 @@ func suggestGoodFirstIssues(rootDir string) []string {
 	var out []string
 	var todoFiles []string
 
-	filepath.WalkDir(rootDir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+	if err := filepath.WalkDir(rootDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
 			base := filepath.Base(p)
 			if base == ".git" || base == "vendor" || base == "bin" {
 				return filepath.SkipDir
@@ -140,7 +143,9 @@ func suggestGoodFirstIssues(rootDir string) []string {
 			todoFiles = append(todoFiles, p)
 		}
 		return nil
-	})
+	}); err != nil {
+		return nil
+	}
 
 	sort.Strings(todoFiles)
 	for i := 0; i < len(todoFiles) && i < 6; i++ {
