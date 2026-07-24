@@ -2,6 +2,79 @@
 
 # UNRELEASED
 
+## 2026-07-24
+
+### Added
+
+- **Temp script file execution** – shell scripts are now written to temporary files before execution instead of using inline `sh -c` commands, improving security and compatibility with complex scripts.  
+  ([b0658d4](https://github.com/forgezero-cli/ForgeZero/commit/b0658d4))
+- **Path resolution and security checks for FZP** – `resolvePath` function with validation against allowed paths prevents path traversal vulnerabilities in the preprocessor.  
+  ([641d7a4](https://github.com/forgezero-cli/ForgeZero/commit/641d7a4))
+- **Immediate range validation for out8/in8** – port and data immediates are now validated (port ≤ 0xFFFF, data ≤ 0xFF) to prevent invalid I/O operations in Gloria compiler.  
+  ([1d8d33a](https://github.com/forgezero-cli/ForgeZero/commit/1d8d33a))
+- **Overflow protection in alignment functions** – `alignOut` and `alignOutOffset` now check for alignment overflow conditions and return original value when detected.  
+  ([9fb58f7](https://github.com/forgezero-cli/ForgeZero/commit/9fb58f7))
+- **Symbol value overflow checks for ELF32** – symbol values are now validated against uint32 range when emitting 32-bit ELF objects, preventing truncation.  
+  ([bd9124a](https://github.com/forgezero-cli/ForgeZero/commit/bd9124a))
+- **Immediate overflow validation for x86** – push, test, cmp, and arithmetic instructions now reject immediates exceeding 32-bit range.  
+  ([16a0369](https://github.com/forgezero-cli/ForgeZero/commit/16a0369))
+- **GPL license header to opcodes.go** – full GPLv3 license terms added to the opcodes file for legal clarity.  
+  ([96bc7e6](https://github.com/forgezero-cli/ForgeZero/commit/96bc7e6))
+- **Response file cleanup helper** – dedicated `cleanupResponseFile` function ensures temporary response files are properly closed and removed on error paths.  
+  ([228b840](https://github.com/forgezero-cli/ForgeZero/commit/228b840))
+
+### Changed
+
+- **CPlugin disabled** – cplugin functionality is now disabled in this build, returning errors instead of using CGO, improving portability.  
+  ([6e4dd72](https://github.com/forgezero-cli/ForgeZero/commit/6e4dd72))
+
+### Fixed
+
+- **Unused error returns** – fixed all `os.Stdout.WriteString`, `os.Stderr.WriteString`, and file `Close()` calls that ignored return values across 40+ files, preventing Go warnings and improving code quality.  
+  ([b1b481c](https://github.com/forgezero-cli/ForgeZero/commit/b1b481c), [33dc87b](https://github.com/forgezero-cli/ForgeZero/commit/33dc87b), [f267834](https://github.com/forgezero-cli/ForgeZero/commit/f267834), [f39b35a](https://github.com/forgezero-cli/ForgeZero/commit/f39b35a), [72520de](https://github.com/forgezero-cli/ForgeZero/commit/72520de), [c05291c](https://github.com/forgezero-cli/ForgeZero/commit/c05291c), [cfac66c](https://github.com/forgezero-cli/ForgeZero/commit/cfac66c), [5c2901f](https://github.com/forgezero-cli/ForgeZero/commit/5c2901f), [d88bd5f](https://github.com/forgezero-cli/ForgeZero/commit/d88bd5f), [cdf2d9d](https://github.com/forgezero-cli/ForgeZero/commit/cdf2d9d), [c5e46df](https://github.com/forgezero-cli/ForgeZero/commit/c5e46df), [276e6a1](https://github.com/forgezero-cli/ForgeZero/commit/276e6a1), [fb91717](https://github.com/forgezero-cli/ForgeZero/commit/fb91717), [21be0f2](https://github.com/forgezero-cli/ForgeZero/commit/21be0f2), [9b92b47](https://github.com/forgezero-cli/ForgeZero/commit/9b92b47), [6155dc2](https://github.com/forgezero-cli/ForgeZero/commit/6155dc2), [3936614](https://github.com/forgezero-cli/ForgeZero/commit/3936614), [e140ac2](https://github.com/forgezero-cli/ForgeZero/commit/e140ac2), [80d5475](https://github.com/forgezero-cli/ForgeZero/commit/80d5475), [9bb2996](https://github.com/forgezero-cli/ForgeZero/commit/9bb2996), [7da8f3e](https://github.com/forgezero-cli/ForgeZero/commit/7da8f3e), [2116e3f](https://github.com/forgezero-cli/ForgeZero/commit/2116e3f), [12b6dcb](https://github.com/forgezero-cli/ForgeZero/commit/12b6dcb), [5aec76f](https://github.com/forgezero-cli/ForgeZero/commit/5aec76f))
+- **File descriptor cleanup** – improved handling of Close operations in io_uring, hash functions, walk, reflink, doctor, and FS modules to prevent resource leaks.  
+  ([6155dc2](https://github.com/forgezero-cli/ForgeZero/commit/6155dc2), [21be0f2](https://github.com/forgezero-cli/ForgeZero/commit/21be0f2), [c5e46df](https://github.com/forgezero-cli/ForgeZero/commit/c5e46df), [276e6a1](https://github.com/forgezero-cli/ForgeZero/commit/276e6a1))
+- **Scheduler pool size validation** – added check for `poolSize > 0` before submitting tasks, preventing crashes with zero worker pools.  
+  ([fb91717](https://github.com/forgezero-cli/ForgeZero/commit/fb91717))
+- **Driver pool safety** – added empty worker pool check to prevent index out of range errors.  
+  ([276e6a1](https://github.com/forgezero-cli/ForgeZero/commit/276e6a1))
+- **Contribute file walk error handling** – `filepath.WalkDir` errors are now properly handled, preventing panics on permission errors.  
+  ([cdf2d9d](https://github.com/forgezero-cli/ForgeZero/commit/cdf2d9d))
+- **Bashrun temp file cleanup** – temporary script files are now properly closed before removal, preventing resource leaks.  
+  ([f267834](https://github.com/forgezero-cli/ForgeZero/commit/f267834))
+- **Action cache file cleanup** – temp files are now cleaned up on all error paths in archive operations.  
+  ([f39b35a](https://github.com/forgezero-cli/ForgeZero/commit/f39b35a))
+- **Hash cache file cleanup** – deferred close and remove operations ensure temp files are cleaned up.  
+  ([5c2901f](https://github.com/forgezero-cli/ForgeZero/commit/5c2901f))
+- **Musl error handling** – `t.Close()` errors are now handled, preventing resource leaks on architecture errors.  
+  ([2116e3f](https://github.com/forgezero-cli/ForgeZero/commit/2116e3f))
+- **Reflink file close** – `out.Close()` errors are now checked and propagated.  
+  ([21be0f2](https://github.com/forgezero-cli/ForgeZero/commit/21be0f2))
+- **Fix broken URL in license header** – corrected `https:pwww.gnu.org` to `https://www.gnu.org` in builder.go.  
+  ([c05291c](https://github.com/forgezero-cli/ForgeZero/commit/c05291c))
+
+### Performance
+
+- **Assembler** – added capacity-checked `AppendByte`/`AppendBytes` methods replacing `append` calls for zero-allocation emission.  
+  ([82ede54](https://github.com/forgezero-cli/ForgeZero/commit/82ede54))
+
+### Testing
+
+- **Immediate overflow rejection** – test for assembler rejecting 32-bit immediate values in add, push, and cmp instructions.  
+  ([82ede54](https://github.com/forgezero-cli/ForgeZero/commit/82ede54))
+- **Gloria immediate validation** – tests for out8 with port and data out of range.  
+  ([d2a43b5](https://github.com/forgezero-cli/ForgeZero/commit/d2a43b5))
+
+### Documentation
+
+- **GPL license header** – added full GPLv3 license text to opcodes.go.  
+  ([96bc7e6](https://github.com/forgezero-cli/ForgeZero/commit/96bc7e6))
+
+### Build
+
+- **CPlugin disabled** – removed CGO dependencies for better portability across platforms.  
+  ([6e4dd72](https://github.com/forgezero-cli/ForgeZero/commit/6e4dd72))
+
 ## 2026-07-22
 
 ### Added
@@ -519,7 +592,7 @@ b6b6124 feat(pm): add verify, sign, keys, trust subcommands via fzpkg
 6d817d1 docs: mark YAML as deprecated, promote TOML as primary
 c3151be feat(assembler): add AdditionalIncludeDirs for generated headers
 fded515 test(assembler): add TestCompileCAddsAdditionalIncludeDirs
-8c3615e feat(builder): run preprocess step and set include dirs automatically
+9c3615e feat(builder): run preprocess step and set include dirs automatically
 ed6a6b1 test(builder): add TestRunPreprocessGeneratesHeaderFromTemplate
 df815b7 feat(config): add PreprocessConfig, deprecate YAML, support --set overrides
 2e5314a test(config): add tests for TOML enum, env vars, --set, generate config.h
@@ -616,4 +689,35 @@ a8dd4e0 cli: integrate config diagnostic error reporting
 2ec9e53 config: add compiler, cpu_target, instruction_sets, and concurrency settings
 f9b7697 config: enhance Error struct with location and fix suggestions
 184746d errors: implement diagnostic system with line-level error reporting
+80d5475 fix(linker): handle stdout write errors in parallel linking
+e140ac2 fix(linker): handle stdout write in LinkObjects
+3936614 fix(linker): handle stdout/stderr write errors
+6155dc2 fix(io_uring): improve file descriptor cleanup
+d2a43b5 test(gloria): add tests for out-of-range immediate values
+1d8d33a fix(gloria): add immediate range validation for out8/in8
+9b92b47 fix(fzpkg): handle stdout write errors in list command
+641d7a4 feat(fzp): improve path resolution and security checks
+21be0f2 fix(fs): handle file close error in OpenVerified
+fb91717 fix(scheduler): add pool size validation and formatting
+276e6a1 fix(drivers): add safety check for empty worker pool
+c5e46df fix(doctor): handle file close error in scanTree
+6e4dd72 refactor(cplugin): disable cplugin functionality in this build
+cdf2d9d fix(contribute): improve error handling in file walk
+762ec9b fix(config): handle stderr write error for YAML deprecation
+d88bd5f fix(builder): handle stdout write errors in build rules
+5c2901f fix(builder): improve hash cache file cleanup
+cfac66c fix(builder): handle stdout write errors in cache operations
+c05291c fix(builder): handle stdout write errors throughout build process
+b0658d4 feat(builder): write scripts to temp files for execution
+72520de fix(builder): handle stdout write errors in autodeps logger
+f39b35a fix(builder): improve action cache file cleanup
+f267834 fix(bashrun): improve temp file cleanup and error handling
+16a0369 fix(assembler): add immediate overflow validation for x86
+96bc7e6 docs(assembler): add GPL license header to opcodes.go
+82ede54 test(assembler): add test for immediate overflow rejection
+bd9124a fix(assembler): add symbol value overflow checks for ELF32
+9fb58f7 fix(assembler): add overflow protection in alignment functions
+33dc87b fix(assembler): handle write error in stderr output
+b1b481c fix(cli): handle write error in flag usage function
+d05bbb0 (origin/main, origin/HEAD) fix(buildcmd): got rid of that duplicate output on screen after the biuld
 ```
