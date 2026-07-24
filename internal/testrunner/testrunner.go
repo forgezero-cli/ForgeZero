@@ -141,7 +141,7 @@ func RunSuite(verbose, jsonOut, alex bool) error {
 		report.Stages = append(report.Stages, stage)
 
 		if opts.Verbose && output != "" {
-			os.Stdout.WriteString(output)
+			_, _ = os.Stdout.WriteString(output)
 		}
 	}
 
@@ -190,7 +190,7 @@ func printHumanReport(r TestReport) {
 	} else {
 		b.WriteString("\x1b[31mSTATUS: FAILED\x1b[0m (see errors above)\n")
 	}
-	os.Stdout.WriteString(b.String())
+	_, _ = os.Stdout.WriteString(b.String())
 }
 
 func stageStatus(passed bool) string {
