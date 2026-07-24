@@ -34,18 +34,18 @@ func main() {
 	cmd := exec.Command("python3", "parser.py", "test.py")
 	output, err := cmd.Output()
 	if err != nil {
-		os.Stderr.WriteString("Error parsing python: " + err.Error() + "\n")
+		_, _ = os.Stderr.WriteString("Error parsing python: " + err.Error() + "\n")
 		return
 	}
 
 	var irInstructions []IRInstruction
 	if err := json.Unmarshal(output, &irInstructions); err != nil {
-		os.Stderr.WriteString("Error decoding IR: " + err.Error() + "\n")
+		_, _ = os.Stderr.WriteString("Error decoding IR: " + err.Error() + "\n")
 		return
 	}
 
-	os.Stdout.WriteString("[ForgeZero] Received IR from Python frontend:\n")
+	_, _ = os.Stdout.WriteString("[ForgeZero] Received IR from Python frontend:\n")
 	for _, inst := range irInstructions {
-		os.Stdout.WriteString("Instruction: Op=" + inst.Op + ", Dest=" + inst.Dest + ", Arg1=" + inst.Arg1 + ", Arg2=" + inst.Arg2 + "\n")
+		_, _ = os.Stdout.WriteString("Instruction: Op=" + inst.Op + ", Dest=" + inst.Dest + ", Arg1=" + inst.Arg1 + ", Arg2=" + inst.Arg2 + "\n")
 	}
 }
