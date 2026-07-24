@@ -86,7 +86,7 @@ func Add(ctx context.Context, pkgURL, version string) error {
 	if err := updateConfig(destRel, true); err != nil {
 		return err
 	}
-	os.Stdout.WriteString("Package " + pkgURL + " installed.\n")
+	_, _ = os.Stdout.WriteString("Package " + pkgURL + " installed.\n")
 	return nil
 }
 
@@ -133,7 +133,7 @@ func removePackage(path string) error {
 	if err := cleanConfig(path); err != nil {
 		return err
 	}
-	os.Stdout.WriteString("Package " + path + " removed.\n")
+	_, _ = os.Stdout.WriteString("Package " + path + " removed.\n")
 	return nil
 }
 
@@ -189,7 +189,7 @@ func cleanConfig(pkgPath string) error {
 
 func List() error {
 	if _, err := os.Stat(vendorDir); os.IsNotExist(err) {
-		os.Stdout.WriteString("No packages installed.\n")
+		_, _ = os.Stdout.WriteString("No packages installed.\n")
 		return nil
 	}
 	var packages []string
@@ -212,11 +212,11 @@ func List() error {
 		return err
 	}
 	if len(packages) == 0 {
-		os.Stdout.WriteString("No packages installed.\n")
+		_, _ = os.Stdout.WriteString("No packages installed.\n")
 		return nil
 	}
 	for _, pkg := range packages {
-		os.Stdout.WriteString(pkg + "\n")
+		_, _ = os.Stdout.WriteString(pkg + "\n")
 	}
 	return nil
 }
@@ -225,7 +225,7 @@ func Update(ctx context.Context) error {
 	entries, err := os.ReadDir(vendorDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			os.Stdout.WriteString("No packages to update.\n")
+			_, _ = os.Stdout.WriteString("No packages to update.\n")
 			return nil
 		}
 		return err
@@ -233,9 +233,9 @@ func Update(ctx context.Context) error {
 	for _, entry := range entries {
 		pkgPath := filepath.Join(vendorDir, entry.Name())
 		if _, err := runGit(ctx, "-C", pkgPath, "pull"); err != nil {
-			os.Stderr.WriteString("Warning: failed to update " + entry.Name() + ": " + err.Error() + "\n")
+			_, _ = os.Stderr.WriteString("Warning: failed to update " + entry.Name() + ": " + err.Error() + "\n")
 		} else {
-			os.Stdout.WriteString("Updated " + entry.Name() + "\n")
+			_, _ = os.Stdout.WriteString("Updated " + entry.Name() + "\n")
 		}
 	}
 	return nil
@@ -287,7 +287,7 @@ func fetchCatalog() (*Catalog, error) {
 			return cat, nil
 		}
 		lastErr = err
-		os.Stderr.WriteString("Warning: failed to fetch catalog from " + url + ": " + err.Error() + "\n")
+		_, _ = os.Stderr.WriteString("Warning: failed to fetch catalog from " + url + ": " + err.Error() + "\n")
 	}
 	return nil, errors.New("all catalog URLs failed: " + lastErr.Error())
 }
@@ -297,9 +297,9 @@ func ListCatalog(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	os.Stdout.WriteString("Available packages (catalog version " + strconv.Itoa(cat.Version) + "):\n")
+	_, _ = os.Stdout.WriteString("Available packages (catalog version " + strconv.Itoa(cat.Version) + "):\n")
 	for _, p := range cat.Packages {
-		os.Stdout.WriteString("  " + p.Name + " (" + p.Category + ") - " + p.Description + "\n")
+		_, _ = os.Stdout.WriteString("  " + p.Name + " (" + p.Category + ") - " + p.Description + "\n")
 	}
 	return nil
 }
@@ -309,19 +309,19 @@ func SearchCatalog(ctx context.Context, keyword string) error {
 	if err != nil {
 		return err
 	}
-	os.Stdout.WriteString("Search results for '" + keyword + "':\n")
+	_, _ = os.Stdout.WriteString("Search results for '" + keyword + "':\n")
 	found := false
 	kw := strings.ToLower(keyword)
 	for _, p := range cat.Packages {
 		if strings.Contains(strings.ToLower(p.Name), kw) ||
 			strings.Contains(strings.ToLower(p.Description), kw) ||
 			strings.Contains(strings.ToLower(p.Category), kw) {
-			os.Stdout.WriteString("  " + p.Name + " (" + p.Category + ") - " + p.Description + "\n")
+			_, _ = os.Stdout.WriteString("  " + p.Name + " (" + p.Category + ") - " + p.Description + "\n")
 			found = true
 		}
 	}
 	if !found {
-		os.Stdout.WriteString("No matching packages found.\n")
+		_, _ = os.Stdout.WriteString("No matching packages found.\n")
 	}
 	return nil
 }
@@ -355,12 +355,12 @@ func InstallFromCatalog(ctx context.Context, pkgName string) error {
 	if pkg.Hash != "" {
 		actualHash, err := utils.HashDir(hashDirPath)
 		if err != nil {
-			os.Stderr.WriteString("Warning: failed to compute hash for " + pkgName + ": " + err.Error() + "\n")
+			_, _ = os.Stderr.WriteString("Warning: failed to compute hash for " + pkgName + ": " + err.Error() + "\n")
 		} else if actualHash != pkg.Hash {
 			_ = Remove(ctx, pkgName)
 			return errors.New("hash mismatch for package " + pkgName + " (expected " + pkg.Hash + ", got " + actualHash + ")")
 		} else {
-			os.Stdout.WriteString("Hash verification passed for " + pkgName + "\n")
+			_, _ = os.Stdout.WriteString("Hash verification passed for " + pkgName + "\n")
 		}
 	}
 	if pkg.SourceDir != "" {
@@ -370,7 +370,7 @@ func InstallFromCatalog(ctx context.Context, pkgName string) error {
 			return err
 		}
 	}
-	os.Stdout.WriteString("Installed catalog package " + pkgName + "\n")
+	_, _ = os.Stdout.WriteString("Installed catalog package " + pkgName + "\n")
 	return nil
 }
 
