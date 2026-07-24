@@ -12,7 +12,7 @@
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *   along with this program.  If not, see <https:pwww.gnu.org/licenses/>.
  */
 
 package builder
@@ -577,7 +577,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 						}
 						if shouldSkip {
 							if verbose {
-								os.Stdout.WriteString("Skipping directory tree: " + path + "\n")
+								_, _ = os.Stdout.WriteString("Skipping directory tree: " + path + "\n")
 							}
 							return filepath.SkipDir
 						}
@@ -589,15 +589,15 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 							p := matcherPath(path)
 							shouldExclude = m.Match(p)
 							if verbose && shouldExclude {
-								os.Stdout.WriteString("Ignored by matcher: " + path + "\n")
+								_, _ = os.Stdout.WriteString("Ignored by matcher: " + path + "\n")
 							} else if verbose && strings.Contains(filepath.Base(path), "cli_commands") {
-								os.Stdout.WriteString("NOT matched by ignore: " + path + "\n")
+								_, _ = os.Stdout.WriteString("NOT matched by ignore: " + path + "\n")
 							}
 						}
 					}
 					if shouldExclude {
 						if verbose {
-							os.Stdout.WriteString("Excluding file: " + path + "\n")
+							_, _ = os.Stdout.WriteString("Excluding file: " + path + "\n")
 						}
 						return nil
 					}
@@ -636,7 +636,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 				}
 				if _, ok := included[filepath.Clean(abs)]; ok {
 					if verbose {
-						os.Stdout.WriteString("Skipping included source file: " + src + "\n")
+						_, _ = os.Stdout.WriteString("Skipping included source file: " + src + "\n")
 					}
 					continue
 				}
@@ -651,7 +651,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 					if !m.Match(matcherPath(src)) {
 						filtered = append(filtered, src)
 					} else if verbose {
-						os.Stdout.WriteString("Ignoring file (from .fzignore): " + src + "\n")
+						_, _ = os.Stdout.WriteString("Ignoring file (from .fzignore): " + src + "\n")
 					}
 				}
 				srcFiles = filtered
@@ -756,7 +756,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 			if autoCfg, err := config.Load(cfgPath); err == nil && autoCfg != nil {
 				globalAutoBuild = &autoCfg.AutoBuild
 				if verbose {
-					os.Stdout.WriteString("Loaded configure.fz for auto-build settings\n")
+					_, _ = os.Stdout.WriteString("Loaded configure.fz for auto-build settings\n")
 				}
 			}
 		}
@@ -819,7 +819,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 						localCfg, lerr = config.Load(fzCfgPath)
 						if lerr != nil {
 							if verbose {
-								os.Stdout.WriteString("Warning: failed to load " + fzCfgPath + ": " + lerr.Error() + "\n")
+								_, _ = os.Stdout.WriteString("Warning: failed to load " + fzCfgPath + ": " + lerr.Error() + "\n")
 							}
 							continue
 						}
@@ -828,7 +828,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 							if !localCfg.DepBuild.Enabled {
 								enabledStr = "false"
 							}
-							os.Stdout.WriteString("DEBUG: Loaded fz.toml for dep " + depName + ", DepBuild.Enabled=" + enabledStr + "\n")
+							_, _ = os.Stdout.WriteString("DEBUG: Loaded fz.toml for dep " + depName + ", DepBuild.Enabled=" + enabledStr + "\n")
 						}
 					}
 
@@ -906,9 +906,9 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 							}
 						}
 						if verbose {
-							os.Stdout.WriteString("DEBUG: depIncludes for " + depName + ":\n")
+							_, _ = os.Stdout.WriteString("DEBUG: depIncludes for " + depName + ":\n")
 							for _, d := range depIncludes {
-								os.Stdout.WriteString("  " + d + "\n")
+								_, _ = os.Stdout.WriteString("  " + d + "\n")
 							}
 						}
 						_, err := BuildDir(ctx, []string{depPath}, outArchive, debug, verbose, mode, false, noCache, noSymbolCheck, sanitize, strict, excludePatterns, depSourceFiles, nil, depIncludes, nil, jobs, "static")
@@ -944,7 +944,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 					}
 
 					if verbose {
-						os.Stdout.WriteString("Skipping " + depName + ": no fz.toml found (create " + fzCfgPath + " to enable)\n")
+						_, _ = os.Stdout.WriteString("Skipping " + depName + ": no fz.toml found (create " + fzCfgPath + " to enable)\n")
 					}
 				}
 			}
@@ -977,7 +977,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		hashCache, err = loadHashCache(cacheDir)
 		if err != nil {
 			if verbose {
-				os.Stdout.WriteString("Warning: failed to load hash cache: " + err.Error() + "\n")
+				_, _ = os.Stdout.WriteString("Warning: failed to load hash cache: " + err.Error() + "\n")
 			}
 			hashCache = nil
 		}
@@ -1056,7 +1056,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 
 	_, err = buildDependencyGraph(pairs, rootDir)
 	if err != nil && verbose {
-		os.Stdout.WriteString("Warning: could not build dependency graph: " + err.Error() + "; falling back to flat build\n")
+		_, _ = os.Stdout.WriteString("Warning: could not build dependency graph: " + err.Error() + "; falling back to flat build\n")
 	}
 
 	if jobs <= 0 {
@@ -1075,7 +1075,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 					if restored {
 						needAssemble = false
 						if verbose {
-							os.Stdout.WriteString("RAM cache hit for " + p.src + "\n")
+							_, _ = os.Stdout.WriteString("RAM cache hit for " + p.src + "\n")
 						}
 						var mbuf [512]byte
 						n := copy(mbuf[:], "cache:hit:")
@@ -1097,7 +1097,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 						cachedObj, err := checkCache(p.src, cacheDir, debug, verbose, mode)
 						if err == nil && cachedObj != "" {
 							if verbose {
-								os.Stdout.WriteString("Cache hit for " + p.src + "\n")
+								_, _ = os.Stdout.WriteString("Cache hit for " + p.src + "\n")
 							}
 							if err := utils.CopyFile(cachedObj, p.obj); err == nil {
 								cachedSyms := strings.TrimSuffix(cachedObj, ".o") + ".syms"
@@ -1115,7 +1115,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		}
 		if needAssemble {
 			if verbose {
-				os.Stdout.WriteString("Assembling " + p.src + " -> " + p.obj + "\n")
+				_, _ = os.Stdout.WriteString("Assembling " + p.src + " -> " + p.obj + "\n")
 			}
 			var mbuf [512]byte
 			n := copy(mbuf[:], "assemble:")
@@ -1169,7 +1169,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 	close(errCh)
 	for err := range errCh {
 		if cleanupObjDir {
-			os.RemoveAll(objDir)
+			_ = os.RemoveAll(objDir)
 		}
 		return nil, err
 	}
@@ -1181,7 +1181,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 
 	if len(depsArchives) > 0 {
 		if verbose {
-			os.Stdout.WriteString("Appending " + strconv.Itoa(len(depsArchives)) + " dependency archives: " + strings.Join(depsArchives, ", ") + "\n")
+			_, _ = os.Stdout.WriteString("Appending " + strconv.Itoa(len(depsArchives)) + " dependency archives: " + strings.Join(depsArchives, ", ") + "\n")
 		}
 		depsObjDir := filepath.Join(objDir, "deps")
 		_ = os.MkdirAll(depsObjDir, 0o755)
@@ -1239,7 +1239,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 	if effectiveCache != cacheOff {
 		if err := saveHashCache(cacheDir, sourceHashes); err != nil {
 			if verbose {
-				os.Stdout.WriteString("Warning: failed to save hash cache: " + err.Error() + "\n")
+				_, _ = os.Stdout.WriteString("Warning: failed to save hash cache: " + err.Error() + "\n")
 			}
 		}
 	}
@@ -1247,21 +1247,21 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 	if buildType == "obj" {
 	} else if buildType == "static" {
 		if verbose {
-			os.Stdout.WriteString("Creating static library " + outBin + "\n")
+			_, _ = os.Stdout.WriteString("Creating static library " + outBin + "\n")
 		}
 		if err := createArchive(ctx, objFiles, outBin, verbose); err != nil {
 			if cleanupObjDir {
-				os.RemoveAll(objDir)
+				_ = os.RemoveAll(objDir)
 			}
 			return nil, errors.New("Archive creation failed: " + err.Error())
 		}
 	} else {
 		if verbose {
-			os.Stdout.WriteString("Linking object files -> " + outBin + "\n")
+			_, _ = os.Stdout.WriteString("Linking object files -> " + outBin + "\n")
 		}
 		if err := linker.LinkMultiple(ctx, objFiles, outBin, verbose, mode, noSymbolCheck, sanitize, strict, libs); err != nil {
 			if cleanupObjDir {
-				os.RemoveAll(objDir)
+				_ = os.RemoveAll(objDir)
 			}
 			return nil, errors.New("link failed: " + err.Error())
 		}
@@ -1290,7 +1290,7 @@ func runPreprocessStep(cfg *config.Config, dirs []string, outputRoot string, ver
 					base := strings.TrimSuffix(filepath.Base(templatePath), ".in")
 					outputPath := filepath.Join(outputRoot, base)
 					if verbose {
-						os.Stdout.WriteString("Generating header " + outputPath + " from " + templatePath + "\n")
+						_, _ = os.Stdout.WriteString("Generating header " + outputPath + " from " + templatePath + "\n")
 					}
 					if err := config.GenerateConfigH(templatePath, outputPath, cfg); err != nil {
 						return err
@@ -1322,7 +1322,7 @@ func runPreprocessStep(cfg *config.Config, dirs []string, outputRoot string, ver
 				outputPath = filepath.Join(outputRoot, filepath.Base(outputPath))
 			}
 			if verbose {
-				os.Stdout.WriteString("Generating preprocessed output " + outputPath + " from " + inputPath + "\n")
+				_, _ = os.Stdout.WriteString("Generating preprocessed output " + outputPath + " from " + inputPath + "\n")
 			}
 			proc := fzp.NewProcessor(fzp.Options{RootDir: filepath.Dir(inputPath), Macros: cfg.Preprocess.Defines})
 			processed, err := proc.Process(inputPath, fzp.Options{RootDir: filepath.Dir(inputPath)})
@@ -1352,7 +1352,7 @@ func createArchive(ctx context.Context, objFiles []string, outBin string, verbos
 	args = append(args, "rcs", outBin)
 	args = append(args, objFiles...)
 	if verbose {
-		os.Stdout.WriteString("Running: ar " + strings.Join(args, " ") + "\n")
+		_, _ = os.Stdout.WriteString("Running: ar " + strings.Join(args, " ") + "\n")
 	}
 	_, err := utils.RunCommand(ctx, verbose, os.Stdout, os.Stderr, "ar", args...)
 	return err
@@ -1361,7 +1361,7 @@ func createArchive(ctx context.Context, objFiles []string, outBin string, verbos
 func removeIfExists(path string, isDir bool, verbose bool) error {
 	if _, err := os.Stat(path); err == nil {
 		if verbose {
-			os.Stdout.WriteString("Removing " + path + "\n")
+			_, _ = os.Stdout.WriteString("Removing " + path + "\n")
 		}
 		if isDir {
 			if err := os.RemoveAll(path); err != nil {
@@ -1410,7 +1410,7 @@ func CleanDir(dir string, verbose bool) error {
 
 		if strings.HasSuffix(name, ".o") {
 			if verbose {
-				os.Stdout.WriteString("Removing object file " + path + "\n")
+				_, _ = os.Stdout.WriteString("Removing object file " + path + "\n")
 			}
 			if err := os.Remove(path); err != nil {
 				return errors.New("failed to remove " + path + ": " + err.Error())
@@ -1426,14 +1426,14 @@ func CleanDir(dir string, verbose bool) error {
 			ext := strings.ToLower(filepath.Ext(name))
 			if !utils.SupportedExtension(ext) && ext != "" {
 				if verbose {
-					os.Stdout.WriteString("Removing executable " + path + "\n")
+					_, _ = os.Stdout.WriteString("Removing executable " + path + "\n")
 				}
 				if err := os.Remove(path); err != nil {
 					return errors.New("failed to remove " + path + ": " + err.Error())
 				}
 			} else if ext == "" {
 				if verbose {
-					os.Stdout.WriteString("Removing executable (no extension) " + path + "\n")
+					_, _ = os.Stdout.WriteString("Removing executable (no extension) " + path + "\n")
 				}
 				if err := os.Remove(path); err != nil {
 					return errors.New("failed to remove " + path + ": " + err.Error())
