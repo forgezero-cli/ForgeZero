@@ -89,7 +89,7 @@ func (w *Watcher) Watch(debounceDelay time.Duration, handler EventHandler) {
 				if !ok {
 					return
 				}
-				os.Stderr.WriteString("watcher error: " + err.Error() + "\n")
+				_, _ = os.Stderr.WriteString("watcher error: " + err.Error() + "\n")
 			}
 		}
 	}()
@@ -115,7 +115,7 @@ func (w *Watcher) Watch(debounceDelay time.Duration, handler EventHandler) {
 			resetTimer()
 		case <-timer.C:
 			if err := handler("change"); err != nil {
-				os.Stderr.WriteString("rebuild error: " + err.Error() + "\n")
+				_, _ = os.Stderr.WriteString("rebuild error: " + err.Error() + "\n")
 			}
 		case <-w.done:
 			if !timer.Stop() {
@@ -145,5 +145,5 @@ func shouldIgnore(name string) bool {
 
 func (w *Watcher) Close() {
 	close(w.done)
-	w.watcher.Close()
+	_ = w.watcher.Close()
 }
