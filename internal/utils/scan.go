@@ -57,14 +57,14 @@ func warnOutsideRoot(path string) {
 	var tmp [4096]byte
 	n := copy(tmp[:], warnOutsideHead)
 	if n+len(path)+1 > len(tmp) {
-		os.Stderr.Write(warnOutsideHead)
-		os.Stderr.Write([]byte(path))
-		os.Stderr.Write([]byte{'\n'})
+		_, _ = os.Stderr.Write(warnOutsideHead)
+		_, _ = os.Stderr.Write([]byte(path))
+		_, _ = os.Stderr.Write([]byte{'\n'})
 		return
 	}
 	n += copy(tmp[n:], path)
 	tmp[n] = '\n'
-	os.Stderr.Write(tmp[:n+1])
+	_, _ = os.Stderr.Write(tmp[:n+1])
 }
 
 func mmapPath(path string) ([]byte, bool, error) {
@@ -81,20 +81,20 @@ func mmapPath(path string) ([]byte, bool, error) {
 		Fd() uintptr
 	})
 	if !ok {
-		f.Close()
+		_ = f.Close()
 		return nil, false, ErrScanOpen
 	}
 	fi, err := of.Stat()
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, false, err
 	}
 	if fi.Size() == 0 {
-		f.Close()
+		_ = f.Close()
 		return nil, false, nil
 	}
 	if fi.Size() < 64*1024 {
-		f.Close()
+		_ = f.Close()
 		data, err := fileSystem().ReadFile(resolved)
 		if err != nil {
 			return nil, false, ErrScanOpen
@@ -102,7 +102,7 @@ func mmapPath(path string) ([]byte, bool, error) {
 		return data, false, nil
 	}
 	data, err := mmapFile(getFileDescriptor(of), fi.Size())
-	f.Close()
+	_ = f.Close()
 	if err != nil {
 		return nil, false, ErrScanMmap
 	}
