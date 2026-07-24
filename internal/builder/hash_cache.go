@@ -75,8 +75,8 @@ func saveHashCache(cacheDir string, m map[string][32]byte) error {
 		return err
 	}
 	defer func() {
-		f.Close()
-		os.Remove(tmp)
+		_ = f.Close()
+		_ = os.Remove(tmp)
 	}()
 	var lenBuf [2]byte
 	var hashBuf [32]byte
