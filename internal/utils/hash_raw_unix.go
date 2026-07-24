@@ -54,7 +54,7 @@ func hashRawFileDigest(path string) ([32]byte, error) {
 		var buf [65536]byte
 		if _, err := io.CopyBuffer(hasher, f, buf[:]); err != nil {
 			putKeyedHasher(hasher)
-			f.Close()
+			_ = f.Close()
 			return out, err
 		}
 		if cerr := f.Close(); cerr != nil {
@@ -80,13 +80,13 @@ func hashRawFileDigest(path string) ([32]byte, error) {
 		n, readErr := syscall.Read(fd, buf[:])
 		if n > 0 {
 			if _, err := hasher.Write(buf[:n]); err != nil {
-				syscall.Close(fd)
+				_ = syscall.Close(fd)
 				putKeyedHasher(hasher)
 				return out, err
 			}
 		}
 		if readErr != nil {
-			syscall.Close(fd)
+			_ = syscall.Close(fd)
 			putKeyedHasher(hasher)
 			return out, ErrHashRead
 		}
@@ -94,7 +94,7 @@ func hashRawFileDigest(path string) ([32]byte, error) {
 			break
 		}
 	}
-	syscall.Close(fd)
+	_ = syscall.Close(fd)
 	digest := hasher.Digest()
 	if _, err := digest.Read(out[:]); err != nil {
 		putKeyedHasher(hasher)
