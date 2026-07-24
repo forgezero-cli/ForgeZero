@@ -154,6 +154,9 @@ func (p *Pool) queueForSubmit() *worker {
 		return nil
 	}
 	idx := atomic.AddUint64(&p.next, 1) - 1
+	if len(p.workers) == 0 {
+		return nil
+	}
 	return p.workers[int(idx%uint64(len(p.workers)))]
 }
 
