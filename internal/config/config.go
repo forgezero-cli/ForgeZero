@@ -98,7 +98,7 @@ func loadYAML(path string, data []byte, cfg *Config) error {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return NewErrorLocation(ErrorParseYAML, path, 0, "yaml", err.Error(), "Use valid YAML syntax or migrate to TOML.")
 	}
-	os.Stderr.WriteString("WARNING: YAML config format is deprecated. Please migrate to TOML.\n")
+	_, _ = os.Stderr.WriteString("WARNING: YAML config format is deprecated. Please migrate to TOML.\n")
 	return nil
 }
 
