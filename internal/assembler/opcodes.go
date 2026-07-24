@@ -5,6 +5,14 @@
  *   it under the terms of the GNU General Public License as published by
  *   the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
+ *
+ *   This program is distributed in the hope that it will be useful,
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package assembler
@@ -29,7 +37,7 @@ func EmitAddRegReg(dst byte, src byte) []byte {
 
 func EmitMovRegImmTo(e *Encoder, reg byte, imm32 uint32) {
 	b := byte(0xB8 + (reg & 7))
-	e.WriteByte(b)
+	_ = e.WriteByte(b)
 	e.Write([]byte{
 		byte(imm32),
 		byte(imm32 >> 8),
@@ -39,8 +47,8 @@ func EmitMovRegImmTo(e *Encoder, reg byte, imm32 uint32) {
 }
 
 func EmitAddRegRegTo(e *Encoder, dst byte, src byte) {
-	e.WriteByte(0x48)
-	e.WriteByte(0x01)
+	_ = e.WriteByte(0x48)
+	_ = e.WriteByte(0x01)
 	modrm := byte(0xC0 | ((src & 7) << 3) | (dst & 7))
-	e.WriteByte(modrm)
+	_ = e.WriteByte(modrm)
 }
