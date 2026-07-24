@@ -335,7 +335,7 @@ func restoreRAMCache(src, obj string, debug bool, mode string) (bool, error) {
 		_ = writeFileMaybeIOUring(obj+".syms", entry.syms, 0o644)
 	}
 	if debug {
-		os.Stdout.WriteString("RAM cache restored " + src + " -> " + obj + "\n")
+		_, _ = os.Stdout.WriteString("RAM cache restored " + src + " -> " + obj + "\n")
 	}
 	if ramCacheHits != nil {
 		ramCacheHits.Inc()
@@ -364,7 +364,7 @@ func storeRAMCache(src, obj string, debug bool, mode string) error {
 	size += int64(len(syms))
 	if !canStoreRAMCache(size) {
 		if debug {
-			os.Stdout.WriteString("RAM cache skipped " + src + " (limit reached)\n")
+			_, _ = os.Stdout.WriteString("RAM cache skipped " + src + " (limit reached)\n")
 		}
 		return nil
 	}
@@ -393,7 +393,7 @@ func storeRAMCache(src, obj string, debug bool, mode string) error {
 		key := buildCacheKey(h, debug, mode)
 		ramObjectStore.set(key, object, syms)
 		if debug {
-			os.Stdout.WriteString("RAM cache stored " + src + "\n")
+			_, _ = os.Stdout.WriteString("RAM cache stored " + src + "\n")
 		}
 		return nil
 	}
@@ -420,7 +420,7 @@ func storeRAMCache(src, obj string, debug bool, mode string) error {
 	key := buildCacheKey(h, debug, mode)
 	ramObjectStore.set(key, data, syms)
 	if debug {
-		os.Stdout.WriteString("RAM cache stored " + src + "\n")
+		_, _ = os.Stdout.WriteString("RAM cache stored " + src + "\n")
 	}
 	return nil
 }
@@ -437,7 +437,7 @@ func checkCache(src, cacheDir string, debug, verbose bool, mode string) (string,
 		return "", err
 	}
 	if info.Size() == 0 {
-		os.Remove(cacheObj)
+		_ = os.Remove(cacheObj)
 		return "", fzerr.New(fzerr.CodeCacheEmpty)
 	}
 	return cacheObj, nil
@@ -458,7 +458,7 @@ func restoreShadowCache(src, obj string, debug bool, mode string) (bool, error) 
 		return false, err
 	}
 	if info.Size() == 0 {
-		os.Remove(shadowObj)
+		_ = os.Remove(shadowObj)
 		return false, nil
 	}
 	if err := utils.EnsureDir(obj); err != nil {
@@ -471,7 +471,7 @@ func restoreShadowCache(src, obj string, debug bool, mode string) (bool, error) 
 		return false, err
 	}
 	if debug {
-		os.Stdout.WriteString("Shadow cache restored " + shadowObj + " -> " + obj + "\n")
+		_, _ = os.Stdout.WriteString("Shadow cache restored " + shadowObj + " -> " + obj + "\n")
 	}
 	return true, nil
 }
