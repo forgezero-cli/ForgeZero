@@ -24,7 +24,7 @@ var Enabled bool
 
 func Debug(msg string) {
 	if Enabled {
-		os.Stdout.WriteString(msg)
+		_, _ = os.Stdout.WriteString(msg)
 	}
 }
 
@@ -36,7 +36,7 @@ func Debugf(format string, args ...any) {
 			out += " "
 			out += toString(arg)
 		}
-		os.Stdout.WriteString(out)
+		_, _ = os.Stdout.WriteString(out)
 	}
 }
 
