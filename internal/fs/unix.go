@@ -112,11 +112,11 @@ func (Unix) OpenVerified(path string) (io.ReadCloser, error) {
 	f := os.NewFile(uintptr(fd), path)
 	var post syscall.Stat_t
 	if err := syscall.Fstat(fd, &post); err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, err
 	}
 	if pre.Dev != post.Dev || pre.Ino != post.Ino || pre.Mode != post.Mode {
-		f.Close()
+		_ = f.Close()
 		return nil, ErrPathChanged
 	}
 	return f, nil
