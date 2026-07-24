@@ -62,9 +62,9 @@ func cmdBuild(state *BuildState) error {
 	binName, objName := utils.DeriveNames(state.SourcePath, state.Out, "")
 	if state.Verbose {
 		if ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" {
-			os.Stdout.WriteString("Compiling " + state.SourcePath + " -> " + objName + "\n")
+			_, _ = os.Stdout.WriteString("Compiling " + state.SourcePath + " -> " + objName + "\n")
 		} else {
-			os.Stdout.WriteString("Assembling " + state.SourcePath + " -> " + objName + "\n")
+			_, _ = os.Stdout.WriteString("Assembling " + state.SourcePath + " -> " + objName + "\n")
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -83,7 +83,7 @@ func cmdBuild(state *BuildState) error {
 		return err
 	}
 	if state.Verbose {
-		os.Stdout.WriteString("Linking " + objName + " -> " + binName + " (mode: " + state.Mode + ")\n")
+		_, _ = os.Stdout.WriteString("Linking " + objName + " -> " + binName + " (mode: " + state.Mode + ")\n")
 	}
 	if err := linker.Link(ctx, objName, binName, state.Verbose, state.Mode, state.NoSymbolCheck, state.Sanitize, state.Strict, nil); err != nil {
 		return err
@@ -136,23 +136,23 @@ func cmdSet(state *BuildState, args []string) error {
 	default:
 		return errors.New("unknown key: " + key)
 	}
-	os.Stdout.WriteString("Set " + key + " = " + val + "\n")
+	_, _ = os.Stdout.WriteString("Set " + key + " = " + val + "\n")
 	return nil
 }
 
 func cmdShow(state *BuildState) {
-	os.Stdout.WriteString("Mode: " + state.Mode + "\n")
-	os.Stdout.WriteString("Format: " + state.Format + "\n")
-	os.Stdout.WriteString("Strict: " + boolStr(state.Strict) + "\n")
-	os.Stdout.WriteString("Sanitize: " + boolStr(state.Sanitize) + "\n")
-	os.Stdout.WriteString("Verbose: " + boolStr(state.Verbose) + "\n")
-	os.Stdout.WriteString("NoCache: " + boolStr(state.NoCache) + "\n")
-	os.Stdout.WriteString("NoSymbolCheck: " + boolStr(state.NoSymbolCheck) + "\n")
-	os.Stdout.WriteString("KeepObj: " + boolStr(state.KeepObj) + "\n")
-	os.Stdout.WriteString("LdScript: " + state.LdScript + "\n")
-	os.Stdout.WriteString("TextAddr: " + state.TextAddr + "\n")
-	os.Stdout.WriteString("Output: " + state.Out + "\n")
-	os.Stdout.WriteString("Source: " + state.SourcePath + " (type: " + state.SourceType + ")\n")
+	_, _ = os.Stdout.WriteString("Mode: " + state.Mode + "\n")
+	_, _ = os.Stdout.WriteString("Format: " + state.Format + "\n")
+	_, _ = os.Stdout.WriteString("Strict: " + boolStr(state.Strict) + "\n")
+	_, _ = os.Stdout.WriteString("Sanitize: " + boolStr(state.Sanitize) + "\n")
+	_, _ = os.Stdout.WriteString("Verbose: " + boolStr(state.Verbose) + "\n")
+	_, _ = os.Stdout.WriteString("NoCache: " + boolStr(state.NoCache) + "\n")
+	_, _ = os.Stdout.WriteString("NoSymbolCheck: " + boolStr(state.NoSymbolCheck) + "\n")
+	_, _ = os.Stdout.WriteString("KeepObj: " + boolStr(state.KeepObj) + "\n")
+	_, _ = os.Stdout.WriteString("LdScript: " + state.LdScript + "\n")
+	_, _ = os.Stdout.WriteString("TextAddr: " + state.TextAddr + "\n")
+	_, _ = os.Stdout.WriteString("Output: " + state.Out + "\n")
+	_, _ = os.Stdout.WriteString("Source: " + state.SourcePath + " (type: " + state.SourceType + ")\n")
 }
 
 func boolStr(b bool) string {
@@ -163,7 +163,7 @@ func boolStr(b bool) string {
 }
 
 func cmdHelp() {
-	os.Stdout.WriteString(helpText)
+	_, _ = os.Stdout.WriteString(helpText)
 }
 
 const helpText = `Commands:
