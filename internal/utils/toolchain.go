@@ -68,9 +68,9 @@ func isBuildTool(name string) bool {
 }
 
 func securityPanic(reason string) {
-	os.Stderr.WriteString("SECURITY PANIC: ")
-	os.Stderr.WriteString(reason)
-	os.Stderr.WriteString("\n")
+	_, _ = os.Stderr.WriteString("SECURITY PANIC: ")
+	_, _ = os.Stderr.WriteString(reason)
+	_, _ = os.Stderr.WriteString("\n")
 	os.Exit(2)
 }
 
