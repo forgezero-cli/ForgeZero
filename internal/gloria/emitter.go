@@ -197,8 +197,14 @@ func emitBuiltinCall(out []byte, name string, args []string, state *compilerStat
 		for i, arg := range args {
 			if v, err := strconv.ParseUint(arg, 10, 64); err == nil {
 				if i == 0 {
+					if v > 0xFFFF {
+						return nil, errors.New("out8 port immediate out of range")
+					}
 					out = emitMovImm16ToReg(out, 2, uint16(v))
 				} else {
+					if v > 0xFF {
+						return nil, errors.New("out8 data immediate out of range")
+					}
 					out = emitMovImm8ToReg(out, 0, byte(v))
 				}
 			} else {
@@ -220,6 +226,9 @@ func emitBuiltinCall(out []byte, name string, args []string, state *compilerStat
 			return nil, errors.New("in8 expects exactly 1 argument")
 		}
 		if v, err := strconv.ParseUint(args[0], 10, 64); err == nil {
+			if v > 0xFFFF {
+				return nil, errors.New("in8 port immediate out of range")
+			}
 			out = emitMovImm16ToReg(out, 2, uint16(v))
 		} else {
 			offset, err := state.getStackOffset(args[0])
