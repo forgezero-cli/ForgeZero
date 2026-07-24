@@ -145,34 +145,34 @@ func initRing() error {
 
 	sqRingSize := int(params.sqOff.array) + int(params.sqEntries)*4
 	if sqRingSize == 0 {
-		unix.Close(ringFd)
+		_ = unix.Close(ringFd)
 		return os.ErrInvalid
 	}
 	sq, err := unix.Mmap(ringFd, IORING_OFF_SQ_RING, sqRingSize, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
 	if err != nil {
-		unix.Close(ringFd)
+		_ = unix.Close(ringFd)
 		return err
 	}
 
 	cqRingSize := int(params.cqOff.cqes) + int(params.cqEntries)*16
 	if cqRingSize == 0 {
-		unix.Munmap(sq)
-		unix.Close(ringFd)
+		_ = unix.Munmap(sq)
+		_ = unix.Close(ringFd)
 		return os.ErrInvalid
 	}
 	cq, err := unix.Mmap(ringFd, IORING_OFF_CQ_RING, cqRingSize, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
 	if err != nil {
-		unix.Munmap(sq)
-		unix.Close(ringFd)
+		_ = unix.Munmap(sq)
+		_ = unix.Close(ringFd)
 		return err
 	}
 
 	sqesSize := int(params.sqEntries) * int(unsafe.Sizeof(ioUringSqe{}))
 	sqesArea, err := unix.Mmap(ringFd, IORING_OFF_SQES, sqesSize, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
 	if err != nil {
-		unix.Munmap(sq)
-		unix.Munmap(cq)
-		unix.Close(ringFd)
+		_ = unix.Munmap(sq)
+		_ = unix.Munmap(cq)
+		_ = unix.Close(ringFd)
 		return err
 	}
 
