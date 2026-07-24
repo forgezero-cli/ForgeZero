@@ -52,19 +52,19 @@ func NewDepBuilder(ctx context.Context, depPath, depName string, depCfg *config.
 func (db *DepBuilder) logf(level, msg string) {
 	if db.globalAutoBuild != nil && db.globalAutoBuild.LogLevel == "quiet" {
 		if level == "error" {
-			os.Stdout.WriteString("[ERROR] ")
-			os.Stdout.WriteString(msg)
-			os.Stdout.WriteString("\n")
+			_, _ = os.Stdout.WriteString("[ERROR] ")
+			_, _ = os.Stdout.WriteString(msg)
+			_, _ = os.Stdout.WriteString("\n")
 		}
 		return
 	}
-	os.Stdout.WriteString("[")
-	os.Stdout.WriteString(level)
-	os.Stdout.WriteString("::")
-	os.Stdout.WriteString(strings.ToUpper(db.depName))
-	os.Stdout.WriteString("] ")
-	os.Stdout.WriteString(msg)
-	os.Stdout.WriteString("\n")
+	_, _ = os.Stdout.WriteString("[")
+	_, _ = os.Stdout.WriteString(level)
+	_, _ = os.Stdout.WriteString("::")
+	_, _ = os.Stdout.WriteString(strings.ToUpper(db.depName))
+	_, _ = os.Stdout.WriteString("] ")
+	_, _ = os.Stdout.WriteString(msg)
+	_, _ = os.Stdout.WriteString("\n")
 }
 
 func (db *DepBuilder) setupEnvironment() map[string]string {
@@ -99,13 +99,22 @@ func (db *DepBuilder) runScript(scriptName, script string) error {
 
 	db.logf("info", "Running "+scriptName+" script")
 
+	tmpPath, err := writeTempShellScript(script)
+	if err != nil {
+		return err
+	}
+	if tmpPath == "" {
+		return nil
+	}
+	defer os.Remove(tmpPath)
+
 	envMap := db.setupEnvironment()
 	envSlice := make([]string, 0, len(envMap))
 	for k, v := range envMap {
 		envSlice = append(envSlice, k+"="+v)
 	}
 
-	cmd := exec.CommandContext(db.ctx, "sh", "-c", script)
+	cmd := exec.CommandContext(db.ctx, "sh", tmpPath)
 	cmd.Dir = db.depPath
 	cmd.Env = envSlice
 	cmd.Stdout = os.Stdout
