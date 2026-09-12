@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/forgezero-cli/ForgeZero/internal/hashpool"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 func TestRefreshSourceHashesMatchesFileDigests(t *testing.T) {
@@ -46,11 +46,10 @@ func TestRefreshSourceHashesMatchesFileDigests(t *testing.T) {
 	}
 	for name := range files {
 		path := filepath.Join(dir, name)
-		hasher := hashpool.GetHasher()
-		_, _ = hasher.Write(files[name])
-		var want [32]byte
-		hasher.Sum(want[:0])
-		hashpool.PutHasher(hasher)
+		want, err := utils.HashBoomBoomMappedFile(path, utils.BoomBoomContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
 		got, ok := sourceHashes[path]
 		if !ok {
 			t.Fatalf("missing hash for %s", path)
@@ -74,8 +73,12 @@ func TestRefreshSourceHashesUsesMetadataCache(t *testing.T) {
 	}
 	var sentinel [32]byte
 	sentinel[0] = 0xa5
+	contextDigest, err := utils.BoomBoomContextDigest(utils.BoomBoomContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	cache := map[string]hashCacheEntry{
-		path: {hash: sentinel, size: info.Size(), modTime: info.ModTime().UnixNano()},
+		path: {hash: sentinel, context: contextDigest, size: info.Size(), modTime: info.ModTime().UnixNano()},
 	}
 	if err := refreshSourceHashesWithCache([]string{dir}, cache); err != nil {
 		t.Fatal(err)
