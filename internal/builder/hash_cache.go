@@ -26,11 +26,12 @@ import (
 
 type hashCacheEntry struct {
 	hash    [32]byte
+	context [32]byte
 	size    int64
 	modTime int64
 }
 
-const hashCacheMagic = "FZHC2"
+const hashCacheMagic = "FZHC3"
 
 func loadHashCache(cacheDir string) (map[string]hashCacheEntry, error) {
 	if cacheDir == "" {
@@ -55,7 +56,7 @@ func loadHashCache(cacheDir string) (map[string]hashCacheEntry, error) {
 	}
 	var lenBuf [2]byte
 	var hashBuf [32]byte
-	var metaBuf [16]byte
+	var metaBuf [48]byte
 	for {
 		_, err := io.ReadFull(f, lenBuf[:])
 		if err == io.EOF {
@@ -77,8 +78,9 @@ func loadHashCache(cacheDir string) (map[string]hashCacheEntry, error) {
 		}
 		m[string(pathBytes)] = hashCacheEntry{
 			hash:    hashBuf,
+			context: [32]byte(metaBuf[16:48]),
 			size:    int64(binary.LittleEndian.Uint64(metaBuf[:8])),
-			modTime: int64(binary.LittleEndian.Uint64(metaBuf[8:])),
+			modTime: int64(binary.LittleEndian.Uint64(metaBuf[8:16])),
 		}
 	}
 	return m, nil
@@ -106,7 +108,7 @@ func saveHashCache(cacheDir string, m map[string]hashCacheEntry) error {
 	}
 	var lenBuf [2]byte
 	var hashBuf [32]byte
-	var metaBuf [16]byte
+	var metaBuf [48]byte
 	for k, v := range m {
 		if len(k) > 65535 {
 			continue
@@ -120,6 +122,7 @@ func saveHashCache(cacheDir string, m map[string]hashCacheEntry) error {
 		}
 		binary.LittleEndian.PutUint64(metaBuf[:8], uint64(v.size))
 		binary.LittleEndian.PutUint64(metaBuf[8:], uint64(v.modTime))
+		copy(metaBuf[16:], v.context[:])
 		copy(hashBuf[:], v.hash[:])
 		if _, err := f.Write(metaBuf[:]); err != nil {
 			return err
