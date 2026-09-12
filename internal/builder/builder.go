@@ -422,6 +422,12 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 				break
 			}
 		}
+		if !localCfgLoaded && cfg != nil && !cfg.AutoBuildDeps && len(dirs) > 0 {
+			depsDir := filepath.Join(filepath.Dir(dirs[0]), "deps")
+			if info, err := os.Stat(depsDir); err == nil && info.IsDir() {
+				cfg.AutoBuildDeps = true
+			}
+		}
 	}
 	jobs = AdjustJobs(jobs)
 	collectedDepLdFlags := make([]string, 0)
@@ -1003,7 +1009,7 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 		_ = PreloadCache(ctx, cacheDir)
 	}
 
-	if err := refreshSourceHashesWithCache(dirs, hashCache); err != nil {
+	if err := refreshSourceHashesWithConfig(dirs, hashCache, cfg); err != nil {
 		return nil, errors.New("failed to refresh source hashes: " + err.Error())
 	}
 
