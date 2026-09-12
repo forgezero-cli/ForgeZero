@@ -18,23 +18,58 @@
 package builder
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
 
-	"github.com/forgezero-cli/ForgeZero/internal/hashpool"
+	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
 var sourceHashes = make(map[string]hashCacheEntry)
 
 func refreshSourceHashes(dirs []string) error {
-	return refreshSourceHashesWithCache(dirs, nil)
+	return refreshSourceHashesWithCacheAndContext(dirs, nil, utils.BoomBoomContext{})
 }
 
 func refreshSourceHashesWithCache(dirs []string, cache map[string]hashCacheEntry) error {
+	return refreshSourceHashesWithCacheAndContext(dirs, cache, utils.BoomBoomContext{})
+}
+
+func refreshSourceHashesWithConfig(dirs []string, cache map[string]hashCacheEntry, cfg *config.Config) error {
+	return refreshSourceHashesWithCacheAndContext(dirs, cache, boomBoomBuildContext(cfg))
+}
+
+func boomBoomBuildContext(cfg *config.Config) utils.BoomBoomContext {
+	if cfg == nil {
+		return utils.BoomBoomContext{}
+	}
+	flags := make([]string, 0, len(cfg.Flags.Cc)+len(cfg.Flags.Asm)+len(cfg.Flags.Ld)+len(cfg.InstructionSets)+3)
+	flags = append(flags, cfg.Flags.Cc...)
+	flags = append(flags, cfg.Flags.Asm...)
+	flags = append(flags, cfg.Flags.Ld...)
+	flags = append(flags, cfg.InstructionSets...)
+	if cfg.Sysroot != "" {
+		flags = append(flags, "--sysroot="+cfg.Sysroot)
+	}
+	if cfg.CPUTarget != "" {
+		flags = append(flags, "--cpu-target="+cfg.CPUTarget)
+	}
+	return utils.BoomBoomContext{
+		Compiler: cfg.Toolchain + "|" + cfg.Compiler.Path,
+		Version:  cfg.Profile,
+		Target:   cfg.Target,
+		Flags:    flags,
+	}
+}
+
+func refreshSourceHashesWithCacheAndContext(dirs []string, cache map[string]hashCacheEntry, context utils.BoomBoomContext) error {
+	contextDigest, err := utils.BoomBoomContextDigest(context)
+	if err != nil {
+		return err
+	}
 	paths := make([]string, 0)
 	metadata := make([]hashCacheEntry, 0)
 	for _, root := range dirs {
@@ -89,7 +124,7 @@ func refreshSourceHashesWithCache(dirs []string, cache map[string]hashCacheEntry
 	hashes := make([]hashCacheEntry, len(paths))
 	pending := 0
 	for index, path := range paths {
-		if entry, ok := cache[path]; ok && entry.modTime == metadata[index].modTime && entry.size == metadata[index].size && entry.modTime != 0 {
+		if entry, ok := cache[path]; ok && entry.context == contextDigest && entry.modTime == metadata[index].modTime && entry.size == metadata[index].size && entry.modTime != 0 {
 			hashes[index] = entry
 			continue
 		}
@@ -111,52 +146,25 @@ func refreshSourceHashesWithCache(dirs []string, cache map[string]hashCacheEntry
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			buf := make([]byte, 32*1024)
 			for job := range jobs {
 				if stopped.Load() {
 					continue
 				}
-				f, err := os.Open(job.path)
-				if err != nil {
-					errMu.Lock()
-					if firstErr == nil {
-						firstErr = err
-					}
-					errMu.Unlock()
-					stopped.Store(true)
-					continue
-				}
-				h := hashpool.GetHasher()
-				var readErr error
-				for {
-					n, currentErr := f.Read(buf)
-					if n > 0 {
-						_, _ = h.Write(buf[:n])
-					}
-					if currentErr == io.EOF {
-						break
-					}
-					if currentErr != nil {
-						readErr = currentErr
-						errMu.Lock()
-						if firstErr == nil {
-							firstErr = currentErr
-						}
-						errMu.Unlock()
-						stopped.Store(true)
-						break
-					}
-				}
-				_ = f.Close()
-				var sum [32]byte
-				h.Sum(sum[:0])
-				hashpool.PutHasher(h)
-				if readErr == nil {
+				sum, hashErr := utils.HashBoomBoomMappedFile(job.path, context)
+				if hashErr == nil {
 					hashes[job.index] = hashCacheEntry{
 						hash:    sum,
+						context: contextDigest,
 						size:    metadata[job.index].size,
 						modTime: metadata[job.index].modTime,
 					}
+				} else {
+					errMu.Lock()
+					if firstErr == nil {
+						firstErr = hashErr
+					}
+					errMu.Unlock()
+					stopped.Store(true)
 				}
 			}
 		}()
