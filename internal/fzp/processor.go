@@ -234,7 +234,7 @@ func (p *Processor) handleDirective(line, currentPath string) (string, bool, err
 			if err != nil {
 				return "", false, err
 			}
-			included, err := p.Process(resolved, Options{RootDir: filepath.Dir(resolved), Macros: p.macros})
+			included, err := p.Process(resolved, Options{RootDir: filepath.Dir(resolved), Macros: p.macros, PreserveDefines: p.preserveDefines})
 			if err != nil {
 				return "", false, err
 			}
