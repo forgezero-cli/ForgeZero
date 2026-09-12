@@ -22,11 +22,13 @@ package utils
 
 import (
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 func mmapFile(fd int, size int64) ([]byte, error) {
 	sizeInt := int(size)
-	data, err := syscall.Mmap(fd, 0, sizeInt, syscall.PROT_READ, syscall.MAP_SHARED)
+	data, err := unix.Mmap(fd, 0, sizeInt, unix.PROT_READ, unix.MAP_SHARED)
 	if err != nil {
 		return nil, err
 	}
@@ -37,12 +39,12 @@ func unmapFile(data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
-	return syscall.Munmap(data)
+	return unix.Munmap(data)
 }
 
 func madviseNormal(data []byte) {
 	if len(data) > 0 {
-		_ = syscall.Madvise(data, syscall.MADV_NORMAL)
+		_ = unix.Madvise(data, unix.MADV_WILLNEED)
 	}
 }
 
