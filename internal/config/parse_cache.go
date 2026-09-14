@@ -18,10 +18,15 @@
 package config
 
 import (
+	"bytes"
+	"encoding/binary"
+	"encoding/gob"
 	"os"
 	"path/filepath"
 	"sync"
 )
+
+const configDiskCacheMagic = "FZCFG1\x00\x00"
 
 type cacheEntry struct {
 	modTime int64
@@ -50,10 +55,10 @@ func loadConfigCache(path string, fi os.FileInfo) (*Config, bool) {
 	entry := configCache[cacheKey(path)]
 	configCacheMu.RUnlock()
 	if entry == nil {
-		return nil, false
+		return loadDiskConfigCache(path, fi)
 	}
 	if entry.size != fi.Size() || entry.modTime != fi.ModTime().UnixNano() {
-		return nil, false
+		return loadDiskConfigCache(path, fi)
 	}
 	return cloneConfig(entry.cfg), true
 }
@@ -70,6 +75,47 @@ func storeConfigCache(path string, fi os.FileInfo, cfg *Config) {
 	}
 	configCache[cacheKey(path)] = entry
 	configCacheMu.Unlock()
+	storeDiskConfigCache(path, fi, cfg)
+}
+
+func loadDiskConfigCache(path string, fi os.FileInfo) (*Config, bool) {
+	if fi == nil {
+		return nil, false
+	}
+	data, err := os.ReadFile(cacheKey(path) + ".fzcfg")
+	if err != nil || len(data) < 24 || string(data[:8]) != configDiskCacheMagic {
+		return nil, false
+	}
+	if int64(binary.LittleEndian.Uint64(data[8:16])) != fi.ModTime().UnixNano() || int64(binary.LittleEndian.Uint64(data[16:24])) != fi.Size() {
+		return nil, false
+	}
+	var cfg Config
+	if err := gob.NewDecoder(bytes.NewReader(data[24:])).Decode(&cfg); err != nil {
+		return nil, false
+	}
+	return &cfg, true
+}
+
+func storeDiskConfigCache(path string, fi os.FileInfo, cfg *Config) {
+	if fi == nil || cfg == nil || len(cfg.Include) != 0 || len(cfg.Variables) != 0 {
+		return
+	}
+	var payload bytes.Buffer
+	if err := gob.NewEncoder(&payload).Encode(cfg); err != nil {
+		return
+	}
+	header := make([]byte, 24)
+	copy(header, configDiskCacheMagic)
+	binary.LittleEndian.PutUint64(header[8:16], uint64(fi.ModTime().UnixNano()))
+	binary.LittleEndian.PutUint64(header[16:24], uint64(fi.Size()))
+	data := make([]byte, 0, len(header)+payload.Len())
+	data = append(data, header...)
+	data = append(data, payload.Bytes()...)
+	cachePath := cacheKey(path) + ".fzcfg"
+	tmp := cachePath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err == nil {
+		_ = os.Rename(tmp, cachePath)
+	}
 }
 
 func clearConfigCache() {
@@ -106,6 +152,14 @@ func cloneConfig(in *Config) *Config {
 	out.ToolchainSettings.ToolPaths = cloneStringMap(in.ToolchainSettings.ToolPaths)
 	out.Hooks = cloneHooks(in.Hooks)
 	out.BuildRules = cloneBuildRules(in.BuildRules)
+	if len(in.Tasks) > 0 {
+		out.Tasks = make([]Task, len(in.Tasks))
+		for i := range in.Tasks {
+			out.Tasks[i] = in.Tasks[i]
+			out.Tasks[i].Inputs = cloneStringSlice(in.Tasks[i].Inputs)
+			out.Tasks[i].Outputs = cloneStringSlice(in.Tasks[i].Outputs)
+		}
+	}
 	out.ISO.CustomArgs = cloneStringSlice(in.ISO.CustomArgs)
 	return &out
 }

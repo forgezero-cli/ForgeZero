@@ -47,6 +47,14 @@ cc = ["-O2"]
 	if cached.Output != "mybin" {
 		t.Fatal("cache should return cloned config so modifications do not leak")
 	}
+	clearConfigCache()
+	diskCached, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diskCached.Output != "mybin" {
+		t.Fatal("disk cache returned unexpected config")
+	}
 }
 
 func TestCloneConfigDeepCopiesBuildSettings(t *testing.T) {
