@@ -29,6 +29,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	ch "github.com/forgezero-cli/ForgeZero/internal/drivers/chan"
 	spin "github.com/forgezero-cli/ForgeZero/internal/drivers/sync"
@@ -268,6 +269,12 @@ func actionCacheKey(inputs []string, action string, env []string) ([32]byte, err
 		if err != nil {
 			return [32]byte{}, err
 		}
+		if _, err := hasher.Write(unsafeStringBytes(in)); err != nil {
+			return [32]byte{}, err
+		}
+		if _, err := hasher.Write([]byte{0}); err != nil {
+			return [32]byte{}, err
+		}
 		if _, err := hasher.Write(digest[:]); err != nil {
 			return [32]byte{}, err
 		}
@@ -275,7 +282,7 @@ func actionCacheKey(inputs []string, action string, env []string) ([32]byte, err
 			return [32]byte{}, err
 		}
 	}
-	if _, err := hasher.Write([]byte(action)); err != nil {
+	if _, err := hasher.Write(unsafeStringBytes(action)); err != nil {
 		return [32]byte{}, err
 	}
 	if _, err := hasher.Write([]byte{0}); err != nil {
@@ -283,7 +290,7 @@ func actionCacheKey(inputs []string, action string, env []string) ([32]byte, err
 	}
 	sort.Strings(env)
 	for _, v := range env {
-		if _, err := hasher.Write([]byte(v)); err != nil {
+		if _, err := hasher.Write(unsafeStringBytes(v)); err != nil {
 			return [32]byte{}, err
 		}
 		if _, err := hasher.Write([]byte{0}); err != nil {
@@ -297,6 +304,13 @@ func actionCacheKey(inputs []string, action string, env []string) ([32]byte, err
 		return [32]byte{}, err
 	}
 	return out, nil
+}
+
+func unsafeStringBytes(value string) []byte {
+	if len(value) == 0 {
+		return nil
+	}
+	return unsafe.Slice(unsafe.StringData(value), len(value))
 }
 
 func preloadActionCache(cacheDir string) {
