@@ -221,6 +221,9 @@ func runDAGBuild(pool *fo.Pool, pairs []pair, graph [][]int, buildOne func(pair)
 	if n == 0 {
 		return nil
 	}
+	if len(graph) != n {
+		return errInvalidDependency
+	}
 	pending := make([]int, n)
 	dependents := make([][]int, n)
 	for i, deps := range graph {
@@ -240,6 +243,7 @@ func runDAGBuild(pool *fo.Pool, pairs []pair, graph [][]int, buildOne func(pair)
 	var mu sync.Mutex
 	var buildErr error
 	scheduled := make([]bool, n)
+	completed := 0
 
 	var schedule func(int)
 	schedule = func(idx int) {
@@ -265,6 +269,7 @@ func runDAGBuild(pool *fo.Pool, pairs []pair, graph [][]int, buildOne func(pair)
 			}
 			mu.Lock()
 			if buildErr == nil {
+				completed++
 				for _, child := range dependents[nodeIdx] {
 					pending[child]--
 					if pending[child] == 0 {
@@ -303,5 +308,10 @@ func runDAGBuild(pool *fo.Pool, pairs []pair, graph [][]int, buildOne func(pair)
 		}
 	}
 	wg.Wait()
+	mu.Lock()
+	if buildErr == nil && completed != n {
+		buildErr = errDependencyCycle
+	}
+	mu.Unlock()
 	return buildErr
 }
