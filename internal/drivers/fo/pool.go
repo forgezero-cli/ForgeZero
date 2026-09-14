@@ -46,11 +46,13 @@ type ringSlot struct {
 }
 
 type ringBuffer struct {
-	cap   uint64
-	mask  uint64
-	head  uint64
-	tail  uint64
-	slots []ringSlot
+	cap      uint64
+	mask     uint64
+	head     uint64
+	_padHead [56]byte
+	tail     uint64
+	_padTail [56]byte
+	slots    []ringSlot
 }
 
 type worker struct {

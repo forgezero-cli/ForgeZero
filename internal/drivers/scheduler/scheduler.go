@@ -32,6 +32,7 @@ import (
 var (
 	errQueueFull  = errors.New("scheduler queue full")
 	errAggregated = errors.New("scheduler task failures")
+	errStopped    = errors.New("scheduler stopped")
 )
 
 type runContextHolder struct {
@@ -54,6 +55,7 @@ type Scheduler struct {
 	errs        []error
 	ctxHolder   runContextHolder
 	exec        *fo.Pool
+	stopped     atomic.Bool
 }
 
 func NewScheduler(workerPoolSize int, queueSize int) *Scheduler {
@@ -91,8 +93,11 @@ func NewScheduler(workerPoolSize int, queueSize int) *Scheduler {
 }
 
 func (s *Scheduler) Submit(task Task, priority int) error {
-	if task.Fn == nil {
+	if s == nil || task.Fn == nil {
 		return nil
+	}
+	if s.stopped.Load() {
+		return errStopped
 	}
 	if s.running.Load() {
 		return errQueueFull
@@ -109,6 +114,9 @@ func (s *Scheduler) Submit(task Task, priority int) error {
 }
 
 func (s *Scheduler) SubmitBlocking(task Task, priority int) {
+	if s == nil || s.stopped.Load() || task.Fn == nil {
+		return
+	}
 	if err := s.Submit(task, priority); err == nil {
 		return
 	}
@@ -147,6 +155,9 @@ func CurrentContext() context.Context {
 }
 
 func (s *Scheduler) Run(ctx context.Context) error {
+	if s == nil || s.stopped.Load() {
+		return errStopped
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -169,6 +180,12 @@ func (s *Scheduler) Run(ctx context.Context) error {
 
 	s.pendingMu.Lock()
 	for s.pending.Load() > 0 {
+		if s.stopped.Load() {
+			s.pendingMu.Unlock()
+			s.running.Store(false)
+			globalRunContext.Store(nil)
+			return errStopped
+		}
 		if err := ctx.Err(); err != nil {
 			s.pendingMu.Unlock()
 			s.running.Store(false)
@@ -190,8 +207,24 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	return errAggregated
 }
 
+func (s *Scheduler) Stop() {
+	if s == nil || !s.stopped.CompareAndSwap(false, true) {
+		return
+	}
+	s.running.Store(false)
+	s.pendingMu.Lock()
+	s.pendingCond.Broadcast()
+	s.pendingMu.Unlock()
+	if s.exec != nil {
+		s.exec.Stop()
+	}
+}
+
 func (s *Scheduler) workerLoop(workerIdx int) {
 	for {
+		if s.stopped.Load() {
+			return
+		}
 		if !s.running.Load() {
 			runtime.Gosched()
 			continue

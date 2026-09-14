@@ -34,6 +34,7 @@ func makeCounterTask(counter *int64) Task {
 func TestSchedulerRunsAllTasks(t *testing.T) {
 	t.Parallel()
 	sched := NewScheduler(4, 256)
+	defer sched.Stop()
 	var counter int64
 	for i := 0; i < 200; i++ {
 		sched.SubmitBlocking(makeCounterTask(&counter), 0)
@@ -46,6 +47,17 @@ func TestSchedulerRunsAllTasks(t *testing.T) {
 	}
 }
 
+func TestSchedulerStopIsIdempotent(t *testing.T) {
+	sched := NewScheduler(2, 32)
+	sched.Stop()
+	sched.Stop()
+	if err := sched.Submit(AcquireTask(func(arg uintptr, extra uintptr) error { return nil }, 0, 0), 0); err != errStopped {
+		t.Fatalf("submit after stop error = %v", err)
+	}
+	if err := sched.Run(context.Background()); err != errStopped {
+		t.Fatalf("run after stop error = %v", err)
+	}
+}
 func TestSchedulerPriorityOrdering(t *testing.T) {
 	t.Parallel()
 	sched := NewScheduler(1, 64)

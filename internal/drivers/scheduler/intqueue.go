@@ -23,11 +23,13 @@ import (
 )
 
 type intRingQueue struct {
-	slots []intSlot
-	cap   uint64
-	mask  uint64
-	head  atomic.Uint64
-	tail  atomic.Uint64
+	slots    []intSlot
+	cap      uint64
+	mask     uint64
+	head     atomic.Uint64
+	_padHead [56]byte
+	tail     atomic.Uint64
+	_padTail [56]byte
 }
 
 type intSlot struct {
