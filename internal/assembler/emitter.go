@@ -135,9 +135,13 @@ func loadSourcePooled(sourcePath string) ([]byte, func(), error) {
 		return nil, nil, errors.New("source too large for internal emitter")
 	}
 	n, err := io.ReadFull(f, buf[:info.Size()])
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+	if err != nil {
 		emitterBufferPool.Put(p)
 		return nil, nil, err
+	}
+	if n != int(info.Size()) {
+		emitterBufferPool.Put(p)
+		return nil, nil, io.ErrUnexpectedEOF
 	}
 	buf = buf[:n]
 	*p = buf
