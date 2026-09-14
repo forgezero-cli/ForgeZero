@@ -184,6 +184,14 @@ type BuildRule struct {
 	Depfile string   `yaml:"depfile" toml:"depfile"`
 }
 
+type Task struct {
+	Name    string   `yaml:"name" toml:"name"`
+	Stage   string   `yaml:"stage" toml:"stage"`
+	Command string   `yaml:"command" toml:"command"`
+	Inputs  []string `yaml:"inputs" toml:"inputs"`
+	Outputs []string `yaml:"outputs" toml:"outputs"`
+}
+
 type ISOConfig struct {
 	Enabled       bool     `yaml:"enabled" toml:"enabled"`
 	SourceDir     string   `yaml:"source_dir" toml:"source_dir"`
@@ -313,6 +321,7 @@ type Config struct {
 	Preprocess PreprocessConfig `yaml:"preprocess" toml:"preprocess"`
 	Hooks      Hooks            `yaml:"hooks" toml:"hooks"`
 	BuildRules []BuildRule      `yaml:"build_rules" toml:"build_rules"`
+	Tasks      []Task           `yaml:"tasks" toml:"tasks"`
 	ISO        ISOConfig        `yaml:"iso" toml:"iso"`
 	DepBuild   DepBuildConfig   `yaml:"dep_build" toml:"dep_build"`
 	AutoBuild  AutoBuildConfig  `yaml:"auto_build" toml:"auto_build"`
@@ -409,6 +418,12 @@ func (c *Config) expand() {
 		variables.ExpandSlice(c.BuildRules[i].Outputs, vars)
 		c.BuildRules[i].Depfile = variables.ExpandString(c.BuildRules[i].Depfile, vars)
 	}
+	for i := range c.Tasks {
+		c.Tasks[i].Command = variables.ExpandString(c.Tasks[i].Command, vars)
+		c.Tasks[i].Stage = variables.ExpandString(c.Tasks[i].Stage, vars)
+		variables.ExpandSlice(c.Tasks[i].Inputs, vars)
+		variables.ExpandSlice(c.Tasks[i].Outputs, vars)
+	}
 	for i := range c.DepBuild.Steps {
 		c.DepBuild.Steps[i].Command = variables.ExpandString(c.DepBuild.Steps[i].Command, vars)
 		c.DepBuild.Steps[i].Run = variables.ExpandString(c.DepBuild.Steps[i].Run, vars)
@@ -456,6 +471,11 @@ func (c *Config) needsExpand() bool {
 	}
 	for i := range c.BuildRules {
 		if containsDollar(c.BuildRules[i].Action) || containsDollar(c.BuildRules[i].Depfile) || containsDollarSlice(c.BuildRules[i].Inputs) || containsDollarSlice(c.BuildRules[i].Outputs) {
+			return true
+		}
+	}
+	for i := range c.Tasks {
+		if containsDollar(c.Tasks[i].Command) || containsDollar(c.Tasks[i].Stage) || containsDollarSlice(c.Tasks[i].Inputs) || containsDollarSlice(c.Tasks[i].Outputs) {
 			return true
 		}
 	}
@@ -609,6 +629,24 @@ func (c *Config) Validate() error {
 				key := filepath.Clean(out)
 				if _, ok := outputs[key]; ok {
 					return NewErrorDetail(ErrorDuplicateBuildRuleOutput, out)
+				}
+				outputs[key] = struct{}{}
+			}
+		}
+	}
+	if len(c.Tasks) > 0 {
+		outputs := make(map[string]struct{}, len(c.Tasks)*2)
+		for _, task := range c.Tasks {
+			if task.Command == "" {
+				return NewErrorDetail(ErrorInvalidConfig, "tasks.command")
+			}
+			if len(task.Outputs) == 0 {
+				return NewErrorDetail(ErrorInvalidConfig, "tasks.outputs")
+			}
+			for _, output := range task.Outputs {
+				key := filepath.Clean(output)
+				if _, ok := outputs[key]; ok {
+					return NewErrorDetail(ErrorDuplicateBuildRuleOutput, output)
 				}
 				outputs[key] = struct{}{}
 			}
@@ -1293,6 +1331,9 @@ func (c *Config) Merge(other *Config) {
 	}
 	if len(other.BuildRules) > 0 {
 		c.BuildRules = append(c.BuildRules, other.BuildRules...)
+	}
+	if len(other.Tasks) > 0 {
+		c.Tasks = append(c.Tasks, other.Tasks...)
 	}
 	if len(other.DepBuild.BuildTargets) > 0 {
 		c.DepBuild.BuildTargets = append(c.DepBuild.BuildTargets, other.DepBuild.BuildTargets...)
