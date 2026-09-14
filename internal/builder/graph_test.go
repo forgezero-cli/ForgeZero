@@ -120,6 +120,16 @@ func TestRunDAGBuildWithoutPool(t *testing.T) {
 	}
 }
 
+func TestRunDAGBuildRejectsIncompleteGraph(t *testing.T) {
+	pairs := []pair{{src: "a"}, {src: "b"}}
+	if err := runDAGBuild(nil, pairs, [][]int{{}}, func(pair) error { return nil }); err != errInvalidDependency {
+		t.Fatalf("incomplete graph error = %v", err)
+	}
+	if err := runDAGBuild(nil, pairs, [][]int{{1}, {0}}, func(pair) error { return nil }); err != errDependencyCycle {
+		t.Fatalf("cyclic graph error = %v", err)
+	}
+}
+
 func TestBuildDependencyGraphWithDepFile(t *testing.T) {
 	dir := t.TempDir()
 	srcA := filepath.Join(dir, "a.c")
