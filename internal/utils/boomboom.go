@@ -20,17 +20,14 @@
 package utils
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"os"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	fzio "github.com/forgezero-cli/ForgeZero/internal/io_uring"
-	"github.com/zeebo/blake3"
 )
 
 type BoomBoomContext struct {
@@ -49,7 +46,6 @@ type BoomBoomChunk struct {
 
 type BoomBoomHasher struct {
 	key             [32]byte
-	hasher          *blake3.Hasher
 	chunks          []BoomBoomChunk
 	previous        []byte
 	tree            [][32]byte
@@ -61,13 +57,17 @@ type BoomBoomHasher struct {
 	changedIndexes  []int
 	chunkHash       [32]byte
 	parallelOnce    sync.Once
+	parallelMu      sync.Mutex
+	parallelCond    *sync.Cond
+	parallelWG      sync.WaitGroup
 	parallelJobs    []boomLeafJob
-	parallelNext    atomic.Int64
-	parallelDone    atomic.Int64
-	parallelCount   atomic.Int64
-	parallelBatch   atomic.Int64
-	parallelStop    atomic.Bool
+	parallelNext    int
+	parallelDone    int
+	parallelCount   int
+	parallelBatch   uint64
+	parallelClosed  bool
 	parallelWorkers int
+	initialized     bool
 }
 
 type boomLeafJob struct {
@@ -81,47 +81,43 @@ var (
 	boomBoomKey    = [32]byte{0x9d, 0x74, 0x31, 0x6f, 0xd5, 0x23, 0x1b, 0xe4, 0xa1, 0x8f, 0x03, 0x71, 0x42, 0x5d, 0x6b, 0x9a, 0x3c, 0xf4, 0x75, 0x28, 0x0d, 0x62, 0x8a, 0x19, 0xbf, 0x4e, 0x50, 0x33, 0x13, 0x21, 0x97, 0x6c}
 )
 
+const boomBoomMmapThreshold = 16 << 10
+
 func NewBoomBoomHasher(context BoomBoomContext) (*BoomBoomHasher, error) {
 	key, err := BoomBoomContextDigest(context)
 	if err != nil {
 		return nil, err
 	}
-	h, err := blake3.NewKeyed(key[:])
-	if err != nil {
-		return nil, err
-	}
-	return &BoomBoomHasher{key: key, hasher: h}, nil
+	return &BoomBoomHasher{key: key}, nil
 }
 
 func BoomBoomContextDigest(context BoomBoomContext) ([32]byte, error) {
-	base, err := blake3.NewKeyed(boomBoomKey[:])
-	if err != nil {
-		return [32]byte{}, err
-	}
-	_, _ = base.Write(boomBoomDomain[:])
-	writeBoomField(base, context.Compiler)
-	writeBoomField(base, context.Version)
-	writeBoomField(base, context.Target)
+	data := make([]byte, 0, 64+len(context.Compiler)+len(context.Version)+len(context.Target))
+	data = append(data, boomBoomDomain[:]...)
+	data = appendBoomField(data, context.Compiler)
+	data = appendBoomField(data, context.Version)
+	data = appendBoomField(data, context.Target)
 	var count [8]byte
 	binary.LittleEndian.PutUint64(count[:], uint64(len(context.Flags)))
-	_, _ = base.Write(count[:])
+	data = append(data, count[:]...)
 	for _, flag := range context.Flags {
-		writeBoomField(base, flag)
+		data = appendBoomField(data, flag)
 	}
-	digest := base.Digest()
 	var key [32]byte
-	_, err = digest.Read(key[:])
-	if err != nil {
-		return [32]byte{}, err
+	hash := HashBB64(data, binary.LittleEndian.Uint64(boomBoomKey[:8]))
+	for i := range 4 {
+		hash ^= hash >> 29
+		hash *= bb64Mul
+		binary.LittleEndian.PutUint64(key[i*8:], hash)
 	}
 	return key, nil
 }
 
-func writeBoomField(h *blake3.Hasher, value string) {
+func appendBoomField(data []byte, value string) []byte {
 	var size [8]byte
 	binary.LittleEndian.PutUint64(size[:], uint64(len(value)))
-	_, _ = h.Write(size[:])
-	_, _ = h.Write(unsafeStringBytes(value))
+	data = append(data, size[:]...)
+	return append(data, unsafeStringBytes(value)...)
 }
 
 func (h *BoomBoomHasher) Hash(data []byte) ([32]byte, error) {
@@ -129,8 +125,12 @@ func (h *BoomBoomHasher) Hash(data []byte) ([32]byte, error) {
 }
 
 func (h *BoomBoomHasher) Update(data []byte) ([32]byte, error) {
-	if h == nil || h.hasher == nil {
+	if h == nil {
 		return [32]byte{}, errors.New("nil BoomBoomHasher")
+	}
+	if h.initialized && len(h.previous) == len(data) && bytesEqual(h.previous, data) {
+		h.changed = 0
+		return h.root, nil
 	}
 	h.scan = scanBoomBoom(data, h.scan[:0])
 	h.changed = 0
@@ -149,7 +149,9 @@ func (h *BoomBoomHasher) Update(data []byte) ([32]byte, error) {
 	}
 	h.changed = len(h.changedIndexes)
 	if h.changed > 4 {
-		h.hashChangedLeavesParallel(data)
+		if err := h.hashChangedLeavesParallel(data); err != nil {
+			return [32]byte{}, err
+		}
 	} else {
 		for _, index := range h.changedIndexes {
 			candidate := &h.scan[index]
@@ -166,6 +168,7 @@ func (h *BoomBoomHasher) Update(data []byte) ([32]byte, error) {
 	}
 	copy(h.previous, data)
 	h.root = h.hashTree(h.chunks)
+	h.initialized = true
 	return h.root, nil
 }
 
@@ -184,33 +187,26 @@ func (h *BoomBoomHasher) Chunks() []BoomBoomChunk {
 }
 
 func (h *BoomBoomHasher) Close() {
-	if h == nil || len(h.parallelJobs) == 0 {
+	if h == nil || h.parallelCond == nil {
 		return
 	}
-	h.parallelStop.Store(true)
+	h.parallelMu.Lock()
+	if !h.parallelClosed {
+		h.parallelClosed = true
+		h.parallelCond.Broadcast()
+	}
+	h.parallelMu.Unlock()
+	h.parallelWG.Wait()
 }
 
 func (h *BoomBoomHasher) hashLeaf(data []byte, kind uint8, index int) error {
-	return hashBoomLeaf(h.hasher, data, kind, index, &h.scan[index].Digest)
+	expandBB64Seed(data, kind, index, binary.LittleEndian.Uint64(h.key[:8]), &h.scan[index].Digest)
+	return nil
 }
 
-func hashBoomLeaf(hasher *blake3.Hasher, data []byte, kind uint8, index int, output *[32]byte) error {
-	hasher.Reset()
-	var header [32]byte
-	copy(header[:16], boomBoomDomain[:])
-	header[16] = 1
-	header[17] = kind
-	binary.LittleEndian.PutUint64(header[24:], uint64(index))
-	_, _ = hasher.Write(header[:])
-	_, _ = hasher.Write(data)
-	digest := hasher.Digest()
-	_, err := digest.Read(output[:])
-	return err
-}
-
-func (h *BoomBoomHasher) hashChangedLeavesParallel(data []byte) {
+func (h *BoomBoomHasher) hashChangedLeavesParallel(data []byte) error {
 	if len(h.changedIndexes) == 0 {
-		return
+		return nil
 	}
 	h.parallelOnce.Do(h.startParallelWorkers)
 	if cap(h.parallelJobs) < len(h.changedIndexes) {
@@ -221,13 +217,25 @@ func (h *BoomBoomHasher) hashChangedLeavesParallel(data []byte) {
 	for i, index := range h.changedIndexes {
 		h.parallelJobs[i] = boomLeafJob{data: data, chunks: h.scan, index: index}
 	}
-	h.parallelNext.Store(0)
-	h.parallelDone.Store(0)
-	h.parallelCount.Store(int64(len(h.changedIndexes)))
-	h.parallelBatch.Add(1)
-	for h.parallelDone.Load() != int64(len(h.changedIndexes)) {
-		runtime.Gosched()
+	h.parallelMu.Lock()
+	if h.parallelClosed {
+		h.parallelMu.Unlock()
+		return errors.New("BoomBoomHasher is closed")
 	}
+	h.parallelNext = 0
+	h.parallelDone = 0
+	h.parallelCount = len(h.changedIndexes)
+	h.parallelBatch++
+	h.parallelCond.Broadcast()
+	for h.parallelDone != h.parallelCount && !h.parallelClosed {
+		h.parallelCond.Wait()
+	}
+	closed := h.parallelClosed
+	h.parallelMu.Unlock()
+	if closed {
+		return errors.New("BoomBoomHasher is closed")
+	}
+	return nil
 }
 
 func (h *BoomBoomHasher) startParallelWorkers() {
@@ -238,28 +246,44 @@ func (h *BoomBoomHasher) startParallelWorkers() {
 	if workers > 16 {
 		workers = 16
 	}
-	h.parallelJobs = make([]boomLeafJob, 0, len(h.scan))
+	h.parallelCond = sync.NewCond(&h.parallelMu)
 	h.parallelWorkers = workers
 	for i := 0; i < workers; i++ {
+		h.parallelWG.Add(1)
 		go func() {
-			leafHasher, _ := blake3.NewKeyed(h.key[:])
-			batch := int64(0)
-			for !h.parallelStop.Load() {
-				current := h.parallelBatch.Load()
-				if current == batch {
-					runtime.Gosched()
-					continue
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			defer h.parallelWG.Done()
+			batch := uint64(0)
+			for {
+				h.parallelMu.Lock()
+				for batch == h.parallelBatch && !h.parallelClosed {
+					h.parallelCond.Wait()
 				}
-				batch = current
+				if h.parallelClosed {
+					h.parallelMu.Unlock()
+					return
+				}
+				batch = h.parallelBatch
+				h.parallelMu.Unlock()
 				for {
-					index := h.parallelNext.Add(1) - 1
-					if index >= h.parallelCount.Load() {
+					h.parallelMu.Lock()
+					if h.parallelClosed || h.parallelNext >= h.parallelCount {
+						h.parallelMu.Unlock()
 						break
 					}
-					job := &h.parallelJobs[index]
+					index := h.parallelNext
+					h.parallelNext++
+					job := h.parallelJobs[index]
+					h.parallelMu.Unlock()
 					candidate := &job.chunks[job.index]
-					_ = hashBoomLeaf(leafHasher, job.data[candidate.Start:candidate.End], candidate.Kind, job.index, &candidate.Digest)
-					h.parallelDone.Add(1)
+					expandBB64Seed(job.data[candidate.Start:candidate.End], candidate.Kind, job.index, binary.LittleEndian.Uint64(h.key[:8]), &candidate.Digest)
+					h.parallelMu.Lock()
+					h.parallelDone++
+					if h.parallelDone == h.parallelCount {
+						h.parallelCond.Broadcast()
+					}
+					h.parallelMu.Unlock()
 				}
 			}
 		}()
@@ -268,11 +292,8 @@ func (h *BoomBoomHasher) startParallelWorkers() {
 
 func (h *BoomBoomHasher) hashTree(chunks []BoomBoomChunk) [32]byte {
 	if len(chunks) == 0 {
-		h.hasher.Reset()
-		_, _ = h.hasher.Write(boomBoomDomain[:])
-		digest := h.hasher.Digest()
 		var empty [32]byte
-		_, _ = digest.Read(empty[:])
+		expandBB64Seed(boomBoomDomain[:], 0, 0, binary.LittleEndian.Uint64(h.key[:8]), &empty)
 		return empty
 	}
 	base := 1
@@ -282,7 +303,16 @@ func (h *BoomBoomHasher) hashTree(chunks []BoomBoomChunk) [32]byte {
 	if h.treeBase != base || h.treeLeaves != len(chunks) {
 		h.treeBase = base
 		h.treeLeaves = len(chunks)
-		h.tree = make([][32]byte, base*2)
+		treeSize := base * 2
+		if cap(h.tree) < treeSize {
+			capacity := cap(h.tree) * 2
+			if capacity < treeSize {
+				capacity = treeSize
+			}
+			h.tree = make([][32]byte, treeSize, capacity)
+		} else {
+			h.tree = h.tree[:treeSize]
+		}
 		for i := range chunks {
 			h.tree[base+i] = chunks[i].Digest
 		}
@@ -290,15 +320,17 @@ func (h *BoomBoomHasher) hashTree(chunks []BoomBoomChunk) [32]byte {
 			h.tree[base+i] = chunks[len(chunks)-1].Digest
 		}
 		for i := base - 1; i > 0; i-- {
-			h.tree[i] = h.hashPair(h.tree[i<<1], h.tree[i<<1|1])
+			h.tree[i] = h.hashPair(h.tree[i<<1], h.tree[i<<1|1], uint64(i))
 		}
-		return h.tree[1]
+		root := h.tree[1]
+		binary.LittleEndian.PutUint64(root[:8], binary.LittleEndian.Uint64(root[:8])^boomTreeFingerprint(chunks))
+		return root
 	}
 	if len(chunks) < base && h.tree[base+len(chunks)] != chunks[len(chunks)-1].Digest {
 		h.tree[base+len(chunks)] = chunks[len(chunks)-1].Digest
 		position := (base + len(chunks)) >> 1
 		for ; position > 0; position >>= 1 {
-			h.tree[position] = h.hashPair(h.tree[position<<1], h.tree[position<<1|1])
+			h.tree[position] = h.hashPair(h.tree[position<<1], h.tree[position<<1|1], uint64(position))
 		}
 	}
 	for i := range chunks {
@@ -308,24 +340,26 @@ func (h *BoomBoomHasher) hashTree(chunks []BoomBoomChunk) [32]byte {
 		}
 		h.tree[position] = chunks[i].Digest
 		for position >>= 1; position > 0; position >>= 1 {
-			h.tree[position] = h.hashPair(h.tree[position<<1], h.tree[position<<1|1])
+			h.tree[position] = h.hashPair(h.tree[position<<1], h.tree[position<<1|1], uint64(position))
 		}
 	}
-	return h.tree[1]
+	root := h.tree[1]
+	binary.LittleEndian.PutUint64(root[:8], binary.LittleEndian.Uint64(root[:8])^boomTreeFingerprint(chunks))
+	return root
 }
 
-func (h *BoomBoomHasher) hashPair(left, right [32]byte) [32]byte {
-	h.hasher.Reset()
-	var header [32]byte
-	copy(header[:16], boomBoomDomain[:])
-	header[16] = 2
-	_, _ = h.hasher.Write(header[:])
-	_, _ = h.hasher.Write(left[:])
-	_, _ = h.hasher.Write(right[:])
-	digest := h.hasher.Digest()
-	var out [32]byte
-	_, _ = digest.Read(out[:])
-	return out
+func boomTreeFingerprint(chunks []BoomBoomChunk) uint64 {
+	var fingerprint uint64
+	for index := range chunks {
+		fingerprint ^= HashBB64(chunks[index].Digest[:], uint64(index)*0x9e3779b97f4a7c15+0xd6e8feb86659fd93)
+	}
+	fingerprint ^= fingerprint >> 33
+	fingerprint *= bb64Mul
+	return fingerprint ^ fingerprint>>29
+}
+
+func (h *BoomBoomHasher) hashPair(left, right [32]byte, position uint64) [32]byte {
+	return hashBB64PairSeed(left, right, 0x4242363400000001^position*0x9e3779b97f4a7c15)
 }
 
 func HashBoomBoomFile(path string, context BoomBoomContext) ([32]byte, error) {
@@ -337,6 +371,7 @@ func HashBoomBoomFile(path string, context BoomBoomContext) ([32]byte, error) {
 	if err != nil {
 		return [32]byte{}, err
 	}
+	defer h.Close()
 	return h.Hash(data)
 }
 
@@ -355,7 +390,20 @@ func HashBoomBoomMappedFile(path string, context BoomBoomContext) ([32]byte, err
 		if err != nil {
 			return [32]byte{}, err
 		}
+		defer h.Close()
 		return h.Hash(nil)
+	}
+	if info.Size() < boomBoomMmapThreshold {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return [32]byte{}, err
+		}
+		h, err := NewBoomBoomHasher(context)
+		if err != nil {
+			return [32]byte{}, err
+		}
+		defer h.Close()
+		return h.Hash(data)
 	}
 	data, err := mmapFile(getFileDescriptor(file), info.Size())
 	if err != nil {
@@ -366,6 +414,7 @@ func HashBoomBoomMappedFile(path string, context BoomBoomContext) ([32]byte, err
 				if hashErr != nil {
 					return [32]byte{}, hashErr
 				}
+				defer h.Close()
 				return h.Hash(data)
 			}
 		}
@@ -377,6 +426,7 @@ func HashBoomBoomMappedFile(path string, context BoomBoomContext) ([32]byte, err
 	if err != nil {
 		return [32]byte{}, err
 	}
+	defer h.Close()
 	return h.Hash(data)
 }
 
@@ -388,12 +438,6 @@ func scanBoomBoom(data []byte, chunks []BoomBoomChunk) []BoomBoomChunk {
 	inLineComment := false
 	inBlockComment := false
 	for i := 0; i < len(data); i++ {
-		if offset := bytes.IndexAny(data[i:], "{};\n\"'#/"); offset > 0 {
-			if lineStart && len(bytes.TrimSpace(data[i:i+offset])) > 0 {
-				lineStart = false
-			}
-			i += offset
-		}
 		current := data[i]
 		if inLineComment {
 			if current == '\n' {
@@ -435,11 +479,12 @@ func scanBoomBoom(data []byte, chunks []BoomBoomChunk) []BoomBoomChunk {
 			continue
 		}
 		if lineStart && (current == '#' || current == '.') {
-			end := bytesIndexByte(data[i:], '\n')
-			if end < 0 {
-				end = len(data) - i
-			} else {
-				end++
+			end := len(data) - i
+			for j := i; j < len(data); j++ {
+				if data[j] == '\n' {
+					end = j - i + 1
+					break
+				}
 			}
 			if i > start {
 				chunks = append(chunks, BoomBoomChunk{Start: start, End: i, Kind: boomKindCode})
@@ -523,27 +568,6 @@ func growBoomChunks(chunks []BoomBoomChunk, size int) []BoomBoomChunk {
 		capacity = size
 	}
 	return make([]BoomBoomChunk, size, capacity)
-}
-
-func bytesEqual(left, right []byte) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for i := range left {
-		if left[i] != right[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func bytesIndexByte(data []byte, value byte) int {
-	for i, current := range data {
-		if current == value {
-			return i
-		}
-	}
-	return -1
 }
 
 func isBoomSpace(value byte) bool {

@@ -25,12 +25,6 @@ import (
 	"unsafe"
 )
 
-//go:noescape
-func callRaw0(code uintptr)
-
-//go:noescape
-func callRawRet(code uintptr) uint64
-
 func patchVGA(bin []byte) ([]byte, []byte) {
 	target := []byte{0x00, 0x80, 0x0b, 0x00, 0x00, 0x00, 0x00, 0x00}
 

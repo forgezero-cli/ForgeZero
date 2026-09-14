@@ -27,6 +27,9 @@ import (
 )
 
 func mmapFile(fd int, size int64) ([]byte, error) {
+	if size <= 0 || size > int64(^uint(0)>>1) {
+		return nil, ErrHashSize
+	}
 	sizeInt := int(size)
 	data, err := unix.Mmap(fd, 0, sizeInt, unix.PROT_READ, unix.MAP_SHARED)
 	if err != nil {

@@ -87,6 +87,28 @@ func TestBoomBoomHasher_Incremental(t *testing.T) {
 	}
 }
 
+func TestBoomBoomHasher_RepeatedInput(t *testing.T) {
+	data := []byte("int main(void) { return 0; }\n")
+	hasher, err := NewBoomBoomHasher(BoomBoomContext{Target: "x86_64-linux-gnu"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := hasher.Hash(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := hasher.Update(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("repeated input changed digest")
+	}
+	if hasher.ChangedChunks() != 0 {
+		t.Fatalf("changed chunks = %d, want 0", hasher.ChangedChunks())
+	}
+}
+
 func TestBoomBoomHasher_ParallelLeaves(t *testing.T) {
 	data := []byte("int a(void) { return 1; }\nint b(void) { return 1; }\nint c(void) { return 1; }\nint d(void) { return 1; }\nint e(void) { return 1; }\nint f(void) { return 1; }\n")
 	hasher, err := NewBoomBoomHasher(BoomBoomContext{Target: "x86_64-linux-gnu"})
@@ -178,6 +200,22 @@ func TestBoomBoomMappedFile(t *testing.T) {
 	}
 	if mapped != file {
 		t.Fatal("mapped digest differs from file digest")
+	}
+	largePath := t.TempDir() + "/large.c"
+	largeData := bytes.Repeat([]byte("int value(void) { return 42; }\n"), 1024)
+	if err := writeFileForBoomBoom(largePath, largeData); err != nil {
+		t.Fatal(err)
+	}
+	largeMapped, err := HashBoomBoomMappedFile(largePath, BoomBoomContext{Target: "x86_64-linux-gnu"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	largeFile, err := HashBoomBoomFile(largePath, BoomBoomContext{Target: "x86_64-linux-gnu"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if largeMapped != largeFile {
+		t.Fatal("large mapped digest differs from file digest")
 	}
 }
 
