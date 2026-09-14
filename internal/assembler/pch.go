@@ -19,11 +19,12 @@ package assembler
 
 import (
 	"context"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"sync"
+	"unsafe"
 
-	"github.com/forgezero-cli/ForgeZero/internal/hashpool"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
@@ -44,29 +45,31 @@ func SetPCHCacheDir(dir string) {
 }
 
 func computePCHHash(headerPath string, compiler string, flags []string, target string) ([32]byte, error) {
-	h := hashpool.GetHasher()
-	defer hashpool.PutHasher(h)
 	data, err := os.ReadFile(headerPath)
 	if err != nil {
 		return [32]byte{}, err
 	}
-	if _, err := h.Write(data); err != nil {
-		return [32]byte{}, err
-	}
-	if _, err := h.Write([]byte(compiler)); err != nil {
-		return [32]byte{}, err
-	}
-	if _, err := h.Write([]byte(target)); err != nil {
-		return [32]byte{}, err
-	}
-	for _, f := range flags {
-		if _, err := h.Write([]byte(f)); err != nil {
-			return [32]byte{}, err
-		}
+	seed := uint64(0x5043484242363401)
+	hash := utils.HashBB64(data, seed)
+	hash ^= utils.HashBB64(unsafeStringBytes(compiler), seed^uint64(len(compiler)))
+	hash ^= utils.HashBB64(unsafeStringBytes(target), seed^uint64(len(target))*0x9e3779b97f4a7c15)
+	for index, flag := range flags {
+		hash ^= utils.HashBB64(unsafeStringBytes(flag), seed^uint64(index+1)*0xd6e8feb86659fd93^uint64(len(flag)))
 	}
 	var sum [32]byte
-	h.Sum(sum[:0])
+	for index := range 4 {
+		hash ^= hash >> 29
+		hash *= 0x9e3779b97f4a7c15
+		binary.LittleEndian.PutUint64(sum[index*8:], hash)
+	}
 	return sum, nil
+}
+
+func unsafeStringBytes(value string) []byte {
+	if value == "" {
+		return nil
+	}
+	return unsafe.Slice(unsafe.StringData(value), len(value))
 }
 
 func getPCHPath(headerPath string, compiler string, flags []string, target string) (string, error) {
@@ -111,8 +114,8 @@ func BuildPCH(ctx context.Context, headerPath, outputPath string, compiler strin
 	if err := utils.EnsureDir(outputPath); err != nil {
 		return err
 	}
-	args := make([]string, 0, 4+len(flags))
-	args = append(args, "-x", "c-header", "-o", outputPath)
+	args := make([]string, 0, 5+len(flags))
+	args = append(args, "-pipe", "-x", "c-header", "-o", outputPath)
 	args = append(args, flags...)
 	args = append(args, headerPath)
 	_, err := runCommand(ctx, verbose, compiler, args...)
