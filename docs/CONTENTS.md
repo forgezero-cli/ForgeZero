@@ -1,14 +1,15 @@
 # Documentation index
 
-This file is a short navigational map to the main documentation sections.
+The [ForgeZero Technical Specification](SPECIFICATION.md) is the normative master document. The pages below provide focused operational and subsystem views.
 
 ## Primary reading order
 
-1. [Getting started](getting-started/quickstart.md)
-2. [CLI usage](cli/README.md)
-3. [Configuration](configuration/README.md)
-4. [Languages](languages/README.md)
-5. [Workflow](workflow/README.md)
+1. [Technical Specification](SPECIFICATION.md)
+2. [Getting started](getting-started/quickstart.md)
+3. [CLI usage](cli/README.md)
+4. [Configuration](configuration/README.md)
+5. [Languages](languages/README.md)
+6. [Workflow](workflow/README.md)
 
 ## Documentation map
 
