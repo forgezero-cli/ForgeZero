@@ -49,6 +49,8 @@ var (
 		return utils.RunCommandSilent(ctx, verbose, name, args...)
 	}
 	initFlagsOnce sync.Once
+	goRootOnce    sync.Once
+	goRootCached  string
 )
 
 func initAssemblerFlags() {
@@ -109,16 +111,21 @@ func SetAdditionalIncludeDirs(dirs []string) {
 func assembleGoAsm(ctx context.Context, src, obj string, verbose bool) error {
 	goroot := os.Getenv("GOROOT")
 	if goroot == "" {
-		if out, err := exec.Command("go", "env", "GOROOT").Output(); err == nil {
-			goroot = strings.TrimSpace(string(out))
-		}
+		goRootOnce.Do(func() {
+			if out, err := exec.Command("go", "env", "GOROOT").Output(); err == nil {
+				goRootCached = strings.TrimSpace(string(out))
+			}
+		})
+		goroot = goRootCached
 	}
-	includeDir := filepath.Join(goroot, "src", "runtime")
+	includeDir, runtimeInclude := plan9IncludeDirs(goroot)
 
 	if verbose {
 		var b strings.Builder
 		b.WriteString("Running: go tool asm -I ")
 		b.WriteString(includeDir)
+		b.WriteString(" -I ")
+		b.WriteString(runtimeInclude)
 		b.WriteString(" ")
 		b.WriteString(src)
 		b.WriteString(" -o ")
@@ -127,7 +134,7 @@ func assembleGoAsm(ctx context.Context, src, obj string, verbose bool) error {
 		writeStderr(b.String())
 	}
 
-	cmd := exec.CommandContext(ctx, "go", "tool", "asm", "-I", includeDir, src, "-o", obj)
+	cmd := exec.CommandContext(ctx, "go", "tool", "asm", "-I", includeDir, "-I", runtimeInclude, src, "-o", obj)
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 	return cmd.Run()
@@ -334,13 +341,14 @@ func Assemble(ctx context.Context, src, obj string, debug, verbose bool, mode st
 			}
 		}
 		return assembleRawASM(ctx, src, obj, target)
-	case ".s":
+	case ".s", ".S":
 		if isGoAsmFile(src) {
 			return assembleGoAsm(ctx, src, obj, verbose)
 		}
+		if ext == ".S" {
+			return compileCWithTarget(ctx, src, obj, verbose, ccForTargetWithTarget(target), target)
+		}
 		return assembleS(ctx, src, obj, verbose, target)
-	case ".S":
-		return compileCWithTarget(ctx, src, obj, verbose, ccForTargetWithTarget(target), target)
 	case ".m", ".mm":
 		return compileCWithTarget(ctx, src, obj, verbose, getCompilerWithTarget(src, target), target)
 	case ".c":
@@ -390,8 +398,8 @@ func compileCWithTarget(ctx context.Context, src, obj string, verbose bool, comp
 	compilerParts := strings.Fields(compiler)
 	compilerBin := compilerParts[0]
 
-	args := make([]string, 0, 8)
-	args = append(args, "-c", src, "-o", obj)
+	args := make([]string, 0, 9)
+	args = append(args, "-pipe", "-c", src, "-o", obj)
 
 	if strings.HasSuffix(src, ".m") {
 		args = append(args, "-x", "objective-c")
