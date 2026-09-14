@@ -18,8 +18,6 @@
 package builder
 
 import (
-	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -76,33 +74,13 @@ func refreshSourceHashesWithCacheAndContext(dirs []string, cache map[string]hash
 		if root == "" {
 			continue
 		}
-		if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				return nil
-			}
-			if d.Type()&os.ModeSymlink != 0 {
-				fi, serr := os.Stat(path)
-				if serr != nil {
-					return serr
-				}
-				if fi.IsDir() {
-					return nil
-				}
-				metadata = append(metadata, hashCacheEntry{size: fi.Size(), modTime: fi.ModTime().UnixNano()})
-			} else {
-				fi, serr := d.Info()
-				if serr != nil {
-					return serr
-				}
-				metadata = append(metadata, hashCacheEntry{size: fi.Size(), modTime: fi.ModTime().UnixNano()})
-			}
-			paths = append(paths, path)
-			return nil
-		}); err != nil {
-			return err
+		discovered, discoverErr := discoverSourceFiles(root)
+		if discoverErr != nil {
+			return discoverErr
+		}
+		for _, file := range discovered {
+			paths = append(paths, file.path)
+			metadata = append(metadata, hashCacheEntry{size: file.size, modTime: file.modTime})
 		}
 	}
 	result := make(map[string]hashCacheEntry, len(paths))
