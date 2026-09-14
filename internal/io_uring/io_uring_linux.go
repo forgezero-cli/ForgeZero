@@ -32,13 +32,15 @@ import (
 )
 
 const (
-	ioUringSetupEntries    = 256
-	IORING_ENTER_GETEVENTS = 1
-	IORING_OFF_SQ_RING     = 0
-	IORING_OFF_CQ_RING     = 0x8000000
-	IORING_OFF_SQES        = 0x10000000
-	IORING_OP_READ         = 22
-	IORING_OP_WRITE        = 23
+	ioUringSetupEntries       = 256
+	IORING_ENTER_GETEVENTS    = 1
+	IORING_OFF_SQ_RING        = 0
+	IORING_OFF_CQ_RING        = 0x8000000
+	IORING_OFF_SQES           = 0x10000000
+	IORING_OP_READ            = 22
+	IORING_OP_WRITE           = 23
+	IORING_OP_STATX           = 21
+	IORING_SETUP_COOP_TASKRUN = 1 << 8
 )
 
 type ioUringSqringOffsets struct {
@@ -136,8 +138,12 @@ func initIoUring() {
 }
 
 func initRing() error {
-	params := ioUringParams{sqEntries: ioUringSetupEntries, cqEntries: ioUringSetupEntries}
+	params := ioUringParams{sqEntries: ioUringSetupEntries, cqEntries: ioUringSetupEntries, flags: IORING_SETUP_COOP_TASKRUN}
 	fd, _, errno := unix.Syscall(unix.SYS_IO_URING_SETUP, uintptr(ioUringSetupEntries), uintptr(unsafe.Pointer(&params)), 0)
+	if int(fd) < 0 && errno == unix.EINVAL {
+		params = ioUringParams{sqEntries: ioUringSetupEntries, cqEntries: ioUringSetupEntries}
+		fd, _, errno = unix.Syscall(unix.SYS_IO_URING_SETUP, uintptr(ioUringSetupEntries), uintptr(unsafe.Pointer(&params)), 0)
+	}
 	if int(fd) < 0 {
 		return errno
 	}
@@ -213,7 +219,135 @@ func ReadFile(path string) ([]byte, error) {
 	}
 	data := make([]byte, size)
 	if err := submitRead(int(f.Fd()), data, 0); err != nil {
-		return nil, err
+		return os.ReadFile(path)
+	}
+	return data, nil
+}
+
+func ReadFiles(paths []string) ([][]byte, error) {
+	if !Enabled() {
+		return readFilesFallback(paths)
+	}
+	if len(paths) == 0 {
+		return [][]byte{}, nil
+	}
+	if len(paths) > int(*sqRingEntries) {
+		return readFilesFallback(paths)
+	}
+	files := make([]*os.File, len(paths))
+	data := make([][]byte, len(paths))
+	for i, path := range paths {
+		file, err := os.Open(path)
+		if err != nil {
+			for _, opened := range files {
+				if opened != nil {
+					_ = opened.Close()
+				}
+			}
+			return nil, err
+		}
+		files[i] = file
+		info, err := file.Stat()
+		if err != nil {
+			for _, opened := range files {
+				if opened != nil {
+					_ = opened.Close()
+				}
+			}
+			return nil, err
+		}
+		if info.Size() > int64(^uint(0)>>1) {
+			for _, opened := range files {
+				if opened != nil {
+					_ = opened.Close()
+				}
+			}
+			return nil, os.ErrInvalid
+		}
+		if uint64(info.Size()) > uint64(^uint32(0)) {
+			for _, opened := range files {
+				if opened != nil {
+					_ = opened.Close()
+				}
+			}
+			return readFilesFallback(paths)
+		}
+		data[i] = make([]byte, int(info.Size()))
+	}
+	mutex.Lock()
+	tail := *sqTail
+	queued := uint32(0)
+	for i, file := range files {
+		if len(data[i]) == 0 {
+			continue
+		}
+		idx := tail + queued
+		sqe := &sqes[idx&*sqRingMask]
+		*sqe = ioUringSqe{}
+		sqe.opcode = IORING_OP_READ
+		sqe.fd = int32(file.Fd())
+		sqe.addr = uint64(uintptr(unsafe.Pointer(&data[i][0])))
+		sqe.len = uint32(len(data[i]))
+		sqe.userData = uint64(i)
+		sqArray[idx&*sqRingMask] = idx & *sqRingMask
+		queued++
+	}
+	*sqTail = tail + queued
+	if queued == 0 {
+		mutex.Unlock()
+		for _, file := range files {
+			_ = file.Close()
+		}
+		return data, nil
+	}
+	err := submitBatchAndWait(queued)
+	if err == nil {
+		for range queued {
+			cqe, popErr := popCqe()
+			if popErr != nil {
+				if err == nil {
+					err = popErr
+				}
+				continue
+			}
+			index := int(cqe.userData)
+			if index < 0 || index >= len(data) {
+				if err == nil {
+					err = os.ErrInvalid
+				}
+				continue
+			}
+			if cqe.res < 0 {
+				if err == nil {
+					err = syscall.Errno(-cqe.res)
+				}
+				continue
+			}
+			if int(cqe.res) != len(data[index]) {
+				if err == nil {
+					err = io.ErrUnexpectedEOF
+				}
+			}
+		}
+	}
+	mutex.Unlock()
+	for _, file := range files {
+		_ = file.Close()
+	}
+	if err != nil {
+		return readFilesFallback(paths)
+	}
+	return data, nil
+}
+
+func readFilesFallback(paths []string) ([][]byte, error) {
+	data := make([][]byte, len(paths))
+	for i, path := range paths {
+		var err error
+		data[i], err = os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return data, nil
 }
@@ -230,7 +364,61 @@ func WriteFile(path string, data []byte, perm os.FileMode) error {
 	if len(data) == 0 {
 		return nil
 	}
-	return submitWrite(int(f.Fd()), data, 0)
+	if err := submitWrite(int(f.Fd()), data, 0); err != nil {
+		return os.WriteFile(path, data, perm)
+	}
+	return nil
+}
+
+func StatxAt(dirFD int, path string, flags int, mask int) (StatxResult, error) {
+	var statx unix.Statx_t
+	result := StatxResult{}
+	if !Enabled() {
+		err := unix.Statx(dirFD, path, flags, mask, &statx)
+		if err == nil {
+			result = convertStatx(statx)
+		}
+		return result, err
+	}
+	mutex.Lock()
+	tail := *sqTail
+	index := tail & *sqRingMask
+	sqe := &sqes[index]
+	*sqe = ioUringSqe{}
+	sqe.opcode = IORING_OP_STATX
+	sqe.fd = int32(dirFD)
+	sqe.addr = uint64(uintptr(unsafe.Pointer(unsafe.StringData(path))))
+	sqe.off = uint64(uintptr(unsafe.Pointer(&statx)))
+	sqe.len = uint32(mask)
+	sqe.rwFlags = uint32(flags)
+	sqe.userData = uint64(index)
+	sqArray[index] = index
+	*sqTail = tail + 1
+	err := submitAndWait(1)
+	if err == nil {
+		var cqe *ioUringCqe
+		cqe, err = popCqe()
+		if err == nil && cqe.res < 0 {
+			err = syscall.Errno(-cqe.res)
+		}
+		if err == nil && statx.Mask == 0 {
+			err = os.ErrInvalid
+		}
+	}
+	mutex.Unlock()
+	if err != nil {
+		err = unix.Statx(dirFD, path, flags, mask, &statx)
+		if err == nil {
+			result = convertStatx(statx)
+		}
+		return result, err
+	}
+	result = convertStatx(statx)
+	return result, nil
+}
+
+func convertStatx(statx unix.Statx_t) StatxResult {
+	return StatxResult{Mask: statx.Mask, Mode: statx.Mode, Ino: statx.Ino, Size: statx.Size, MtimeSec: statx.Mtime.Sec, MtimeNsec: statx.Mtime.Nsec}
 }
 
 func submitRead(fd int, buf []byte, offset int64) error {
@@ -304,6 +492,14 @@ func validateResult(cqe *ioUringCqe, expected int, shortErr error) error {
 
 func submitAndWait(n uint32) error {
 	rc, _, err := unix.Syscall6(unix.SYS_IO_URING_ENTER, uintptr(ringFd), uintptr(n), uintptr(1), uintptr(IORING_ENTER_GETEVENTS), 0, 0)
+	if int(rc) < 0 {
+		return err
+	}
+	return nil
+}
+
+func submitBatchAndWait(n uint32) error {
+	rc, _, err := unix.Syscall6(unix.SYS_IO_URING_ENTER, uintptr(ringFd), uintptr(n), uintptr(n), uintptr(IORING_ENTER_GETEVENTS), 0, 0)
 	if int(rc) < 0 {
 		return err
 	}

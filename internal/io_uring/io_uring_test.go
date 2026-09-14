@@ -26,6 +26,8 @@ import (
 	"path/filepath"
 	"testing"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestReadWriteFileViaIoUring(t *testing.T) {
@@ -44,6 +46,66 @@ func TestReadWriteFileViaIoUring(t *testing.T) {
 	}
 	if string(read) != string(data) {
 		t.Fatalf("unexpected data: got %q want %q", read, data)
+	}
+}
+
+func TestReadFilesViaIoUring(t *testing.T) {
+	if os.Getenv("FORGEZERO_IO_URING") != "1" {
+		t.Skip("io_uring disabled")
+	}
+	tmpDir := t.TempDir()
+	paths := []string{filepath.Join(tmpDir, "one"), filepath.Join(tmpDir, "empty"), filepath.Join(tmpDir, "two")}
+	if err := os.WriteFile(paths[0], []byte("one"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths[1], nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths[2], []byte("two"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	data, err := ReadFiles(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data[0]) != "one" || len(data[1]) != 0 || string(data[2]) != "two" {
+		t.Fatalf("unexpected batch data: %q %q %q", data[0], data[1], data[2])
+	}
+}
+
+func TestReadFilesFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "fallback")
+	if err := os.WriteFile(path, []byte("fallback"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FORGEZERO_IO_URING", "0")
+	data, err := ReadFiles([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 1 || string(data[0]) != "fallback" {
+		t.Fatalf("unexpected fallback data: %q", data)
+	}
+}
+
+func TestStatxAtFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "statx")
+	if err := os.WriteFile(path, []byte("statx"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fd, err := unix.Open(tmpDir, unix.O_RDONLY|unix.O_DIRECTORY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(fd)
+	stat, err := StatxAt(fd, "statx", unix.AT_SYMLINK_NOFOLLOW, unix.STATX_TYPE|unix.STATX_SIZE|unix.STATX_INO)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stat.Ino == 0 || stat.Size != 5 {
+		t.Fatalf("unexpected statx result: inode=%d size=%d", stat.Ino, stat.Size)
 	}
 }
 
