@@ -512,6 +512,7 @@ func printInfo(msg string) {
 
 func buildLinkArgs(objs []string, bin string, sanitize bool, strict bool, libs []string, wasm bool, useFuseLd bool) []string {
 	args := make([]string, 0, len(objs)+32)
+	args = append(args, "-pipe")
 	args = append(args, objs...)
 	args = append(args, "-o", bin)
 	if wasm {

@@ -145,3 +145,9 @@ fallback_func: ret
 		t.Skip("no symbol reader available")
 	}
 }
+
+func TestDeserializeSymbolsRejectsCorruptRecord(t *testing.T) {
+	if _, err := deserializeSymbols([]byte("name\tT\tnot-a-size\tG\n"), "object.o"); err == nil {
+		t.Fatal("expected corrupt symbol cache error")
+	}
+}
