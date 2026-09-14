@@ -23,6 +23,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	debugpkg "runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -362,6 +363,8 @@ func RunHooks(ctx context.Context, hooks []config.Hook) error {
 }
 
 func BuildDir(ctx context.Context, dirs []string, outBin string, debug, verbose bool, mode string, keepObj, noCache, noSymbolCheck, sanitize, strict bool, exclude, sourceFiles []string, ignoreMatcher interface{}, includes, libs []string, jobs int, buildType string) (*BuildResult, error) {
+	gcPercent := debugpkg.SetGCPercent(-1)
+	defer debugpkg.SetGCPercent(gcPercent)
 	cfg := utils.ConfigFromContext(ctx)
 	if len(dirs) > 0 {
 		localPaths := []string{filepath.Join(dirs[0], "fz.toml"), filepath.Join(dirs[0], ".fz.toml")}
@@ -488,7 +491,10 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 	if len(dirs) > 0 {
 		cfgPath := filepath.Join(dirs[0], "configure.fz")
 		if info, err := os.Stat(cfgPath); err == nil && !info.IsDir() {
-			data, _ := os.ReadFile(cfgPath)
+			data, err := os.ReadFile(cfgPath)
+			if err != nil {
+				return nil, errors.New("cannot read configure.fz: " + err.Error())
+			}
 			proc := fzp.NewProcessor(fzp.Options{RootDir: dirs[0]})
 			if defs, err := proc.ParseDefinitions(string(data)); err == nil {
 				if cfg == nil {
@@ -519,7 +525,15 @@ func buildDirInner(ctx context.Context, cfg *config.Config, dirs []string, outBi
 	}
 
 	if cfg != nil && len(cfg.BuildRules) > 0 {
+		if err := runTasks(ctx, cfg.Tasks, verbose, jobs); err != nil {
+			return nil, err
+		}
 		return runBuildRules(ctx, cfg, verbose, jobs)
+	}
+	if cfg != nil && len(cfg.Tasks) > 0 {
+		if err := runTasks(ctx, cfg.Tasks, verbose, jobs); err != nil {
+			return nil, err
+		}
 	}
 
 	if !localCfgLoaded {
