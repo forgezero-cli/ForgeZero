@@ -50,7 +50,7 @@ Find your role below:
 - Release Engineer - Reproducible and verifiable builds
 - Cross-Compilation / Embedded Engineer - Targeting non-host platforms
 - WebAssembly Developer - Building WASM targets
-- Contributor - Extending or fixing Quench itself
+- Contributor - Extending or fixing ForgeZero itself
 
 For Specific Users
 
@@ -138,3 +138,5 @@ Communication and Support
 - License: GPLv3 - see LICENSE
 
 You can find all the news about updates and announcements of upcoming versions rh: https://coderlegion.com/user/alexvoste
+
+The author (alexvoste) wrote a separate, in-depth post on the ForgeZero architecture and the history of its development. It is available on the CoderLegion platform at the following link: https://coderlegion.com/27194/forgezero-what-happens-when-someone-finally-stops-forgiving-your-build-system
