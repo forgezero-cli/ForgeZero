@@ -21,13 +21,18 @@ import (
 	"encoding/binary"
 	"math/bits"
 
+	"github.com/forgezero-cli/ForgeZero/internal/forge"
 	"golang.org/x/sys/cpu"
 )
 
 const bb64Mul uint64 = 0x9e3779b97f4a7c15
 const bb64Mul32 uint64 = 0x7f4a7c15
+const forgeHashThreshold = 4096
 
 func HashBB64(data []byte, seed uint64) uint64 {
+	if len(data) >= forgeHashThreshold && cpu.X86.HasAVX2 && cpu.X86.HasBMI2 {
+		return forge.HashBytes(data, seed)
+	}
 	if cpu.X86.HasAVX2 {
 		return HashBB64Asm(data, seed)
 	}
