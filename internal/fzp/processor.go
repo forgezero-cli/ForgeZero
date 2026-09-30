@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unsafe"
 
 	fzerr "github.com/forgezero-cli/ForgeZero/internal/errors"
 	"github.com/forgezero-cli/ForgeZero/internal/logger"
@@ -118,27 +119,79 @@ func (p *Processor) Process(path string, opts Options) (string, error) {
 		}
 		p.condStack = prevCond
 	}()
-	lines := strings.Split(string(data), "\n")
-	var out []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "#") {
-			result, keep, err := p.handleDirective(trimmed, resolved)
-			if err != nil {
+	source := unsafe.String(unsafe.SliceData(data), len(data))
+	var out []byte
+	var scanArena [64]scanBlock
+	var newlineArena [64 * 32]uint16
+	lineStart := 0
+	scanOffset := 0
+	fullLength := len(data) &^ 31
+	for scanOffset < fullLength {
+		blockCount := (fullLength - scanOffset) / 32
+		if blockCount > len(scanArena) {
+			blockCount = len(scanArena)
+		}
+		scanned, newlineCount := scanFZPBlocks(data[scanOffset:scanOffset+blockCount*32], scanArena[:blockCount], newlineArena[:])
+		for index := 0; index < newlineCount; index++ {
+			lineEnd := scanOffset + int(newlineArena[index])
+			if err := p.processSourceLine(source, lineStart, lineEnd, resolved, &out); err != nil {
 				return "", err
 			}
-			if keep && result != "" {
-				out = append(out, result)
-			}
-			continue
+			lineStart = lineEnd + 1
 		}
-		if p.shouldEmit() && strings.TrimSpace(line) != "" {
-			out = append(out, line)
+		scanOffset += scanned * 32
+	}
+	tailOffset := fullLength
+	for tailOffset < len(source) {
+		relativeEnd := strings.IndexByte(source[tailOffset:], '\n')
+		if relativeEnd < 0 {
+			break
+		}
+		lineEnd := tailOffset + relativeEnd
+		if err := p.processSourceLine(source, lineStart, lineEnd, resolved, &out); err != nil {
+			return "", err
+		}
+		lineStart = lineEnd + 1
+		tailOffset = lineStart
+	}
+	if lineStart < len(source) {
+		if err := p.processSourceLine(source, lineStart, len(source), resolved, &out); err != nil {
+			return "", err
 		}
 	}
-	processed := strings.Join(out, "\n")
+	processed := ""
+	if len(out) > 0 {
+		processed = unsafe.String(unsafe.SliceData(out), len(out))
+	}
 	p.cache[cacheKey] = processed
 	return processed, nil
+}
+
+func (p *Processor) processSourceLine(source string, start, end int, resolved string, out *[]byte) error {
+	line := source[start:end]
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "#") {
+		result, keep, err := p.handleDirective(trimmed, resolved)
+		if err != nil {
+			return err
+		}
+		if keep && result != "" {
+			if *out == nil {
+				*out = make([]byte, 0, len(source))
+			} else {
+				*out = append(*out, '\n')
+			}
+			*out = append(*out, result...)
+		}
+	} else if p.shouldEmit() && trimmed != "" {
+		if *out == nil {
+			*out = make([]byte, 0, len(source))
+		} else {
+			*out = append(*out, '\n')
+		}
+		*out = append(*out, line...)
+	}
+	return nil
 }
 
 func (p *Processor) ParseDefinitions(output string) (map[string]string, error) {
