@@ -21,8 +21,10 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/forgezero-cli/ForgeZero/internal/config"
+	"github.com/forgezero-cli/ForgeZero/internal/forge"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
@@ -101,13 +103,44 @@ func refreshSourceHashesWithCacheAndContext(dirs []string, cache map[string]hash
 	}
 	hashes := make([]hashCacheEntry, len(paths))
 	pending := 0
+	var compareTasks [64]forge.UTEC
+	var compareEntries [64]hashCacheEntry
+	var compareIndexes [64]int
+	compareCount := 0
+	flushMetadataComparisons := func() {
+		if compareCount == 0 {
+			return
+		}
+		forge.DispatchBatch(compareTasks[:compareCount])
+		for candidate := 0; candidate < compareCount; candidate++ {
+			if compareTasks[candidate].RetVal == 1 {
+				hashes[compareIndexes[candidate]] = compareEntries[candidate]
+			} else {
+				pending++
+			}
+		}
+		compareCount = 0
+	}
 	for index, path := range paths {
-		if entry, ok := cache[path]; ok && entry.context == contextDigest && entry.modTime == metadata[index].modTime && entry.size == metadata[index].size && entry.modTime != 0 {
-			hashes[index] = entry
+		entry, ok := cache[path]
+		if ok && entry.modTime == metadata[index].modTime && entry.size == metadata[index].size && entry.modTime != 0 {
+			compareEntries[compareCount] = entry
+			compareIndexes[compareCount] = index
+			compareTasks[compareCount] = forge.UTEC{
+				Kind:   uint16(forge.KindVectorCompare),
+				SrcPtr: unsafe.Pointer(&compareEntries[compareCount].context[0]),
+				DstPtr: unsafe.Pointer(&contextDigest[0]),
+				Len:    uint64(len(contextDigest)),
+			}
+			compareCount++
+			if compareCount == len(compareTasks) {
+				flushMetadataComparisons()
+			}
 			continue
 		}
 		pending++
 	}
+	flushMetadataComparisons()
 	if pending == 0 {
 		for index, path := range paths {
 			result[path] = hashes[index]
