@@ -17,11 +17,8 @@
 
 package gloria
 
-// rdi = 7, rsi = 6, rdx = 2, rcx = 1, r8 = 8, r9 = 9
-// r15 = 15 (reserved for VGA cursor in bare-metal mode)
 var abiArgRegs = []int{7, 6, 2, 1, 8, 9}
 
-// Register constants for convenience
 const (
 	regRAX = 0
 	regRCX = 1
@@ -38,7 +35,7 @@ const (
 	regR12 = 12
 	regR13 = 13
 	regR14 = 14
-	regR15 = 15 // VGA cursor offset
+	regR15 = 15
 )
 
 func emitMovRegToStack(out []byte, srcReg int, offset int) []byte {
@@ -143,16 +140,12 @@ func emitSubImm64ToReg(out []byte, reg int, v uint64) []byte {
 
 func emitBareMetalPrint(out []byte, str string) []byte {
 	strBytes := parseStringLiteral(str)
-	out = emitMovImm64ToReg(out, 2, 0xB8000)
-	out = emitMovImm64ToReg(out, 1, uint64(len(strBytes)))
-	out = append(out, 0x48, 0x8D, 0x35, 0, 0, 0, 0)
-	leaDispPos := len(out) - 4
-	loopStart := len(out)
+	headerStart := len(out)
+	loopStart := headerStart + 27
+	out = appendBareMetalPrintHeader(out, uint64(len(strBytes)), 25)
 	out = append(
 		out,
-		0x8A, 0x06,
-		0xB4, 0x0A,
-		0x66, 0x89, 0x02,
+		0x89, 0x02,
 		0x48, 0x83, 0xC2, 0x02,
 		0x48, 0xFF, 0xC6,
 		0x48, 0xFF, 0xC9,
@@ -165,15 +158,7 @@ func emitBareMetalPrint(out []byte, str string) []byte {
 	out[jnzDispPos+2] = byte(jmpDisp >> 16)
 	out[jnzDispPos+3] = byte(jmpDisp >> 24)
 	out = append(out, 0xEB, byte(len(strBytes)))
-
-	dataStart := len(out)
 	out = append(out, strBytes...)
-
-	disp := int32(dataStart - (leaDispPos + 4))
-	out[leaDispPos] = byte(disp)
-	out[leaDispPos+1] = byte(disp >> 8)
-	out[leaDispPos+2] = byte(disp >> 16)
-	out[leaDispPos+3] = byte(disp >> 24)
 	return out
 }
 
