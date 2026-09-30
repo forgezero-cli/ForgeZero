@@ -19,6 +19,7 @@ package utils
 
 import (
 	"bytes"
+	"encoding/binary"
 	"hash/fnv"
 	"math/rand"
 	"testing"
@@ -105,6 +106,40 @@ func BenchmarkHashBB64Scalar(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = hashBB64Scalar(data, 0x9e3779b97f4a7c15)
+	}
+}
+
+var pairHashBenchmarkSink [32]byte
+
+func BenchmarkHashBB64PairSeed(b *testing.B) {
+	var left, right [32]byte
+	for index := range left {
+		left[index] = byte(index*17 + 3)
+		right[index] = byte(index*29 + 11)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		pairHashBenchmarkSink = hashBB64PairSeed(left, right, 0x4242363400000001)
+	}
+}
+
+func BenchmarkHashBB64PairSeedScalar(b *testing.B) {
+	var left, right [32]byte
+	for index := range left {
+		left[index] = byte(index*17 + 3)
+		right[index] = byte(index*29 + 11)
+	}
+	var data [64]byte
+	copy(data[:32], left[:])
+	copy(data[32:], right[:])
+	b.ReportAllocs()
+	for b.Loop() {
+		hash := hashBB64Scalar(data[:], 0x4242363400000001) ^ hashBB64Scalar(data[:], 0x4242363400000001^0xd6e8feb86659fd93)
+		for index := range 4 {
+			hash ^= hash >> 29
+			hash *= bb64Mul
+			binary.LittleEndian.PutUint64(pairHashBenchmarkSink[index*8:], hash)
+		}
 	}
 }
 
