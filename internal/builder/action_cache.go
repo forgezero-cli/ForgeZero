@@ -33,6 +33,7 @@ import (
 
 	ch "github.com/forgezero-cli/ForgeZero/internal/drivers/chan"
 	spin "github.com/forgezero-cli/ForgeZero/internal/drivers/sync"
+	"github.com/forgezero-cli/ForgeZero/internal/forge"
 	"github.com/forgezero-cli/ForgeZero/internal/hashpool"
 	"github.com/forgezero-cli/ForgeZero/internal/io_uring"
 	"github.com/forgezero-cli/ForgeZero/internal/logger"
@@ -129,7 +130,7 @@ func actionCacheRestore(ctx context.Context, inputs []string, action string, out
 	}
 	idx := l1Key(digest)
 	if entry, ok := l1Load(idx); ok {
-		if entry.hash == digest {
+		if forge.CompareBytes(entry.hash[:], digest[:]) {
 			if entry.offset != 0 {
 				if err := restoreFromL2(cacheDir, entry.offset-l1OffsetBias); err == nil {
 					logger.Debug("action cache restored from L2\n")
@@ -174,7 +175,7 @@ func l1Key(digest [32]byte) uint64 {
 	return binary.LittleEndian.Uint64(digest[0:8])
 }
 
-func l1Load(key uint64) (*l1Entry, bool) {
+func l1Load(key uint64) (l1Entry, bool) {
 	l1Mu.Lock()
 	defer l1Mu.Unlock()
 	expected := key
@@ -183,16 +184,16 @@ func l1Load(key uint64) (*l1Entry, bool) {
 		entry := &l1Entries[idx]
 		if atomic.LoadUint64(&entry.key) != expected {
 			if atomic.LoadUint64(&entry.key) == 0 {
-				return nil, false
+				return l1Entry{}, false
 			}
 			continue
 		}
 		if atomic.LoadUint32(&entry.flags)&1 == 0 {
-			return nil, false
+			return l1Entry{}, false
 		}
-		return entry, true
+		return *entry, true
 	}
-	return nil, false
+	return l1Entry{}, false
 }
 
 func l1Store(key uint64, hash [32]byte, size uint32, offset uint64) {
