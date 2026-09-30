@@ -25,6 +25,9 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"unsafe"
+
+	"github.com/forgezero-cli/ForgeZero/internal/forge"
 )
 
 const (
@@ -115,6 +118,7 @@ func EmitSourceObject(src []byte, profile TargetProfile) ([]byte, error) {
 func loadSourcePooled(sourcePath string) ([]byte, func(), error) {
 	p := emitterBufferPool.Get().(*[]byte)
 	buf := *p
+	pooledBuffer := true
 	if cap(buf) < 65536 {
 		buf = make([]byte, 0, 65536)
 	}
@@ -130,23 +134,49 @@ func loadSourcePooled(sourcePath string) ([]byte, func(), error) {
 		emitterBufferPool.Put(p)
 		return nil, nil, err
 	}
-	if info.Size() > int64(cap(buf)) {
+	if info.Size() > int64(^uint(0)>>1) {
 		emitterBufferPool.Put(p)
 		return nil, nil, errors.New("source too large for internal emitter")
 	}
-	n, err := io.ReadFull(f, buf[:info.Size()])
+	size := int(info.Size())
+	if size > cap(buf) {
+		if uint64(size) >= forge.HugePageSize && uint64(size) <= ^uint64(0)-(forge.HugePageSize-1) {
+			mappedSize := (uint64(size) + forge.HugePageSize - 1) &^ (forge.HugePageSize - 1)
+			if mapped := forge.MmapHugepages(mappedSize); mapped != nil {
+				data := unsafe.Slice((*byte)(mapped), size)
+				n, readErr := io.ReadFull(f, data)
+				if readErr != nil || n != size {
+					forge.MunmapHugepages(mapped, mappedSize)
+					emitterBufferPool.Put(p)
+					if readErr == nil {
+						readErr = io.ErrUnexpectedEOF
+					}
+					return nil, nil, readErr
+				}
+				emitterBufferPool.Put(p)
+				return data, func() { forge.MunmapHugepages(mapped, mappedSize) }, nil
+			}
+		}
+		buf = make([]byte, size)
+		pooledBuffer = false
+	}
+	n, err := io.ReadFull(f, buf[:size])
 	if err != nil {
 		emitterBufferPool.Put(p)
 		return nil, nil, err
 	}
-	if n != int(info.Size()) {
+	if n != size {
 		emitterBufferPool.Put(p)
 		return nil, nil, io.ErrUnexpectedEOF
 	}
 	buf = buf[:n]
-	*p = buf
+	if pooledBuffer {
+		*p = buf
+	}
 	return buf, func() {
-		*p = (*p)[:0]
+		if pooledBuffer {
+			*p = (*p)[:0]
+		}
 		emitterBufferPool.Put(p)
 	}, nil
 }
