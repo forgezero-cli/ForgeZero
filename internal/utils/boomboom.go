@@ -53,6 +53,7 @@ type BoomBoomHasher struct {
 	treeLeaves      int
 	scan            []BoomBoomChunk
 	root            [32]byte
+	treeFingerprint uint64
 	changed         int
 	changedIndexes  []int
 	chunkHash       [32]byte
@@ -135,6 +136,7 @@ func (h *BoomBoomHasher) Update(data []byte) ([32]byte, error) {
 	h.scan = scanBoomBoom(data, h.scan[:0])
 	h.changed = 0
 	h.changedIndexes = h.changedIndexes[:0]
+	sameChunkCount := len(h.chunks) == len(h.scan)
 	if len(h.chunks) != len(h.scan) {
 		h.chunks = growBoomChunks(h.chunks, len(h.scan))
 	}
@@ -159,6 +161,14 @@ func (h *BoomBoomHasher) Update(data []byte) ([32]byte, error) {
 				return [32]byte{}, err
 			}
 		}
+	}
+	if h.initialized && sameChunkCount {
+		for _, index := range h.changedIndexes {
+			h.treeFingerprint ^= boomChunkFingerprint(&h.chunks[index].Digest, index)
+			h.treeFingerprint ^= boomChunkFingerprint(&h.scan[index].Digest, index)
+		}
+	} else {
+		h.treeFingerprint = boomTreeFingerprintRaw(h.scan)
 	}
 	copy(h.chunks, h.scan)
 	if cap(h.previous) < len(data) {
@@ -323,7 +333,7 @@ func (h *BoomBoomHasher) hashTree(chunks []BoomBoomChunk) [32]byte {
 			h.tree[i] = h.hashPair(h.tree[i<<1], h.tree[i<<1|1], uint64(i))
 		}
 		root := h.tree[1]
-		binary.LittleEndian.PutUint64(root[:8], binary.LittleEndian.Uint64(root[:8])^boomTreeFingerprint(chunks))
+		binary.LittleEndian.PutUint64(root[:8], binary.LittleEndian.Uint64(root[:8])^finishBoomTreeFingerprint(h.treeFingerprint))
 		return root
 	}
 	if len(chunks) < base && h.tree[base+len(chunks)] != chunks[len(chunks)-1].Digest {
@@ -344,18 +354,26 @@ func (h *BoomBoomHasher) hashTree(chunks []BoomBoomChunk) [32]byte {
 		}
 	}
 	root := h.tree[1]
-	binary.LittleEndian.PutUint64(root[:8], binary.LittleEndian.Uint64(root[:8])^boomTreeFingerprint(chunks))
+	binary.LittleEndian.PutUint64(root[:8], binary.LittleEndian.Uint64(root[:8])^finishBoomTreeFingerprint(h.treeFingerprint))
 	return root
 }
 
-func boomTreeFingerprint(chunks []BoomBoomChunk) uint64 {
+func boomTreeFingerprintRaw(chunks []BoomBoomChunk) uint64 {
 	var fingerprint uint64
 	for index := range chunks {
-		fingerprint ^= HashBB64(chunks[index].Digest[:], uint64(index)*0x9e3779b97f4a7c15+0xd6e8feb86659fd93)
+		fingerprint ^= boomChunkFingerprint(&chunks[index].Digest, index)
 	}
+	return fingerprint
+}
+
+func finishBoomTreeFingerprint(fingerprint uint64) uint64 {
 	fingerprint ^= fingerprint >> 33
 	fingerprint *= bb64Mul
 	return fingerprint ^ fingerprint>>29
+}
+
+func boomChunkFingerprint(digest *[32]byte, index int) uint64 {
+	return HashBB64(digest[:], uint64(index)*0x9e3779b97f4a7c15+0xd6e8feb86659fd93)
 }
 
 func (h *BoomBoomHasher) hashPair(left, right [32]byte, position uint64) [32]byte {
