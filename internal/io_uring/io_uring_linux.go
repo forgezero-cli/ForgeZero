@@ -24,9 +24,11 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
+	"github.com/forgezero-cli/ForgeZero/internal/forge"
 	"github.com/forgezero-cli/ForgeZero/internal/logger"
 	"golang.org/x/sys/unix"
 )
@@ -275,24 +277,65 @@ func ReadFiles(paths []string) ([][]byte, error) {
 		data[i] = make([]byte, int(info.Size()))
 	}
 	mutex.Lock()
-	tail := *sqTail
+	tail := atomic.LoadUint32(sqTail)
 	queued := uint32(0)
+	var sqeStage [4]ioUringSqe
+	var targetStage [4]forge.DriverIOTarget
+	var driverBatch [4]forge.UTEC
+	driverCount := 0
+	driverFailed := false
+	flushDriverBatch := func() {
+		if driverCount == 0 || driverFailed {
+			return
+		}
+		forge.DispatchBatch(driverBatch[:driverCount])
+		for batchIndex := 0; batchIndex < driverCount; batchIndex++ {
+			if driverBatch[batchIndex].RetVal != uint64(unsafe.Sizeof(ioUringSqe{})) {
+				driverFailed = true
+				return
+			}
+		}
+		driverCount = 0
+	}
 	for i, file := range files {
 		if len(data[i]) == 0 {
 			continue
 		}
 		idx := tail + queued
-		sqe := &sqes[idx&*sqRingMask]
+		ringIndex := idx & *sqRingMask
+		sqe := &sqeStage[driverCount]
 		*sqe = ioUringSqe{}
 		sqe.opcode = IORING_OP_READ
 		sqe.fd = int32(file.Fd())
 		sqe.addr = uint64(uintptr(unsafe.Pointer(&data[i][0])))
 		sqe.len = uint32(len(data[i]))
 		sqe.userData = uint64(i)
-		sqArray[idx&*sqRingMask] = idx & *sqRingMask
+		targetStage[driverCount] = forge.DriverIOTarget{
+			SQE:       unsafe.Pointer(&sqes[ringIndex]),
+			ArraySlot: unsafe.Pointer(&sqArray[ringIndex]),
+		}
+		driverBatch[driverCount] = forge.UTEC{
+			Kind:   uint16(forge.KindDriverIO),
+			ID:     ringIndex,
+			SrcPtr: unsafe.Pointer(sqe),
+			DstPtr: unsafe.Pointer(&targetStage[driverCount]),
+			Len:    uint64(unsafe.Sizeof(ioUringSqe{})),
+		}
+		driverCount++
 		queued++
+		if driverCount == len(driverBatch) {
+			flushDriverBatch()
+		}
 	}
-	*sqTail = tail + queued
+	flushDriverBatch()
+	if driverFailed {
+		mutex.Unlock()
+		for _, file := range files {
+			_ = file.Close()
+		}
+		return readFilesFallback(paths)
+	}
+	atomic.StoreUint32(sqTail, tail+queued)
 	if queued == 0 {
 		mutex.Unlock()
 		for _, file := range files {
@@ -352,6 +395,19 @@ func readFilesFallback(paths []string) ([][]byte, error) {
 	return data, nil
 }
 
+func dispatchSQE(index uint32, source *ioUringSqe) bool {
+	target := forge.DriverIOTarget{SQE: unsafe.Pointer(&sqes[index]), ArraySlot: unsafe.Pointer(&sqArray[index])}
+	tasks := [1]forge.UTEC{{
+		Kind:   uint16(forge.KindDriverIO),
+		ID:     index,
+		SrcPtr: unsafe.Pointer(source),
+		DstPtr: unsafe.Pointer(&target),
+		Len:    uint64(unsafe.Sizeof(ioUringSqe{})),
+	}}
+	forge.DispatchBatch(tasks[:])
+	return tasks[0].RetVal == uint64(unsafe.Sizeof(ioUringSqe{}))
+}
+
 func WriteFile(path string, data []byte, perm os.FileMode) error {
 	if !Enabled() {
 		return os.WriteFile(path, data, perm)
@@ -381,10 +437,9 @@ func StatxAt(dirFD int, path string, flags int, mask int) (StatxResult, error) {
 		return result, err
 	}
 	mutex.Lock()
-	tail := *sqTail
+	tail := atomic.LoadUint32(sqTail)
 	index := tail & *sqRingMask
-	sqe := &sqes[index]
-	*sqe = ioUringSqe{}
+	var sqe ioUringSqe
 	sqe.opcode = IORING_OP_STATX
 	sqe.fd = int32(dirFD)
 	sqe.addr = uint64(uintptr(unsafe.Pointer(unsafe.StringData(path))))
@@ -392,8 +447,11 @@ func StatxAt(dirFD int, path string, flags int, mask int) (StatxResult, error) {
 	sqe.len = uint32(mask)
 	sqe.rwFlags = uint32(flags)
 	sqe.userData = uint64(index)
-	sqArray[index] = index
-	*sqTail = tail + 1
+	if !dispatchSQE(index, &sqe) {
+		mutex.Unlock()
+		return result, os.ErrInvalid
+	}
+	atomic.StoreUint32(sqTail, tail+1)
 	err := submitAndWait(1)
 	if err == nil {
 		var cqe *ioUringCqe
@@ -424,21 +482,19 @@ func convertStatx(statx unix.Statx_t) StatxResult {
 func submitRead(fd int, buf []byte, offset int64) error {
 	mutex.Lock()
 	defer mutex.Unlock()
-	tail := *sqTail
+	tail := atomic.LoadUint32(sqTail)
 	idx := tail & *sqRingMask
-	sqe := &sqes[idx]
-	*sqe = ioUringSqe{}
+	var sqe ioUringSqe
 	sqe.opcode = IORING_OP_READ
-	sqe.flags = 0
-	sqe.ioprio = 0
 	sqe.fd = int32(fd)
 	sqe.off = uint64(offset)
 	sqe.addr = uint64(uintptr(unsafe.Pointer(&buf[0])))
 	sqe.len = uint32(len(buf))
-	sqe.rwFlags = 0
 	sqe.userData = uint64(idx)
-	sqArray[idx] = uint32(idx)
-	*sqTail = tail + 1
+	if !dispatchSQE(idx, &sqe) {
+		return os.ErrInvalid
+	}
+	atomic.StoreUint32(sqTail, tail+1)
 	if err := submitAndWait(1); err != nil {
 		return err
 	}
@@ -452,21 +508,19 @@ func submitRead(fd int, buf []byte, offset int64) error {
 func submitWrite(fd int, data []byte, offset int64) error {
 	mutex.Lock()
 	defer mutex.Unlock()
-	tail := *sqTail
+	tail := atomic.LoadUint32(sqTail)
 	idx := tail & *sqRingMask
-	sqe := &sqes[idx]
-	*sqe = ioUringSqe{}
+	var sqe ioUringSqe
 	sqe.opcode = IORING_OP_WRITE
-	sqe.flags = 0
-	sqe.ioprio = 0
 	sqe.fd = int32(fd)
 	sqe.off = uint64(offset)
 	sqe.addr = uint64(uintptr(unsafe.Pointer(&data[0])))
 	sqe.len = uint32(len(data))
-	sqe.rwFlags = 0
 	sqe.userData = uint64(idx)
-	sqArray[idx] = uint32(idx)
-	*sqTail = tail + 1
+	if !dispatchSQE(idx, &sqe) {
+		return os.ErrInvalid
+	}
+	atomic.StoreUint32(sqTail, tail+1)
 	if err := submitAndWait(1); err != nil {
 		return err
 	}
@@ -507,11 +561,11 @@ func submitBatchAndWait(n uint32) error {
 }
 
 func popCqe() (*ioUringCqe, error) {
-	head := *cqHead
-	if head == *cqTail {
+	head := atomic.LoadUint32(cqHead)
+	if head == atomic.LoadUint32(cqTail) {
 		return nil, os.ErrInvalid
 	}
 	cqe := &cqes[head&*cqRingMask]
-	*cqHead = head + 1
+	atomic.StoreUint32(cqHead, head+1)
 	return cqe, nil
 }
