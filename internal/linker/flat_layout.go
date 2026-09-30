@@ -17,7 +17,11 @@
 
 package linker
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/forgezero-cli/ForgeZero/internal/forge"
+)
 
 type Permissions uint8
 
@@ -114,6 +118,16 @@ func align4Checked(value uint64) (uint64, bool) {
 }
 
 func EmitFlatBinary(layout Layout) ([]byte, error) {
+	ordered, regionSizes, totalSize, err := flatBinarySize(layout)
+	if err != nil {
+		return nil, err
+	}
+	buffer := make([]byte, totalSize)
+	writeFlatBinaryInto(buffer, layout, ordered, regionSizes)
+	return buffer, nil
+}
+
+func flatBinarySize(layout Layout) ([2]Region, [2]int, int, error) {
 	ordered := layout.Regions
 	if ordered[1].Origin < ordered[0].Origin {
 		ordered[0], ordered[1] = ordered[1], ordered[0]
@@ -128,13 +142,15 @@ func EmitFlatBinary(layout Layout) ([]byte, error) {
 		}
 		size, err := regionOutputSize(ordered[i], ofRegion, count)
 		if err != nil {
-			return nil, err
+			return [2]Region{}, [2]int{}, 0, err
 		}
 		regionSizes[i] = size
 		totalSize += size
 	}
+	return ordered, regionSizes, totalSize, nil
+}
 
-	buffer := make([]byte, totalSize)
+func writeFlatBinaryInto(buffer []byte, layout Layout, ordered [2]Region, regionSizes [2]int) {
 	offset := 0
 	for i := 0; i < 2; i++ {
 		if regionSizes[i] == 0 {
@@ -144,7 +160,6 @@ func EmitFlatBinary(layout Layout) ([]byte, error) {
 		writeRegionOutput(buffer[offset:offset+regionSizes[i]], ordered[i], ofRegion, count)
 		offset += regionSizes[i]
 	}
-	return buffer, nil
 }
 
 func collectSectionsForRegion(region Region, sections [3]SectionLayout) ([3]SectionLayout, int) {
@@ -199,7 +214,7 @@ func writeRegionOutput(buffer []byte, region Region, sections [3]SectionLayout, 
 			offset = relative
 		}
 		if len(s.Data) > 0 {
-			copy(buffer[offset:], s.Data)
+			forge.MoveBytes(buffer[offset:], s.Data, forge.FlagNoCache)
 			offset += uint32(len(s.Data))
 			if pad := s.Length - uint32(len(s.Data)); pad > 0 {
 				offset += pad
