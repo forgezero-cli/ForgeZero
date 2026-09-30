@@ -242,18 +242,14 @@ func runDAGBuild(pool *fo.Pool, pairs []pair, graph [][]int, buildOne func(pair)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var buildErr error
-	scheduled := make([]bool, n)
+	scheduled := utils.NewAtomicBitmap(n)
 	completed := 0
 
 	var schedule func(int)
 	schedule = func(idx int) {
-		mu.Lock()
-		if scheduled[idx] {
-			mu.Unlock()
+		if scheduled.TestAndSet(idx) {
 			return
 		}
-		scheduled[idx] = true
-		mu.Unlock()
 		wg.Add(1)
 		nodeIdx := idx
 		task := fo.Task{Fn: func(arg unsafe.Pointer) error {
