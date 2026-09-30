@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -54,6 +55,43 @@ func TestPreloadCachePopulatesL1(t *testing.T) {
 	if entry.hash != data {
 		t.Fatalf("expected hash %x, got %x", data, entry.hash)
 	}
+}
+
+func TestL1LoadSnapshotConcurrentStore(t *testing.T) {
+	const key = uint64(0x7f12000000004321)
+	var initial [32]byte
+	initial[8] = 1
+	l1Store(key, initial, 1, 2)
+
+	var group sync.WaitGroup
+	group.Add(5)
+	for reader := 0; reader < 4; reader++ {
+		go func() {
+			defer group.Done()
+			for iteration := 0; iteration < 5000; iteration++ {
+				entry, ok := l1Load(key)
+				if !ok {
+					t.Error("cache entry disappeared")
+					return
+				}
+				value := uint32(entry.hash[8])
+				if entry.size != value || entry.offset != uint64(value)+2 {
+					t.Errorf("inconsistent cache snapshot: size=%d offset=%d hash-byte=%d", entry.size, entry.offset, value)
+					return
+				}
+			}
+		}()
+	}
+	go func() {
+		defer group.Done()
+		for iteration := 0; iteration < 5000; iteration++ {
+			value := byte(iteration%255 + 1)
+			var digest [32]byte
+			digest[8] = value
+			l1Store(key, digest, uint32(value), uint64(value)+1)
+		}
+	}()
+	group.Wait()
 }
 
 func TestPreloadCacheNoCacheDirectory(t *testing.T) {
