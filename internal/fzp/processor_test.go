@@ -20,6 +20,7 @@ package fzp
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -158,5 +159,94 @@ func TestProcessUsesCache(t *testing.T) {
 	}
 	if len(proc.cache) != 1 {
 		t.Fatalf("expected cache entry to remain one, got %d", len(proc.cache))
+	}
+}
+
+func BenchmarkProcessLargeSource(b *testing.B) {
+	dir := b.TempDir()
+	path := filepath.Join(dir, "source.fz")
+	data := strings.Repeat("int value(void) { return 1; }\n", 1024)
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		b.Fatal(err)
+	}
+	proc := NewProcessor(Options{RootDir: dir})
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for b.Loop() {
+		clear(proc.cache)
+		if _, err := proc.Process(path, Options{RootDir: dir}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFZPBlockScannerAVX2(b *testing.B) {
+	data := []byte(strings.Repeat("int value(void) { return 1; }\n", 1024))
+	masks := make([]scanBlock, len(data)/32)
+	offsets := make([]uint16, len(data))
+	b.SetBytes(int64(len(data)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		scanFZPBlocks(data, masks, offsets)
+	}
+}
+
+func BenchmarkFZPBlockScannerGeneric(b *testing.B) {
+	data := []byte(strings.Repeat("int value(void) { return 1; }\n", 1024))
+	masks := make([]scanBlock, len(data)/32)
+	offsets := make([]uint16, len(data))
+	b.SetBytes(int64(len(data)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		scanFZPBlocksGeneric(data, masks, offsets)
+	}
+}
+
+func TestFZPBlockScanner(t *testing.T) {
+	data := make([]byte, 64)
+	data[3] = '\n'
+	data[6] = '#'
+	data[10] = ' '
+	data[11] = '\t'
+	data[12] = '\r'
+	data[32] = '\n'
+	data[63] = '#'
+	var got [2]scanBlock
+	var gotOffsets [64]uint16
+	blocks, newlineCount := scanFZPBlocks(data, got[:], gotOffsets[:])
+	if blocks != len(got) {
+		t.Fatalf("scanned blocks = %d, want %d", blocks, len(got))
+	}
+	var want [2]scanBlock
+	var wantOffsets [64]uint16
+	wantBlocks, wantNewlines := scanFZPBlocksGeneric(data, want[:], wantOffsets[:])
+	if wantBlocks != len(want) {
+		t.Fatalf("generic blocks = %d, want %d", wantBlocks, len(want))
+	}
+	if got != want {
+		t.Fatalf("SIMD masks = %#v, want %#v", got, want)
+	}
+	if newlineCount != wantNewlines {
+		t.Fatalf("SIMD newline count = %d, want %d", newlineCount, wantNewlines)
+	}
+	for index := 0; index < newlineCount; index++ {
+		if gotOffsets[index] != wantOffsets[index] {
+			t.Fatalf("SIMD newline offset %d = %d, want %d", index, gotOffsets[index], wantOffsets[index])
+		}
+	}
+}
+
+func TestFZPBlockScannerAllocs(t *testing.T) {
+	data := make([]byte, 32*64)
+	var masks [64]scanBlock
+	var offsets [32 * 64]uint16
+	allocs := testing.AllocsPerRun(100, func() {
+		scanFZPBlocks(data, masks[:], offsets[:])
+	})
+	if allocs != 0 {
+		t.Fatalf("scanner allocations = %v, want 0", allocs)
 	}
 }
