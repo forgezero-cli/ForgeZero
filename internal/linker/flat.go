@@ -29,6 +29,7 @@ import (
 	"unsafe"
 
 	"github.com/forgezero-cli/ForgeZero/internal/assembler"
+	"github.com/forgezero-cli/ForgeZero/internal/forge"
 	"github.com/forgezero-cli/ForgeZero/internal/utils"
 )
 
@@ -78,11 +79,30 @@ func linkBaremetalBinary(ctx context.Context, obj, bin string) error {
 	if err != nil {
 		return err
 	}
-	out, err := EmitFlatBinary(layout)
+	return writeFlatBinaryFile(bin, layout, 0o755)
+}
+
+func writeFlatBinaryFile(path string, layout Layout, mode os.FileMode) error {
+	ordered, regionSizes, totalSize, err := flatBinarySize(layout)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(bin, out, 0o755)
+	if uint64(totalSize) < forge.HugePageSize || uint64(totalSize) > ^uint64(0)-(forge.HugePageSize-1) {
+		out := make([]byte, totalSize)
+		writeFlatBinaryInto(out, layout, ordered, regionSizes)
+		return os.WriteFile(path, out, mode)
+	}
+	mappedSize := (uint64(totalSize) + forge.HugePageSize - 1) &^ (forge.HugePageSize - 1)
+	mapped := forge.MmapHugepages(mappedSize)
+	if mapped == nil {
+		out := make([]byte, totalSize)
+		writeFlatBinaryInto(out, layout, ordered, regionSizes)
+		return os.WriteFile(path, out, mode)
+	}
+	defer forge.MunmapHugepages(mapped, mappedSize)
+	buffer := unsafe.Slice((*byte)(mapped), totalSize)
+	writeFlatBinaryInto(buffer, layout, ordered, regionSizes)
+	return os.WriteFile(path, buffer, mode)
 }
 
 func loadELFSection(file *elf.File, name string) ([]byte, error) {
