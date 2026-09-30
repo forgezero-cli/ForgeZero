@@ -19,4 +19,5 @@
 
 package utils
 
+//go:noescape
 func HashBB64Asm(data []byte, seed uint64) uint64
